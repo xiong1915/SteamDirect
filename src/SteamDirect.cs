@@ -113,7 +113,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v2.5.2";
+            Text = "Steam 直连助手 v2.5.3";
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -327,7 +327,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v2.5.2 · 游戏网络助手", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v2.5.3 · 游戏网络助手", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = new Font(Font.FontFamily, 8F) }, 0, 6);
             shell.Controls.Add(rail, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);
@@ -1340,9 +1340,9 @@ namespace SteamDirect
             MaximizeBox = false; MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
-            var layout = new TableLayoutPanel { Dock = DockStyle.Top, Height = 652, Padding = new Padding(24, 20, 24, 20), ColumnCount = 1, RowCount = 6 };
+            var layout = new TableLayoutPanel { Dock = DockStyle.Top, Height = 652, Padding = new Padding(24, 20, 24, 20), ColumnCount = 1, RowCount = 7 };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 64, 156, 124, 164, 44 }) layout.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
+            foreach (int height in new[] { 64, 156, 124, 164, 44, 26 }) layout.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             layout.Controls.Add(new Label { Text = "设置", Dock = DockStyle.Fill, Font = new Font(Font.FontFamily, 22F) }, 0, 0);
 
@@ -1402,6 +1402,24 @@ namespace SteamDirect
             feedback.ForeColor = AppTheme.Muted;
             feedback.TextAlign = ContentAlignment.MiddleRight;
             layout.Controls.Add(feedback, 0, 5);
+            var about = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
+            about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+            about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v2.5.3", Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true,
+                Font = new Font(Font.FontFamily, 9F) }, 0, 0);
+            const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
+            var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill, Margin = Padding.Empty,
+                Tag = repositoryUrl, AccessibleDescription = repositoryUrl };
+            AppTheme.ActionButton(github, false);
+            github.Click += (sender, args) =>
+            {
+                try { Process.Start(new ProcessStartInfo(repositoryUrl) { UseShellExecute = true }); }
+                catch (Exception ex) { NoticeDialog.Show(this, "无法打开浏览器，请访问 " + repositoryUrl + Environment.NewLine + ex.Message, "GitHub 项目"); }
+            };
+            about.Controls.Add(github, 1, 0);
+            layout.Controls.Add(about, 0, 6);
             foreach (var toggle in new[] { night, tray, startup })
                 toggle.CheckedChanged += (sender, args) => feedback.Text = "有更改尚未保存";
             days.ValueChanged += (sender, args) => feedback.Text = "有更改尚未保存";
