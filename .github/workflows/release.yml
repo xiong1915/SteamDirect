@@ -67,23 +67,23 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $tag = $env:RELEASE_TAG
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
-          $release = $null
-          try {
-            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPO/releases/tags/$tag" -Headers $headers
-          } catch {
-            if ([int]$_.Exception.Response.StatusCode -ne 404) { throw }
-          }
+          $filter = '.[] | select(.tag_name == "' + $tag + '")'
+          $json = gh api "repos/$env:GH_REPO/releases?per_page=100" --paginate --jq $filter
+          if ($LASTEXITCODE -ne 0) { throw '读取发布列表失败。' }
+          $release = if ($json) { $json | ConvertFrom-Json } else { $null }
           if ($null -eq $release) {
             gh release create $tag dist/SteamDirect.exe --draft --target $env:RELEASE_SHA --title "SteamDirect $tag" --generate-notes
             if ($LASTEXITCODE -ne 0) { throw '创建发布草稿失败。' }
           } else {
             if (-not $release.draft) { throw '版本已由其他任务发布，请重新运行以核对状态。' }
-            $tagSha = gh api "repos/$env:GH_REPO/git/ref/tags/$tag" --jq '.object.sha'
-            if ($LASTEXITCODE -ne 0 -or $tagSha -ne $env:RELEASE_SHA) { throw '已有草稿与当前源码不同，请使用新的版本号。' }
+            if ($release.target_commitish -ne $env:RELEASE_SHA) { throw '已有草稿与当前源码不同，请使用新的版本号。' }
             gh release upload $tag dist/SteamDirect.exe --clobber
             if ($LASTEXITCODE -ne 0) { throw '上传程序失败。' }
           }
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPO/releases/tags/$tag" -Headers $headers
+          $json = gh api "repos/$env:GH_REPO/releases?per_page=100" --paginate --jq $filter
+          if ($LASTEXITCODE -ne 0) { throw '读取发布草稿失败。' }
+          $release = $json | ConvertFrom-Json
+          if ($null -eq $release.id) { throw '未找到刚刚上传的发布草稿。' }
           gh api --method PATCH "repos/$env:GH_REPO/releases/$($release.id)" -F draft=false -f make_latest=legacy --silent
           if ($LASTEXITCODE -ne 0) { throw '公开发布失败。' }
           $verify = Join-Path $env:RUNNER_TEMP 'release-download'
