@@ -113,7 +113,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v2.5.3";
+            Text = "Steam 直连助手 v2.5.4";
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -327,7 +327,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v2.5.3 · 游戏网络助手", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v2.5.4 · 游戏网络助手", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = new Font(Font.FontFamily, 8F) }, 0, 6);
             shell.Controls.Add(rail, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);
@@ -1406,7 +1406,7 @@ namespace SteamDirect
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
             about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v2.5.3", Dock = DockStyle.Fill,
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v2.5.4", Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true,
                 Font = new Font(Font.FontFamily, 9F) }, 0, 0);
             const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";

@@ -1,0 +1,95 @@
+name: Publish Windows release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'Build.ps1'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_SHA: ${{ github.sha }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Read version and check published release
+        id: version
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [xml]$manifest = Get-Content -LiteralPath src/app.manifest -Raw
+          $version = [version]$manifest.assembly.assemblyIdentity.version
+          $number = if ($version.Revision -eq 0) { $version.ToString(3) } else { $version.ToString(4) }
+          $tag = "v$number"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $release = $null
+          try {
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPO/releases/tags/$tag" -Headers $headers
+          } catch {
+            if ([int]$_.Exception.Response.StatusCode -ne 404) { throw }
+          }
+          $published = $null -ne $release -and -not $release.draft
+          if ($published -and -not ($release.assets | Where-Object { $_.name -eq 'SteamDirect.exe' -and $_.size -gt 0 })) {
+            throw '已发布的版本缺少程序附件，请检查发布页。'
+          }
+          "published=$($published.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if ($published) { "版本 $tag 已发布，保留原附件。" >> $env:GITHUB_STEP_SUMMARY }
+
+      - name: Build Windows x64 executable
+        if: steps.version.outputs.published != 'true'
+        run: .\Build.ps1
+
+      - name: Upload and publish release
+        if: steps.version.outputs.published != 'true'
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:RELEASE_TAG
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $release = $null
+          try {
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPO/releases/tags/$tag" -Headers $headers
+          } catch {
+            if ([int]$_.Exception.Response.StatusCode -ne 404) { throw }
+          }
+          if ($null -eq $release) {
+            gh release create $tag dist/SteamDirect.exe --draft --target $env:RELEASE_SHA --title "SteamDirect $tag" --generate-notes
+            if ($LASTEXITCODE -ne 0) { throw '创建发布草稿失败。' }
+          } else {
+            if (-not $release.draft) { throw '版本已由其他任务发布，请重新运行以核对状态。' }
+            $tagSha = gh api "repos/$env:GH_REPO/git/ref/tags/$tag" --jq '.object.sha'
+            if ($LASTEXITCODE -ne 0 -or $tagSha -ne $env:RELEASE_SHA) { throw '已有草稿与当前源码不同，请使用新的版本号。' }
+            gh release upload $tag dist/SteamDirect.exe --clobber
+            if ($LASTEXITCODE -ne 0) { throw '上传程序失败。' }
+          }
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPO/releases/tags/$tag" -Headers $headers
+          gh api --method PATCH "repos/$env:GH_REPO/releases/$($release.id)" -F draft=false -f make_latest=legacy --silent
+          if ($LASTEXITCODE -ne 0) { throw '公开发布失败。' }
+          $verify = Join-Path $env:RUNNER_TEMP 'release-download'
+          gh release download $tag --pattern SteamDirect.exe --dir $verify
+          if ($LASTEXITCODE -ne 0) { throw '下载验证失败。' }
+          if ((Get-FileHash dist/SteamDirect.exe).Hash -ne (Get-FileHash (Join-Path $verify 'SteamDirect.exe')).Hash) {
+            throw '发布附件与构建结果不同。'
+          }
+          "已发布并核验 $tag。下载 https://github.com/$env:GH_REPO/releases/latest/download/SteamDirect.exe" >> $env:GITHUB_STEP_SUMMARY

@@ -49,3 +49,9 @@ Windows 游戏网络助手，提供直连切换、Steam / CS2 网络诊断和自
 程序输出到 `dist\SteamDirect.exe`。源码位于 `src`，使用 Windows 自带的 .NET Framework C# 编译器，无需安装第三方包。
 
 界面参考 FlClash 的布局风格，程序和网络操作逻辑为独立实现。
+
+## 自动发布
+
+新版源码与更新后的 `src/app.manifest` 版本号推送到 `main` 后，GitHub Actions 自动构建 Windows 程序、创建发布版本、上传下载附件并校验文件。
+
+首页下载链接始终指向最新正式版本。相同版本重复推送会保留已经发布的附件；失败的任务可从 Actions 页面重新运行。
