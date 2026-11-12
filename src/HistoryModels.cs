@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -9,6 +9,7 @@ namespace SteamDirect
         internal string Id, Game, Mode, Target, Report;
         internal long Start, End;
         internal bool Interrupted;
+        internal bool HasAnomalies;
     }
 
     internal sealed class HistorySample

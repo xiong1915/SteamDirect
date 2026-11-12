@@ -10,8 +10,8 @@ namespace SteamDirect
 {
     internal sealed class HistorySections : UserControl
     {
-        private readonly FlowLayoutPanel navigation = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, WrapContents = false, Margin = Padding.Empty };
-        private readonly Panel content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 8, 0, 0) };
+        private readonly FlowLayoutPanel navigation = new FlowLayoutPanel { Dock = DockStyle.Top, Height = UiStyle.ButtonHeight + UiStyle.SmallGap, WrapContents = false, Margin = Padding.Empty };
+        private readonly Panel content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, UiStyle.SmallGap, 0, 0) };
         private readonly List<Control> pages = new List<Control>();
         private readonly List<Button> buttons = new List<Button>();
         internal int SelectedIndex { get; private set; }
@@ -19,15 +19,16 @@ namespace SteamDirect
         internal HistorySections()
         {
             Dock = DockStyle.Fill;
-            BackColor = Color.White;
+            BackColor = AppTheme.Surface;
             Controls.Add(content);
             Controls.Add(navigation);
         }
         internal void Add(string title, Control page)
         {
             int index = pages.Count;
-            var button = new RoundedButton { Text = title, AutoSize = false, Width = 116, Height = 36, MinimumSize = new Size(116, 36), Margin = new Padding(0, 0, 8, 0) };
+            var button = new RoundedButton { Text = title, AutoSize = false, Width = 116, Height = UiStyle.ButtonHeight, MinimumSize = new Size(116, UiStyle.ButtonHeight), Margin = new Padding(0, 0, 8, 0) };
             AppTheme.ActionButton(button, false);
+            button.Font = UiStyle.Button;
             button.Click += (sender, args) => SelectPage(index);
             navigation.Controls.Add(button);
             buttons.Add(button);
@@ -42,7 +43,7 @@ namespace SteamDirect
             for (int i = 0; i < pages.Count; i++)
             {
                 pages[i].Visible = i == index;
-                AppTheme.SetBackground(buttons[i], i == index ? AppTheme.Pill : Color.White);
+                AppTheme.SetBackground(buttons[i], i == index ? AppTheme.Pill : AppTheme.Surface);
                 AppTheme.SetForeground(buttons[i], i == index ? AppTheme.Accent : AppTheme.Muted);
             }
         }
@@ -68,32 +69,35 @@ namespace SteamDirect
             this.store = store; this.session = session; this.isGaming = isGaming;
             Text = session.Game + " · 详细数据";
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-            Font = new Font("Microsoft YaHei UI", 10F);
+            Font = UiStyle.Body;
             AutoScaleDimensions = new SizeF(96, 96); AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(940, 660); MinimumSize = new Size(760, 540);
             StartPosition = FormStartPosition.CenterParent; BackColor = AppTheme.Page; ForeColor = AppTheme.Ink;
-            var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), ColumnCount = 1, RowCount = 5 };
+            var root = UiStyle.Grid(1, 4);
+            root.Padding = UiStyle.PagePadding;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 38, 34, 110 }) root.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            foreach (int height in new[] { UiStyle.HeaderHeight, 132 }) root.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
             Controls.Add(root);
-            root.Controls.Add(new Label { Text = session.Game + " · 详细数据", Font = new Font(Font, FontStyle.Bold), Dock = DockStyle.Fill, AutoEllipsis = true }, 0, 0);
-            root.Controls.Add(new Label { Text = Time(session.Start) + " — " + Time(session.End) + "   ·   " + session.Mode, ForeColor = AppTheme.Muted, Dock = DockStyle.Fill, AutoEllipsis = true }, 0, 1);
-            var card = new RoundedPanel { BackColor = Color.White, Dock = DockStyle.Fill, Padding = new Padding(12) };
-            summary.Text = "正在读取本局统计…"; summary.Dock = DockStyle.Fill; summary.Multiline = true; summary.ReadOnly = true; summary.ScrollBars = ScrollBars.Vertical; summary.BorderStyle = BorderStyle.None; summary.BackColor = Color.White; card.Controls.Add(summary); root.Controls.Add(card, 0, 2);
-            var sectionCard = new RoundedPanel { BackColor = Color.White, Dock = DockStyle.Fill, Padding = new Padding(12), Margin = new Padding(0, 10, 0, 6) };
+            root.Controls.Add(UiStyle.Header(session.Game + " · 详细数据", Time(session.Start) + " — " + Time(session.End) + "   ·   " + session.Mode), 0, 0);
+            var card = UiStyle.Card(true);
+            UiStyle.ReadOnlyText(summary, "本局网络统计");
+            summary.Text = "正在读取本局统计…";
+            card.Controls.Add(summary); root.Controls.Add(card, 0, 1);
+            var sectionCard = UiStyle.Card(true);
+            sectionCard.Margin = new Padding(0, UiStyle.Gap, 0, UiStyle.SmallGap);
             var sections = new HistorySections();
             Configure(samples, new[] { "采样时间", "模式", "网关延迟", "外部延迟", "网卡", "DNS", "网关地址" });
             Configure(events, new[] { "异常类型", "发生时间", "恢复时间", "持续时间" });
-            sections.Add("原始采样", samples); sections.Add("异常记录", events); sectionCard.Controls.Add(sections); root.Controls.Add(sectionCard, 0, 3);
+            sections.Add("原始采样", samples); sections.Add("异常记录", events); sectionCard.Controls.Add(sections); root.Controls.Add(sectionCard, 0, 2);
             var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1 };
             footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90)); footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
             state.Dock = DockStyle.Fill; state.TextAlign = ContentAlignment.MiddleLeft; state.ForeColor = AppTheme.Muted; state.AutoEllipsis = true;
             footer.Controls.Add(state, 0, 0);
             previous.Text = "上一页"; next.Text = "下一页";
-            foreach (var button in new[] { previous, next }) { AppTheme.ActionButton(button, false); button.Dock = DockStyle.Fill; button.Enabled = false; }
-            footer.Controls.Add(previous, 1, 0); footer.Controls.Add(next, 2, 0); root.Controls.Add(footer, 0, 4);
+            foreach (var button in new[] { previous, next }) { AppTheme.ActionButton(button, false); button.Font = UiStyle.Button; button.Dock = DockStyle.Fill; button.Enabled = false; }
+            footer.Controls.Add(previous, 1, 0); footer.Controls.Add(next, 2, 0); root.Controls.Add(footer, 0, 3);
             previous.Click += async (sender, args) => await LoadPageAsync(page - 1);
             next.Click += async (sender, args) => await LoadPageAsync(page + 1);
             Shown += async (sender, args) => await InitializeAsync();
@@ -107,6 +111,7 @@ namespace SteamDirect
         }
         private static void Configure(DataGridView view, string[] columns)
         {
+            view.Font = UiStyle.Caption;
             view.Dock = DockStyle.Fill; view.ReadOnly = true; view.AllowUserToAddRows = false;
             view.AllowUserToDeleteRows = false; view.AllowUserToResizeRows = false;
             view.RowHeadersVisible = false; view.MultiSelect = false;
@@ -114,11 +119,11 @@ namespace SteamDirect
             view.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             view.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCellsExceptHeaders;
             view.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            view.BorderStyle = BorderStyle.None; view.BackgroundColor = Color.White;
+            view.BorderStyle = BorderStyle.None; view.BackgroundColor = AppTheme.Surface;
             view.EnableHeadersVisualStyles = false;
             view.ColumnHeadersDefaultCellStyle.BackColor = AppTheme.Background(AppTheme.Page);
             view.ColumnHeadersDefaultCellStyle.ForeColor = AppTheme.Text(AppTheme.Muted);
-            view.DefaultCellStyle.BackColor = AppTheme.Background(Color.White);
+            view.DefaultCellStyle.BackColor = AppTheme.Background(AppTheme.Surface);
             view.DefaultCellStyle.ForeColor = AppTheme.Text(AppTheme.Ink);
             view.DefaultCellStyle.SelectionBackColor = AppTheme.Background(AppTheme.Pill);
             view.DefaultCellStyle.SelectionForeColor = AppTheme.Text(AppTheme.Ink);

@@ -18,7 +18,7 @@ namespace SteamDirect
         private static readonly Color Ink = AppTheme.Ink;
         private static readonly Color Muted = AppTheme.Muted;
         private static readonly Color Accent = AppTheme.Accent;
-        private static readonly Color GatewayColor = Color.FromArgb(24, 137, 110);
+        private static readonly Color GatewayColor = AppTheme.Success;
         private static readonly Color Page = AppTheme.Page;
         private static readonly DateTimeOffset Epoch = new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -59,31 +59,25 @@ namespace SteamDirect
             ClientSize = new Size(1100, 720);
             MinimumSize = new Size(980, 650);
             StartPosition = FormStartPosition.CenterParent;
-            Font = new Font("Microsoft YaHei UI", 10F);
+            Font = UiStyle.Body;
             BackColor = Page;
             ForeColor = Ink;
 
             var root = Grid(1, 4);
-            root.Padding = new Padding(22, 16, 22, 10);
+            root.Padding = UiStyle.PagePadding;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
             Controls.Add(root);
 
-            var header = Grid(1, 2);
-            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            header.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-            header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            header.Controls.Add(new Label { Text = "游戏网络报告", Font = new Font(Font.FontFamily, 20F, FontStyle.Bold), Dock = DockStyle.Fill }, 0, 0);
-            header.Controls.Add(Caption("选一局，直接查看网络情况、问题位置和处理建议。"), 0, 1);
-            root.Controls.Add(header, 0, 0);
+            root.Controls.Add(UiStyle.Header("游戏网络报告", "选一局，直接查看网络情况、问题位置和处理建议。"), 0, 0);
 
-            var filterCard = new RoundedPanel { Dock = DockStyle.Fill, BackColor = Color.White,
-                Padding = new Padding(12, 4, 12, 6), Margin = new Padding(0, 0, 0, 10) };
+            var filterCard = UiStyle.Card(true);
+            filterCard.Margin = new Padding(0, 0, 0, UiStyle.Gap);
             var filters = Grid(5, 2);
-            filters.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
+            filters.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
             filters.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             foreach (int width in new[] { 126, 12, 88, 106 }) filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, width));
@@ -92,7 +86,7 @@ namespace SteamDirect
             gameFilter.Margin = new Padding(3, 1, 12, 0);
             gameFilter.BorderStyle = BorderStyle.FixedSingle;
             gameFilter.AccessibleName = "按游戏名称筛选";
-            filters.Controls.Add(gameFilter, 0, 1);
+            filters.Controls.Add(UiStyle.Entry(gameFilter, "按游戏名称筛选"), 0, 1);
             filters.Controls.Add(Caption("网络模式"), 1, 0);
             modeFilter.Dock = DockStyle.Fill;
             modeFilter.Margin = new Padding(3, 1, 0, 0);
@@ -100,7 +94,8 @@ namespace SteamDirect
             modeFilter.DropDownStyle = ComboBoxStyle.DropDownList;
             modeFilter.Items.AddRange(new object[] { "全部", "直连", "代理", "未知", "混合" });
             modeFilter.SelectedIndex = 0;
-            filters.Controls.Add(modeFilter, 1, 1);
+            UiStyle.ConfigureChoice(modeFilter);
+            filters.Controls.Add(UiStyle.Entry(modeFilter, "按网络模式筛选"), 1, 1);
             StyleButton(refresh, "查询", false);
             StyleButton(export, "导出记录", false);
             refresh.Margin = export.Margin = new Padding(3, 0, 0, 1);
@@ -116,17 +111,18 @@ namespace SteamDirect
             body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.Controls.Add(body, 0, 2);
 
-            var listCard = new RoundedPanel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(12), Margin = new Padding(0, 0, 10, 0) };
+            var listCard = UiStyle.Card(true);
+            listCard.Margin = new Padding(0, 0, UiStyle.Gap, 0);
             var listLayout = Grid(1, 3);
             listLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             listLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
             listLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            listLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            listLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
             var listHeader = Grid(2, 1);
             listHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             listHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 122));
             listHeader.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            listHeader.Controls.Add(new Label { Text = "选择一局", Font = new Font(Font, FontStyle.Bold),
+            listHeader.Controls.Add(new Label { Text = "选择一局", Font = UiStyle.SectionTitle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
             pageLabel.Text = "第 1 页";
             pageLabel.Dock = DockStyle.Fill;
@@ -136,7 +132,7 @@ namespace SteamDirect
             listHeader.Controls.Add(pageLabel, 1, 0);
             listLayout.Controls.Add(listHeader, 0, 0);
             SetupList(records, "游戏历史记录");
-            records.Font = new Font(Font.FontFamily, 9F);
+            records.Font = UiStyle.Caption;
             records.MultiSelect = false;
             records.HeaderStyle = ColumnHeaderStyle.None;
             records.Columns.Add("游戏", 142);
@@ -150,9 +146,8 @@ namespace SteamDirect
             records.SmallImageList = recordImages;
             records.MouseClick += (sender, args) =>
             {
-                var hit = records.HitTest(args.Location);
-                if (hit.Item != null && hit.SubItem != null && hit.Item.SubItems.IndexOf(hit.SubItem) == 4)
-                    OpenDetailedData(hit.Item.Tag as HistorySession);
+                var session = DetailedRecordAt(args.Location);
+                if (session != null) OpenDetailedData(session);
             };
             records.KeyDown += (sender, args) =>
             {
@@ -169,8 +164,7 @@ namespace SteamDirect
             records.ContextMenuStrip = recordMenu;
             records.MouseMove += (sender, args) =>
             {
-                var hit = records.HitTest(args.Location);
-                records.Cursor = hit.Item != null && hit.SubItem != null && hit.Item.SubItems.IndexOf(hit.SubItem) == 4 ? Cursors.Hand : Cursors.Default;
+                records.Cursor = DetailedRecordAt(args.Location) != null ? Cursors.Hand : Cursors.Default;
             };
             listLayout.Controls.Add(records, 0, 1);
             var pages = Grid(2, 1);
@@ -186,20 +180,23 @@ namespace SteamDirect
             listCard.Controls.Add(listLayout);
             body.Controls.Add(listCard, 0, 0);
 
-            var detailCard = new RoundedPanel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(14, 10, 14, 12), Margin = Padding.Empty };
+            var detailCard = UiStyle.Card(true);
+            detailCard.Margin = Padding.Empty;
             var detail = Grid(1, 3);
             detail.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             detail.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-            detail.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            detail.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
             detail.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             detailTitle.Text = "会话详情";
-            detailTitle.Font = new Font(Font.FontFamily, 13F, FontStyle.Bold);
+            detailTitle.Font = UiStyle.SectionTitle;
             detailTitle.Dock = DockStyle.Fill;
+            detailTitle.Margin = Padding.Empty;
             detailTitle.TextAlign = ContentAlignment.MiddleLeft;
             detailTitle.AutoEllipsis = true;
             detail.Controls.Add(detailTitle, 0, 0);
             detailMeta.Text = "从左侧选择一条游戏记录";
             detailMeta.Dock = DockStyle.Fill;
+            detailMeta.Margin = Padding.Empty;
             detailMeta.TextAlign = ContentAlignment.TopLeft;
             detailMeta.ForeColor = Muted;
             detailMeta.AutoEllipsis = true;
@@ -220,6 +217,8 @@ namespace SteamDirect
             body.Controls.Add(detailCard, 1, 0);
 
             status.Dock = DockStyle.Fill;
+            status.Margin = Padding.Empty;
+            status.Font = UiStyle.Caption;
             status.ForeColor = Muted;
             status.TextAlign = ContentAlignment.MiddleLeft;
             status.AutoEllipsis = true;
@@ -245,7 +244,7 @@ namespace SteamDirect
 
         private static TableLayoutPanel Grid(int columns, int rows)
         {
-            return new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = columns, RowCount = rows, Margin = Padding.Empty };
+            return UiStyle.Grid(columns, rows);
         }
 
         private Control BuildOverview()
@@ -257,28 +256,30 @@ namespace SteamDirect
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             overviewTitle.Text = "选择记录后显示本局结果";
             overviewTitle.Dock = DockStyle.Fill;
-            overviewTitle.Font = new Font(Font.FontFamily, 15F, FontStyle.Bold);
+            overviewTitle.Font = UiStyle.HeroTitle;
             layout.Controls.Add(overviewTitle, 0, 0);
             overviewNote.Dock = DockStyle.Fill;
             overviewNote.ForeColor = Muted;
             overviewNote.AutoEllipsis = true;
             layout.Controls.Add(overviewNote, 0, 1);
             SetupText(overviewText, "本局结果说明与建议");
-            overviewText.Font = new Font(Font.FontFamily, 10.5F);
+            overviewText.Font = UiStyle.Body;
             layout.Controls.Add(overviewText, 0, 2);
             return layout;
         }
 
         private static Label Caption(string text)
         {
-            return new Label { Text = text, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Muted, AutoEllipsis = true };
+            return new Label { Font = UiStyle.Caption, Text = text, Dock = DockStyle.Fill, Margin = Padding.Empty,
+                TextAlign = ContentAlignment.MiddleLeft, ForeColor = Muted, AutoEllipsis = true };
         }
 
         private static void StyleButton(Button button, string text, bool primary)
         {
+            button.Font = UiStyle.Button;
             button.Text = text;
             button.Dock = DockStyle.Fill;
-            button.Margin = new Padding(3, 0, 3, 6);
+            button.Margin = new Padding(0, 0, UiStyle.SmallGap, 0);
             AppTheme.ActionButton(button, primary);
         }
 
@@ -289,7 +290,7 @@ namespace SteamDirect
             view.View = View.Details;
             view.FullRowSelect = true;
             view.HideSelection = false;
-            view.BackColor = Color.White;
+            view.BackColor = AppTheme.Surface;
             view.ForeColor = Ink;
             view.BorderStyle = BorderStyle.None;
             view.OwnerDraw = true;
@@ -333,7 +334,7 @@ namespace SteamDirect
             bounds.Width = view.Columns[args.ColumnIndex].Width;
             var background = args.Item.Selected
                 ? AppTheme.Background(AppTheme.Pill)
-                : args.ItemIndex % 2 == 0 ? AppTheme.Background(Color.White) : AppTheme.Background(Page);
+                : args.ItemIndex % 2 == 0 ? AppTheme.Background(AppTheme.Surface) : AppTheme.Background(Page);
             using (var brush = new SolidBrush(background)) args.Graphics.FillRectangle(brush, bounds);
             if (args.Item.Selected && args.ColumnIndex == 0)
             {
@@ -348,8 +349,7 @@ namespace SteamDirect
             {
                 var area = Rectangle.Inflate(bounds, -8, -4);
                 int line = area.Height / 2;
-                using (var bold = new Font(view.Font, FontStyle.Bold))
-                    TextRenderer.DrawText(args.Graphics, args.Item.Text, bold, new Rectangle(area.X, area.Y, area.Width, line), AppTheme.Text(Ink), TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(args.Graphics, (((HistorySession)args.Item.Tag).HasAnomalies ? "● 异常 · " : "") + args.Item.Text, UiStyle.BodyStrong, new Rectangle(area.X, area.Y, area.Width, line), AppTheme.Text(((HistorySession)args.Item.Tag).HasAnomalies ? AppTheme.Error : Ink), TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
                 string caption = args.Item.SubItems[1].Text + " · " + args.Item.SubItems[2].Text + " · " + args.Item.SubItems[3].Text;
                 TextRenderer.DrawText(args.Graphics, caption, view.Font, new Rectangle(area.X, area.Y + line, area.Width, line), AppTheme.Text(Muted), TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
                 return;
@@ -358,12 +358,8 @@ namespace SteamDirect
             {
                 var action = Rectangle.Inflate(bounds, -3, -Math.Max(6, bounds.Height / 5));
                 using (var brush = new SolidBrush(AppTheme.Background(AppTheme.Pill)))
-                using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+                using (var path = UiStyle.RoundRect(action, UiStyle.ControlRadius * args.Graphics.DpiX / 96F))
                 {
-                    int diameter = Math.Max(2, Math.Min(action.Width, action.Height));
-                    path.AddArc(action.Left, action.Top, diameter, diameter, 90, 180);
-                    path.AddArc(action.Right - diameter, action.Top, diameter, diameter, 270, 180);
-                    path.CloseFigure();
                     args.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                     args.Graphics.FillPath(brush, path);
                 }
@@ -381,14 +377,15 @@ namespace SteamDirect
 
         private static void SetupText(TextBox text, string label)
         {
-            text.AccessibleName = label;
-            text.Dock = DockStyle.Fill;
-            text.ReadOnly = true;
-            text.Multiline = true;
-            text.ScrollBars = ScrollBars.Vertical;
-            text.BackColor = Color.White;
-            text.ForeColor = Ink;
-            text.BorderStyle = BorderStyle.None;
+            UiStyle.ReadOnlyText(text, label);
+        }
+
+        private HistorySession DetailedRecordAt(Point point)
+        {
+            if (!records.ClientRectangle.Contains(point)) return null;
+            var item = records.GetItemAt(point.X, point.Y);
+            if (item == null || item.SubItems.Count <= 4 || !item.SubItems[4].Bounds.Contains(point)) return null;
+            return item.Tag as HistorySession;
         }
 
         private void OpenDetailedData(HistorySession session)
@@ -449,7 +446,16 @@ namespace SteamDirect
                 }
             }
             catch (OperationCanceledException) { if (Available) status.Text = "已暂停读取。游戏退出后可刷新。"; }
-            catch (Exception ex) { if (Available) status.Text = "无法读取历史记录：" + ex.Message; }
+            catch (Exception ex)
+            {
+                if (Available)
+                {
+                    ClearDetails();
+                    UiStyle.SetState(overviewTitle, overviewNote, "历史记录暂时无法读取", "点击查询重试，错误详情见下方。", true);
+                    status.Text = "无法读取历史记录：" + ex.Message;
+                    overviewText.Text = status.Text;
+                }
+            }
             finally
             {
                 loadingRecords = false;
@@ -480,9 +486,9 @@ namespace SteamDirect
                 foreach (var session in sessions)
                 {
                     var row = new ListViewItem(session.Game ?? "未知游戏");
-                    row.ToolTipText = (session.Game ?? "未知游戏") + " · " + LocalTime(session.Start, "yyyy-MM-dd HH:mm");
+                    row.ToolTipText = SessionTiming(session) + (session.HasAnomalies ? " · 网络异常，选择记录查看原因和建议" : "");
                     row.SubItems.Add(LocalTime(session.Start, "MM-dd HH:mm"));
-                    row.SubItems.Add(session.End == 0 ? "记录中" : SpanShort(session.End - session.Start));
+                    row.SubItems.Add((session.End == 0 ? "已玩 " : "游玩 ") + SpanShort((session.End == 0 ? (long)(DateTimeOffset.UtcNow - Epoch).TotalMilliseconds : session.End) - session.Start));
                     row.SubItems.Add(session.Mode ?? "未知");
                     row.SubItems.Add("详细数据");
                     row.Tag = session;
@@ -510,13 +516,12 @@ namespace SteamDirect
             if (selected == null)
             {
                 status.Text = sessions.Count == 0 ? "还没有游戏网络记录。Steam 游戏运行结束后可刷新查看。" : "没有匹配的游戏记录。";
-                overviewTitle.Text = "暂无可用报告";
+                UiStyle.SetState(overviewTitle, overviewNote, "暂无可用报告", "完成一局后，点击查询查看网络报告。");
                 overviewText.Text = status.Text;
                 return;
             }
             detailTitle.Text = selected.Game ?? "未知游戏";
-            detailMeta.Text = (selected.Mode ?? "未知") + "  ·  " + LocalTime(selected.Start, "MM-dd HH:mm") +
-                "  ·  " + (selected.End == 0 ? "记录中" : SpanText(selected.End - selected.Start));
+            detailMeta.Text = (selected.Mode ?? "未知") + " · " + (selected.End == 0 ? "已玩 " : "共玩 ") + SpanText((selected.End == 0 ? (long)(DateTimeOffset.UtcNow - Epoch).TotalMilliseconds : selected.End) - selected.Start) + Environment.NewLine + LocalTime(selected.Start, "yyyy-MM-dd HH:mm:ss") + " → " + (selected.End == 0 ? "记录中" : LocalTime(selected.End, "yyyy-MM-dd HH:mm:ss"));
             if (selected.End == 0 || Gaming)
             {
                 overviewTitle.Text = "本局尚未生成报告";
@@ -529,8 +534,7 @@ namespace SteamDirect
             selectionWork = work;
             var token = work.Token;
             status.Text = "正在整理已结束会话的探测记录…";
-            overviewTitle.Text = "正在整理本局结果…";
-            overviewNote.Text = "正在读取本地记录，请稍候。";
+            UiStyle.SetState(overviewTitle, overviewNote, "正在整理本局结果…", "正在读取本地记录，请稍候。");
             try
             {
                 var result = await Task.Run(() =>
@@ -560,8 +564,7 @@ namespace SteamDirect
                 if (Available && !token.IsCancellationRequested)
                 {
                     status.Text = "无法生成报告：" + ex.Message;
-                    overviewTitle.Text = "本局报告暂时无法生成";
-                    overviewNote.Text = "点击查询重试，错误原因见窗口底部。";
+                    UiStyle.SetState(overviewTitle, overviewNote, "本局报告暂时无法生成", "点击查询重试，错误原因见窗口底部。", true);
                 }
             }
             finally
@@ -577,8 +580,7 @@ namespace SteamDirect
             detailMeta.Text = "从左侧选择一条游戏记录";
             comparisonText.Clear();
             incidents.Items.Clear();
-            overviewTitle.Text = "选择记录后显示本局结果";
-            overviewNote.Text = "左侧列出了自动保存的游戏记录。";
+            UiStyle.SetState(overviewTitle, overviewNote, "选择记录后显示本局结果", "左侧列出了自动保存的游戏记录。");
             overviewText.Clear();
         }
 
@@ -800,8 +802,7 @@ namespace SteamDirect
 
         private void ShowDetails(Detail detail)
         {
-            overviewTitle.Text = detail.OverviewTitle;
-            overviewNote.Text = detail.OverviewNote;
+            UiStyle.SetState(overviewTitle, overviewNote, detail.OverviewTitle, detail.OverviewNote);
             overviewText.Text = detail.OverviewText;
             overviewText.Select(0, 0);
             comparisonText.Text = detail.Comparison;
@@ -948,10 +949,18 @@ namespace SteamDirect
             return at <= 0 ? "" : Epoch.AddMilliseconds(at).ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
         }
 
+        private static string SessionTiming(HistorySession session)
+        {
+            long end = session.End == 0 ? (long)(DateTimeOffset.UtcNow - Epoch).TotalMilliseconds : session.End;
+            return LocalTime(session.Start, "yyyy-MM-dd HH:mm:ss") + " → " +
+                (session.End == 0 ? "记录中" : LocalTime(session.End, "yyyy-MM-dd HH:mm:ss")) +
+                " · " + (session.End == 0 ? "已玩 " : "共玩 ") + SpanText(end - session.Start) +
+                (session.Interrupted ? "（记录曾中断）" : "");
+        }
         private static string SpanText(long milliseconds)
         {
             var elapsed = TimeSpan.FromMilliseconds(Math.Max(0, milliseconds));
-            return elapsed.TotalHours >= 1 ? ((long)elapsed.TotalHours) + " 小时 " + elapsed.Minutes + " 分" :
+            return elapsed.TotalHours >= 1 ? ((long)elapsed.TotalHours) + " 小时 " + elapsed.Minutes + " 分 " + elapsed.Seconds + " 秒" :
                 elapsed.TotalMinutes >= 1 ? elapsed.Minutes + " 分 " + elapsed.Seconds + " 秒" : elapsed.Seconds + " 秒";
         }
 

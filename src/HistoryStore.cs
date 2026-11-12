@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -159,7 +159,8 @@ ON CONFLICT(id) DO UPDATE SET session_id=excluded.session_id, kind=excluded.kind
             if (offset < 0) throw new ArgumentOutOfRangeException("offset");
             var sessions = new List<HistorySession>();
             using (var db = new Connection(path, false))
-            using (var statement = db.Prepare(@"SELECT id,game,mode,target,start_ms,end_ms,interrupted,report
+            using (var statement = db.Prepare(@"SELECT id,game,mode,target,start_ms,end_ms,interrupted,report,
+EXISTS(SELECT 1 FROM history_events e WHERE e.session_id = history_sessions.id)
 FROM history_sessions WHERE INSTR(LOWER(game), LOWER(?)) > 0 AND mode = COALESCE(?, mode)
 ORDER BY start_ms DESC, id DESC LIMIT ? OFFSET ?"))
             {
@@ -172,7 +173,7 @@ ORDER BY start_ms DESC, id DESC LIMIT ? OFFSET ?"))
                     sessions.Add(new HistorySession {
                         Id = statement.Text(0), Game = statement.Text(1), Mode = statement.Text(2), Target = statement.Text(3),
                         Start = statement.Number(4), End = statement.Number(5), Interrupted = statement.Number(6) != 0,
-                        Report = statement.Text(7)
+                        Report = statement.Text(7), HasAnomalies = statement.Number(8) != 0
                     });
                 }
             }

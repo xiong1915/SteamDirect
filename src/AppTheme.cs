@@ -14,9 +14,15 @@ namespace SteamDirect
         internal static readonly Color Muted = Color.FromArgb(99, 94, 111);
         internal static readonly Color Accent = Color.FromArgb(103, 80, 164);
         internal static readonly Color Pill = Color.FromArgb(233, 224, 249);
+        internal static readonly Color Surface = Color.White;
+        internal static readonly Color Success = Color.FromArgb(24, 137, 110);
+        internal static readonly Color Warning = Color.FromArgb(184, 102, 24);
+        internal static readonly Color Error = Color.FromArgb(191, 72, 57);
+        internal static readonly Color Info = Accent;
+        internal static readonly Color Disabled = Color.FromArgb(145, 145, 145);
         internal static Color ThemeColor = Accent;
         private static Color primary, accentText, tone, primaryText;
-        private static Color canvas, surface, mutedText, inkText;
+        private static Color canvas, surface, mutedText, inkText, successText, warningText, errorText;
         internal static Color AccentForeground { get { return primaryText; } }
         internal static Color Edge { get { return Blend(surface, inkText, .15); } }
         private static Color Hover { get { return Blend(tone, accentText, .12); } }
@@ -78,6 +84,16 @@ namespace SteamDirect
             }
             primary = accentText;
             primaryText = Contrast(primary, Color.White) >= Contrast(primary, Color.Black) ? Color.White : Color.Black;
+            successText = Readable(IsDark ? Blend(Success, Color.White, .4) : Success, textSurface);
+            warningText = Readable(IsDark ? Blend(Warning, Color.White, .45) : Warning, textSurface);
+            errorText = Readable(IsDark ? Blend(Error, Color.White, .4) : Error, textSurface);
+        }
+
+        private static Color Readable(Color color, Color background)
+        {
+            Color target = IsDark ? Color.White : Color.Black;
+            for (int i = 0; i < 24 && Contrast(color, background) < 4.5; i++) color = Blend(color, target, .12);
+            return color;
         }
 
         static AppTheme() { UpdatePalette(); }
@@ -97,20 +113,22 @@ namespace SteamDirect
         [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
         internal static Color Text(Color light)
         {
-            bool accent = light.ToArgb() == Accent.ToArgb() || light.ToArgb() == Color.FromArgb(72, 88, 222).ToArgb();
+            bool accent = light.ToArgb() == Accent.ToArgb();
             if (accent) return accentText;
             if (light.ToArgb() == Color.White.ToArgb()) return light;
-            if (light.G > light.R * 1.25 && light.G > light.B) return IsDark ? Color.FromArgb(111, 222, 188) : light;
-            if (light.R > light.G * 1.25 && light.R > light.B * 1.25)
-                return IsDark ? light.G > 85 ? Color.FromArgb(255, 194, 125) : Color.FromArgb(255, 153, 145) : light;
-            return light.GetBrightness() < 0.27F ? inkText : mutedText;
+            if (light.ToArgb() == Success.ToArgb()) return successText;
+            if (light.ToArgb() == Warning.ToArgb()) return warningText;
+            if (light.ToArgb() == Error.ToArgb()) return errorText;
+            if (light.ToArgb() == Disabled.ToArgb() || light.ToArgb() == SystemColors.GrayText.ToArgb()) return mutedText;
+            if (light.ToArgb() == Muted.ToArgb()) return mutedText;
+            return inkText;
         }
         internal static Color Background(Color light)
         {
             if (light.A == 0) return light;
             if (light.ToArgb() == Pill.ToArgb()) return tone;
-            if (light.ToArgb() == Accent.ToArgb() || light.ToArgb() == Color.FromArgb(72, 88, 222).ToArgb()) return primary;
-            bool page = light.ToArgb() == Page.ToArgb() || light.ToArgb() == Color.FromArgb(241, 244, 249).ToArgb();
+            if (light.ToArgb() == Accent.ToArgb()) return primary;
+            bool page = light.ToArgb() == Page.ToArgb();
             if (page) return canvas;
             if (light.ToArgb() == Color.White.ToArgb() || light.IsSystemColor) return surface;
             return light;
@@ -135,6 +153,7 @@ namespace SteamDirect
             button.ForeColor = primary ? Color.White : Accent;
             button.FlatAppearance.BorderSize = 0;
             button.Cursor = Cursors.Hand;
+            button.Font = UiStyle.Button;
         }
 
         internal static void ApplyTray(ContextMenuStrip menu)
@@ -185,7 +204,7 @@ namespace SteamDirect
             var push = control as Button;
             if (push != null)
             {
-                bool primary = original.Back.ToArgb() == Accent.ToArgb() || original.Back.ToArgb() == Color.FromArgb(72, 88, 222).ToArgb();
+                bool primary = original.Back.ToArgb() == Accent.ToArgb();
                 if (primary)
                 {
                     push.BackColor = AppTheme.primary;

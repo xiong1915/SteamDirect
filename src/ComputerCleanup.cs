@@ -184,24 +184,26 @@ namespace SteamDirect
         private int scanVersion;
         internal CleanupPanel(Action<string> saveLog)
         {
-            log = saveLog; Dock = DockStyle.Fill; Margin = new Padding(0, 10, 0, 0);
-            var frame = new RoundedPanel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(14, 9, 14, 9) };
+            log = saveLog; Dock = DockStyle.Fill; Margin = new Padding(0, UiStyle.Gap, 0, 0);
+            var frame = UiStyle.Card(true);
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4 };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var title = new Label { Text = "系统资源", Dock = DockStyle.Fill, ForeColor = AppTheme.Muted };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
+            var title = new Label { Text = "系统资源", Dock = DockStyle.Fill, Margin = Padding.Empty, ForeColor = AppTheme.Ink, Font = UiStyle.SectionTitle };
             layout.Controls.Add(title, 0, 0); layout.SetColumnSpan(title, 2);
             memory.Text = "内存占用：读取中"; files.Text = "过期临时文件：扫描中";
             memory.Dock = files.Dock = DockStyle.Fill;
-            memory.Font = files.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
+            memory.Margin = files.Margin = Padding.Empty;
+            memory.Font = files.Font = UiStyle.SectionTitle;
             layout.Controls.Add(memory, 0, 1); layout.Controls.Add(files, 1, 1);
             note.Text = "仅清理 7 天以上的临时文件，内存占用仅供参考。";
-            note.Dock = DockStyle.Fill; note.AutoEllipsis = true; note.Font = new Font("Microsoft YaHei UI", 8.5F); note.ForeColor = AppTheme.Muted;
+            note.Dock = DockStyle.Fill; note.Margin = Padding.Empty; note.AutoEllipsis = true; note.Font = UiStyle.Caption; note.ForeColor = AppTheme.Muted;
             layout.Controls.Add(note, 0, 2); layout.SetColumnSpan(note, 2);
             clean.Text = "扫描并清理过期临时文件"; clean.Dock = DockStyle.Fill;
+            clean.Margin = Padding.Empty;
             AppTheme.ActionButton(clean, false);
             clean.Click += async (sender, args) => await CleanAsync(); layout.Controls.Add(clean, 0, 3); layout.SetColumnSpan(clean, 2);
             frame.Controls.Add(layout); Controls.Add(frame);

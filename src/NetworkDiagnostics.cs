@@ -350,7 +350,7 @@ namespace SteamDirect
         private readonly TextBox conclusion = new TextBox();
         private readonly Button start = new RoundedButton();
         private readonly Label progress = new Label();
-        private readonly ProgressBar progressBar = new ProgressBar();
+        private readonly ProgressBar progressBar = new ThemedProgressBar();
         private readonly Label[] states = new Label[6];
         private readonly Label[] notes = new Label[6];
         private CancellationTokenSource cancellation;
@@ -363,32 +363,31 @@ namespace SteamDirect
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             AutoScaleDimensions = new SizeF(96, 96);
             AutoScaleMode = AutoScaleMode.Dpi;
-            Font = new Font("Microsoft YaHei UI", 10F);
+            Font = UiStyle.Body;
             BackColor = AppTheme.Page;
             ForeColor = AppTheme.Ink;
-            ClientSize = new Size(950, 740);
-            MinimumSize = new Size(900, 730);
+            ClientSize = new Size(950, 780);
+            MinimumSize = new Size(900, 760);
             StartPosition = FormStartPosition.CenterParent;
 
-            var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24, 22, 24, 22), ColumnCount = 1, RowCount = 5 };
+            var root = UiStyle.Grid(1, 5);
+            root.Padding = UiStyle.PagePadding;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 68, 118, 228 }) root.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 47));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 53));
-
-            var header = Column(2);
-            header.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-            header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var title = new Label { Text = "网络诊断", Dock = DockStyle.Fill, Margin = Padding.Empty, ForeColor = AppTheme.Ink, Font = new Font(Font.FontFamily, 22F) };
-            header.Controls.Add(title, 0, 0);
-            header.Controls.Add(new Label { Text = "CS2 · Steam    查看连接状态与网络路径", Dock = DockStyle.Fill, Margin = Padding.Empty, ForeColor = AppTheme.Muted }, 0, 1);
-            root.Controls.Add(header, 0, 0);
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
+            int actionHeight = UiStyle.DensePadding.Vertical + UiStyle.Space32 + UiStyle.ButtonHeight +
+                UiStyle.Space32 + UiStyle.Space4 + UiStyle.Gap;
+            int statusHeight = 2 * (UiStyle.DensePadding.Vertical + UiStyle.CompactHeight + UiStyle.ButtonHeight) + UiStyle.SmallGap + UiStyle.Gap;
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, actionHeight));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, statusHeight));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            root.Controls.Add(UiStyle.Header("网络诊断", "CS2 · Steam    查看连接状态与网络路径"), 0, 0);
 
             root.Controls.Add(BuildControls(), 0, 1);
             root.Controls.Add(BuildStatusCards(), 0, 2);
 
             conclusion.Text = "开始检测后，这里会显示网络诊断结果和处理建议。";
-            root.Controls.Add(BuildReadout("诊断结论与建议", conclusion, AppTheme.Ink, new Padding(0, 0, 0, 12)), 0, 3);
+            root.Controls.Add(BuildReadout("诊断结论与建议", conclusion, AppTheme.Ink, new Padding(0, 0, 0, UiStyle.SmallGap)), 0, 3);
             root.Controls.Add(BuildReadout("检测明细", details, AppTheme.Muted, Padding.Empty), 0, 4);
 
             Controls.Add(root);
@@ -409,57 +408,32 @@ namespace SteamDirect
             if (!TopLevel) MinimumSize = Size.Empty;
         }
 
-        private Label Heading(string text, float size)
-        {
-            return new Label
-            {
-                Text = text,
-                Dock = DockStyle.Fill,
-                Margin = Padding.Empty,
-                ForeColor = AppTheme.Ink,
-                Font = new Font(Font.FontFamily, size, FontStyle.Bold)
-            };
-        }
-
-        private static TableLayoutPanel Column(int rows)
-        {
-            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = rows, Margin = Padding.Empty };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            return layout;
-        }
-
         private RoundedPanel BuildControls()
         {
-            var panel = new RoundedPanel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(16, 10, 16, 10), Margin = new Padding(0, 0, 0, 12) };
-            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Margin = Padding.Empty };
+            var panel = UiStyle.Card(true);
+            panel.Margin = new Padding(0, 0, 0, UiStyle.Gap);
+            var layout = UiStyle.Grid(2, 3);
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
-            foreach (int height in new[] { 22, 42 }) layout.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiStyle.Space48 * 3));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-            var targetLabel = new Label { Text = "对局服务器（可选）    默认查询端口 27015", Dock = DockStyle.Fill, Margin = Padding.Empty, Font = new Font(Font.FontFamily, 9F), ForeColor = AppTheme.Muted };
+            var targetLabel = new Label { Text = "对局服务器（可选）    默认查询端口 27015", Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.Caption, ForeColor = AppTheme.Muted };
             layout.Controls.Add(targetLabel, 0, 0);
             layout.SetColumnSpan(targetLabel, 2);
 
-            var targetFrame = new RoundedPanel { Dock = DockStyle.Fill, BackColor = AppTheme.Page, Padding = new Padding(12, 7, 12, 7), Margin = new Padding(0, 0, 12, 0) };
-            target.Anchor = AnchorStyles.Left | AnchorStyles.Right;
-            target.BorderStyle = BorderStyle.None;
-            target.BackColor = AppTheme.Page;
-            target.Margin = Padding.Empty;
-            target.AccessibleName = "对局服务器 IP 和查询端口（可选）";
+            var targetFrame = UiStyle.Entry(target, "对局服务器 IP 和查询端口（可选）");
+            targetFrame.Margin = new Padding(0, 0, UiStyle.Gap, 0);
             target.AccessibleDescription = "留空时检测本地网络和 Steam 服务。官方匹配可能使用中继。";
             target.TabIndex = 0;
-            var targetLayout = Column(1);
-            targetLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            targetLayout.Controls.Add(target, 0, 0);
-            targetFrame.Controls.Add(targetLayout);
             layout.Controls.Add(targetFrame, 0, 1);
 
             start.Text = "开始检测";
             start.Dock = DockStyle.Fill;
             start.Margin = Padding.Empty;
             start.TabIndex = 1;
-            start.Font = new Font(Font.FontFamily, 10F, FontStyle.Bold);
+            start.Font = UiStyle.Button;
             AppTheme.ActionButton(start, true);
             start.Click += async (sender, args) => { if (cancellation != null) cancellation.Cancel(); else await RunAsync(); };
             layout.Controls.Add(start, 1, 1);
@@ -469,15 +443,16 @@ namespace SteamDirect
             progress.Margin = Padding.Empty;
             progress.TextAlign = ContentAlignment.MiddleLeft;
             progress.ForeColor = AppTheme.Muted;
-            progress.Font = new Font(Font.FontFamily, 9F);
+            progress.Font = UiStyle.Caption;
             progress.AutoEllipsis = true;
-            var progressRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 4, 0, 0) };
+            var progressRow = UiStyle.Grid(2, 1);
+            progressRow.Margin = new Padding(0, UiStyle.Space4, 0, 0);
             progressRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
             progressRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
             progressRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             progressRow.Controls.Add(progress, 0, 0);
             progressBar.Anchor = AnchorStyles.Left | AnchorStyles.Right;
-            progressBar.Height = 5;
+            progressBar.Height = UiStyle.Space4;
             progressBar.Style = ProgressBarStyle.Continuous;
             progressBar.Maximum = 100;
             progressBar.TabStop = false;
@@ -492,52 +467,47 @@ namespace SteamDirect
 
         private TableLayoutPanel BuildStatusCards()
         {
-            var section = Column(2);
-            section.Margin = new Padding(0, 0, 0, 12);
-            section.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
-            section.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            section.Controls.Add(Heading("连接状态", 10F), 0, 0);
-            var cards = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2, Margin = Padding.Empty };
+            var cards = UiStyle.Grid(3, 2);
+            cards.Margin = new Padding(0, 0, 0, UiStyle.Gap);
             for (int i = 0; i < 3; i++) cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333F));
             cards.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
             cards.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
             string[] titles = { "本地网络", "代理 / VPN", "Steam 服务", "Steam 客户端", "CS2 进程", "对局服务器" };
             for (int i = 0; i < titles.Length; i++)
             {
-                var card = new RoundedPanel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(16, 10, 16, 10), Margin = new Padding(0, 0, i % 3 == 2 ? 0 : 12, i < 3 ? 10 : 0) };
-                var inner = Column(3);
-                inner.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
-                inner.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
+                var card = UiStyle.Card(true);
+                card.Margin = new Padding(0, 0, i % 3 == 2 ? 0 : UiStyle.Gap, i < 3 ? UiStyle.SmallGap : 0);
+                var inner = UiStyle.Grid(2, 2);
+                inner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
+                inner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
+                inner.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.CompactHeight));
                 inner.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-                inner.Controls.Add(new Label { Text = titles[i], Dock = DockStyle.Fill, Margin = Padding.Empty, Font = new Font(Font.FontFamily, 9F), ForeColor = AppTheme.Muted }, 0, 0);
-                states[i] = Heading("待检测", 12F);
+                inner.Controls.Add(new Label { Text = titles[i], Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.Body, ForeColor = AppTheme.Ink, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
+                states[i] = new Label { Text = "待检测", Dock = DockStyle.Fill, Margin = Padding.Empty, ForeColor = AppTheme.Ink, Font = UiStyle.SectionTitle, TextAlign = ContentAlignment.MiddleRight };
                 states[i].AccessibleName = titles[i] + "状态";
-                notes[i] = new Label { Text = i == 5 ? "选填服务器地址。官方匹配可能使用中继。" : "等待检测", Dock = DockStyle.Fill, Margin = Padding.Empty, AutoEllipsis = true, Font = new Font(Font.FontFamily, 9F), ForeColor = AppTheme.Muted };
-                inner.Controls.Add(states[i], 0, 1);
-                inner.Controls.Add(notes[i], 0, 2);
+                notes[i] = new Label { Text = i == 5 ? "选填服务器地址。官方匹配可能使用中继。" : "等待检测", Dock = DockStyle.Fill, Margin = Padding.Empty, AutoEllipsis = true, Font = UiStyle.Caption, ForeColor = AppTheme.Muted };
+                inner.Controls.Add(states[i], 1, 0);
+                inner.Controls.Add(notes[i], 0, 1);
+                inner.SetColumnSpan(notes[i], 2);
                 card.Controls.Add(inner);
                 cards.Controls.Add(card, i % 3, i / 3);
             }
-            section.Controls.Add(cards, 0, 1);
-            return section;
+            return cards;
         }
 
         private RoundedPanel BuildReadout(string title, TextBox box, Color foreground, Padding margin)
         {
-            var frame = new RoundedPanel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(18, 12, 18, 12), Margin = margin };
-            var layout = Column(2);
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+            var frame = UiStyle.Card(true);
+            frame.Margin = margin;
+            var layout = UiStyle.Grid(1, 2);
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            layout.Controls.Add(Heading(title, 10F), 0, 0);
-            box.Dock = DockStyle.Fill;
+            layout.Controls.Add(new Label { Text = title, Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.SectionTitle, ForeColor = AppTheme.Ink }, 0, 0);
+            UiStyle.ReadOnlyText(box, title);
             box.Margin = Padding.Empty;
-            box.Multiline = true;
-            box.ReadOnly = true;
-            box.ScrollBars = ScrollBars.Vertical;
-            box.BorderStyle = BorderStyle.None;
-            box.BackColor = Color.White;
             box.ForeColor = foreground;
-            box.AccessibleName = title;
+            if (box == details) box.Font = UiStyle.Caption;
             layout.Controls.Add(box, 0, 1);
             frame.Controls.Add(layout);
             return frame;
@@ -555,13 +525,14 @@ namespace SteamDirect
             if (item.CompletedUnits >= 0)
             {
                 progressBar.Value = Math.Max(0, Math.Min(100, item.CompletedUnits * 100 / 8));
+                progressBar.Invalidate();
                 progress.Text = "检查进度 " + progressBar.Value + "% · " + item.CompletedUnits + "/8 · " + item.Detail;
                 return;
             }
             states[item.Index].Text = item.State;
             bool warn = item.State == "需关注" || item.State == "路径差异";
             bool good = item.State == "有回复" || item.State == "未发现" || item.State == "直连可达" || item.State == "有连接" || item.State == "查询可达";
-            AppTheme.SetForeground(states[item.Index], warn ? Color.FromArgb(184, 102, 24) : good ? Color.FromArgb(24, 137, 110) : Color.FromArgb(72, 88, 222));
+            AppTheme.SetForeground(states[item.Index], warn ? AppTheme.Warning : good ? AppTheme.Success : AppTheme.Info);
             notes[item.Index].Text = item.Detail;
             if (item.State == "检测中") progress.Text = "正在检测 · " + item.Title;
         }
@@ -570,8 +541,9 @@ namespace SteamDirect
             IPEndPoint server;
             try { server = NetworkDiagnostics.ParseServer(target.Text); } catch (ArgumentException ex) { NoticeDialog.Show(this, ex.Message, "服务器地址"); return; }
             progressBar.Value = 0;
+            progressBar.Invalidate();
             target.Enabled = false; start.Text = "取消检测"; details.Clear(); conclusion.Text = "正在收集证据，请等待各项检查完成。";
-            for (int i = 0; i < 6; i++) { states[i].Text = "待检测"; AppTheme.SetForeground(states[i], Color.FromArgb(28, 39, 60)); notes[i].Text = "等待检测"; }
+            for (int i = 0; i < 6; i++) { states[i].Text = "待检测"; AppTheme.SetForeground(states[i], AppTheme.Ink); notes[i].Text = "等待检测"; }
             cancellation = new CancellationTokenSource();
             var watch = Stopwatch.StartNew();
             try
