@@ -25,11 +25,12 @@ namespace SteamDirect
         private readonly HistoryStore store;
         private readonly Func<bool> isGaming;
         private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
-        private readonly ImageList recordImages = new ImageList();
-        private readonly ListView records = new ListView();
+        private readonly ListView records = new HistoryRecordList();
         private readonly ListView incidents = new ListView();
         private readonly TextBox gameFilter = new TextBox();
         private readonly ComboBox modeFilter = new ComboBox();
+        private readonly ComboBox recordScope = new ComboBox();
+        private readonly HistoryNetworkChart networkChart = new HistoryNetworkChart();
         private readonly TextBox comparisonText = new TextBox();
         private readonly Label overviewTitle = new Label();
         private readonly Label overviewNote = new Label();
@@ -76,11 +77,11 @@ namespace SteamDirect
 
             var filterCard = UiStyle.Card(true);
             filterCard.Margin = new Padding(0, 0, 0, UiStyle.Gap);
-            var filters = Grid(5, 2);
+            var filters = Grid(6, 2);
             filters.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
             filters.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int width in new[] { 126, 12, 88, 106 }) filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, width));
+            foreach (int width in new[] { 126, 180, 12, 88, 106 }) filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, width));
             filters.Controls.Add(Caption("游戏名称"), 0, 0);
             gameFilter.Dock = DockStyle.Fill;
             gameFilter.Margin = new Padding(3, 1, 12, 0);
@@ -96,12 +97,19 @@ namespace SteamDirect
             modeFilter.SelectedIndex = 0;
             UiStyle.ConfigureChoice(modeFilter);
             filters.Controls.Add(UiStyle.Entry(modeFilter, "按网络模式筛选"), 1, 1);
+            filters.Controls.Add(Caption("记录范围"), 2, 0);
+            recordScope.DropDownStyle = ComboBoxStyle.DropDownList;
+            recordScope.Items.AddRange(new object[] { "今天的对局", "查看历史对局" });
+            recordScope.SelectedIndex = 0;
+            UiStyle.ConfigureChoice(recordScope);
+            filters.Controls.Add(UiStyle.Entry(recordScope, "查看当天或历史对局记录"), 2, 1);
+            recordScope.SelectedIndexChanged += async (sender, args) => { if (IsHandleCreated && !loadingRecords) await RefreshAsync(); };
             StyleButton(refresh, "查询", false);
             StyleButton(export, "导出记录", false);
             refresh.Margin = export.Margin = new Padding(3, 0, 0, 1);
             export.Enabled = false;
-            filters.Controls.Add(refresh, 3, 1);
-            filters.Controls.Add(export, 4, 1);
+            filters.Controls.Add(refresh, 4, 1);
+            filters.Controls.Add(export, 5, 1);
             filterCard.Controls.Add(filters);
             root.Controls.Add(filterCard, 0, 1);
 
@@ -144,8 +152,6 @@ namespace SteamDirect
             records.FontChanged += (sender, args) => FitRecordRows();
             records.SizeChanged += (sender, args) => FitRecordRows();
             records.ShowItemToolTips = true;
-            recordImages.ImageSize = new Size(1, 120);
-            records.SmallImageList = recordImages;
             records.MouseClick += (sender, args) =>
             {
                 var session = DetailedRecordAt(args.Location);
@@ -212,6 +218,12 @@ namespace SteamDirect
             incidents.Columns.Add("恢复用时", 94);
             SetColumnWeights(incidents, 31, 25, 25, 19);
             tabs.Add("本局报告", BuildOverview());
+            var chartScroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = AppTheme.Surface };
+            networkChart.Dock = DockStyle.Top;
+            networkChart.Height = 240;
+            chartScroll.Controls.Add(networkChart);
+            chartScroll.SizeChanged += (sender, args) => networkChart.Height = Math.Max(chartScroll.ClientSize.Height, (UiStyle.TextHeight(networkChart) + UiStyle.Scale(networkChart, 8)) * 6 + UiStyle.Scale(networkChart, 80));
+            tabs.Add("网络波动", chartScroll);
             tabs.Add("异常时间线", incidents);
             tabs.Add("历史参考", comparisonText);
             detail.Controls.Add(tabs, 0, 2);
@@ -382,7 +394,7 @@ namespace SteamDirect
         private static Rectangle RecordActionBounds(ListViewItem item)
         {
             var view = item.ListView;
-            int height = view.Font.Height + 12;
+            int height = UiStyle.TextHeight(view) + UiStyle.Scale(view, 12);
             int width = TextRenderer.MeasureText("详细数据", view.Font).Width + 24;
             var bounds = item.Bounds;
             return new Rectangle(bounds.Right - width - 8, bounds.Bottom - height - 6, width, height);
@@ -405,14 +417,13 @@ namespace SteamDirect
         {
             if (records.ClientSize.Width < 1) return;
             int width = Math.Max(80, records.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 20);
-            int height = (records.Font.Height + 6) * 4 + 24;
+            int height = (UiStyle.TextHeight(records) + UiStyle.Scale(records, 6)) * 4 + UiStyle.Scale(records, 24);
             foreach (ListViewItem row in records.Items)
             {
                 int[] blocks = RecordTextHeights(row, width);
-                height = Math.Max(height, blocks[0] + blocks[1] + blocks[2] + records.Font.Height + 28);
+                height = Math.Max(height, blocks[0] + blocks[1] + blocks[2] + UiStyle.TextHeight(records) + UiStyle.Scale(records, 28));
             }
-            height = Math.Min(256, height);
-            if (recordImages.ImageSize.Height != height) recordImages.ImageSize = new Size(1, height);
+            ((HistoryRecordList)records).SetRowHeight(height);
             records.Invalidate();
         }
 
@@ -446,7 +457,7 @@ namespace SteamDirect
                 lifetime.Cancel();
                 if (selectionWork != null) selectionWork.Cancel();
                 lifetime.Dispose();
-                recordImages.Dispose();
+
                 if (records.ContextMenuStrip != null) records.ContextMenuStrip.Dispose();
             }
             base.Dispose(disposing);
@@ -457,9 +468,11 @@ namespace SteamDirect
             if (!Available || loadingRecords) return;
             if (Gaming) { status.Text = "游戏运行中，请在退出游戏后刷新。"; return; }
             loadingRecords = true;
-            refresh.Enabled = gameFilter.Enabled = modeFilter.Enabled = previousPage.Enabled = nextPage.Enabled = false;
+            refresh.Enabled = gameFilter.Enabled = modeFilter.Enabled = recordScope.Enabled = previousPage.Enabled = nextPage.Enabled = false;
             string name = gameFilter.Text.Trim();
             string mode = modeFilter.SelectedItem as string;
+            long from = recordScope.SelectedIndex == 0 ? (long)(new DateTimeOffset(DateTime.Today).ToUniversalTime() - Epoch).TotalMilliseconds : 0;
+            long before = recordScope.SelectedIndex == 0 ? (long)(new DateTimeOffset(DateTime.Today.AddDays(1)).ToUniversalTime() - Epoch).TotalMilliseconds : 0;
             status.Text = "正在读取本地记录…";
             try
             {
@@ -467,7 +480,7 @@ namespace SteamDirect
                 var result = await Task.Run(() =>
                 {
                     CheckAnalysis(token);
-                    var loaded = store.ListSessions(RecordLimit + 1, requestedPage * RecordLimit, name, mode == "全部" ? null : mode);
+                    var loaded = store.ListSessions(RecordLimit + 1, requestedPage * RecordLimit, name, mode == "全部" ? null : mode, from, before);
                     CheckAnalysis(token);
                     return loaded;
                 }, token);
@@ -497,7 +510,7 @@ namespace SteamDirect
                 loadingRecords = false;
                 if (Available)
                 {
-                    refresh.Enabled = gameFilter.Enabled = modeFilter.Enabled = true;
+                    refresh.Enabled = gameFilter.Enabled = modeFilter.Enabled = recordScope.Enabled = true;
                     previousPage.Enabled = page > 0;
                     nextPage.Enabled = hasNext;
                 }
@@ -552,7 +565,7 @@ namespace SteamDirect
             export.Enabled = selected != null && selected.End != 0 && !exporting && !Gaming;
             if (selected == null)
             {
-                status.Text = sessions.Count == 0 ? "还没有游戏网络记录。Steam 游戏运行结束后可刷新查看。" : "没有匹配的游戏记录。";
+                status.Text = recordScope.SelectedIndex == 0 ? "今天没有匹配的对局。可切换“查看历史对局”读取以前的记录。" : "没有匹配的历史对局记录。";
                 UiStyle.SetState(overviewTitle, overviewNote, "暂无可用报告", "完成一局后，点击查询查看网络报告。");
                 overviewText.Text = status.Text;
                 return;
@@ -619,6 +632,7 @@ namespace SteamDirect
             incidents.Items.Clear();
             UiStyle.SetState(overviewTitle, overviewNote, "选择记录后显示本局结果", "左侧列出了自动保存的游戏记录。");
             overviewText.Clear();
+            networkChart.SetData(null, null, null);
         }
 
         private sealed class Detail
@@ -627,6 +641,8 @@ namespace SteamDirect
             internal string OverviewTitle, OverviewNote, OverviewText;
             internal HistoryMetrics Metrics;
             internal List<HistoryEvent> Events;
+            internal List<HistorySample> Samples;
+            internal HistorySession Session;
             internal HistoryMetrics Direct, Proxy;
         }
 
@@ -638,7 +654,7 @@ namespace SteamDirect
             var events = store.ReadEvents(selected.Id);
             CheckAnalysis(token);
             var metrics = HistoryStatistics.Calculate(Checked(samples, token));
-            var result = new Detail { Events = events, Metrics = metrics };
+            var result = new Detail { Events = events, Metrics = metrics, Samples = samples, Session = selected };
             BuildOverviewText(result, selected, samples, token);
             if (!string.IsNullOrWhiteSpace(selected.Target))
             {
@@ -844,6 +860,7 @@ namespace SteamDirect
             overviewText.Select(0, 0);
             comparisonText.Text = detail.Comparison;
             comparisonText.Select(0, 0);
+            networkChart.SetData(detail.Session, detail.Samples, detail.Events);
             incidents.BeginUpdate();
             try
             {

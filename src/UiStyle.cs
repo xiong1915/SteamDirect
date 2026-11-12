@@ -29,6 +29,8 @@ namespace SteamDirect
         internal static Padding CardPadding { get { return new Padding(Space20); } }
         internal static Padding DensePadding { get { return new Padding(Space16); } }
 
+        internal static int Scale(Control control, int value) { return (int)Math.Round(value * control.DeviceDpi / 96F); }
+        internal static int TextHeight(Control control) { return (int)Math.Ceiling(control.Font.GetHeight(control.DeviceDpi)); }
         internal static TableLayoutPanel Grid(int columns, int rows)
         {
             return new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = columns, RowCount = rows, Margin = Padding.Empty };
@@ -93,8 +95,8 @@ namespace SteamDirect
                     AppTheme.Text(AppTheme.Ink), TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
                 if ((args.State & DrawItemState.Focus) != 0) args.DrawFocusRectangle();
             };
-            choice.FontChanged += (sender, args) => choice.ItemHeight = choice.Font.Height + Space8;
-            choice.ItemHeight = choice.Font.Height + Space8;
+            choice.FontChanged += (sender, args) => choice.ItemHeight = TextHeight(choice) + Scale(choice, Space8);
+            choice.ItemHeight = TextHeight(choice) + Scale(choice, Space8);
         }
 
         internal static GraphicsPath RoundRect(RectangleF bounds, float radius)
@@ -172,6 +174,8 @@ namespace SteamDirect
             input.ForeColor = AppTheme.Ink;
             input.Dock = DockStyle.None;
             input.Margin = Padding.Empty;
+            input.FontChanged += (sender, args) => PerformLayout();
+            input.SizeChanged += (sender, args) => PerformLayout();
             var text = input as TextBox;
             if (text != null) text.BorderStyle = BorderStyle.None;
             var number = input as NumericUpDown;
@@ -187,12 +191,14 @@ namespace SteamDirect
             int height = input.PreferredSize.Height;
             input.Bounds = new Rectangle(Padding.Left, Math.Max(0, (Height - height) / 2),
                 Math.Max(1, Width - Padding.Horizontal), height);
+            // Owner-drawn native combo boxes can enforce a height greater than PreferredSize.
+            input.Top = Math.Max(0, (Height - input.Height) / 2);
         }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
             if (Width < 2 || Height < 2) return;
-            using (var path = UiStyle.RoundRect(new RectangleF(.5F, .5F, Width - 1, Height - 1), CornerRadius * e.Graphics.DpiX / 96F))
+            using (var path = UiStyle.RoundRect(new RectangleF(.5F, .5F, Width - 1, Height - 1), CornerRadius * DeviceDpi / 96F))
             using (var pen = new Pen(input.ContainsFocus ? AppTheme.Text(AppTheme.Accent) : AppTheme.Edge))
                 e.Graphics.DrawPath(pen, path);
         }

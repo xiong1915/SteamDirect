@@ -8,7 +8,7 @@ Windows 游戏网络助手，提供直连切换、Steam / CS2 网络诊断和自
 
 [查看所有发布版本](https://github.com/xiong1915/SteamDirect/releases)
 
-支持 Windows 10 / 11 x64，需要 .NET Framework 4.8。下载后将程序放在固定目录运行。
+支持 Windows 10 / 11 x64，需要 .NET Framework 4.8。下载后将程序放在固定的可写目录运行。首次运行会在程序旁生成 `SteamDirect.exe.config` 并重新启动一次，以启用逐屏幕高 DPI；保留该配置文件。
 
 ## 功能
 

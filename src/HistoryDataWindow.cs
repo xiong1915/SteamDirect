@@ -10,7 +10,7 @@ namespace SteamDirect
 {
     internal sealed class HistorySections : UserControl
     {
-        private readonly FlowLayoutPanel navigation = new FlowLayoutPanel { Dock = DockStyle.Top, Height = UiStyle.ButtonHeight + UiStyle.SmallGap, WrapContents = false, Margin = Padding.Empty };
+        private readonly FlowLayoutPanel navigation = new FlowLayoutPanel { Dock = DockStyle.Top, Height = UiStyle.ButtonHeight + UiStyle.SmallGap, WrapContents = true, Margin = Padding.Empty };
         private readonly Panel content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, UiStyle.SmallGap, 0, 0) };
         private readonly List<Control> pages = new List<Control>();
         private readonly List<Button> buttons = new List<Button>();
@@ -35,8 +35,32 @@ namespace SteamDirect
             page.Dock = DockStyle.Fill;
             content.Controls.Add(page);
             pages.Add(page);
+            button.FontChanged += (sender, args) => FitNavigation();
+            FitNavigation();
             SelectPage(0);
         }
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            FitNavigation();
+        }
+        private void FitNavigation()
+        {
+            if (buttons == null || buttons.Count == 0 || Width <= 0) return;
+            int required = UiStyle.Scale(this, 116), height = UiStyle.Scale(this, UiStyle.ButtonHeight);
+            int margin = 0;
+            foreach (var button in buttons) {
+                required = Math.Max(required, TextRenderer.MeasureText(button.Text, button.Font).Width + UiStyle.Scale(this, 32));
+                height = Math.Max(height, UiStyle.TextHeight(button) + UiStyle.Scale(this, 16));
+                margin = Math.Max(margin, button.Margin.Horizontal);
+            }
+            int columns = Math.Max(1, Math.Min(buttons.Count, Width / (required + margin)));
+            int width = Math.Max(1, Width / columns - margin);
+            foreach (var button in buttons) { button.MinimumSize = Size.Empty; button.Size = new Size(width, height); }
+            int total = ((buttons.Count + columns - 1) / columns) * (height + UiStyle.Scale(this, 8));
+            if (navigation.Height != total) navigation.Height = total;
+        }
+
         internal void SelectPage(int index)
         {
             SelectedIndex = index;

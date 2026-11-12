@@ -34,7 +34,7 @@ namespace SteamDirect
             e.Graphics.Clear(Parent == null ? AppTheme.Background(AppTheme.Page) : Parent.BackColor);
             if (Width < 2 || Height < 2) return;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            float scale = e.Graphics.DpiX / 96F;
+            float scale = DeviceDpi / 96F;
             float radius = Math.Min(CornerRadius * scale, (Math.Min(Width, Height) - 1) / 2f);
             var box = new RectangleF(.5f, .5f, Width - 1, Height - 1);
             Color fill = !Enabled ? AppTheme.Background(AppTheme.Page) :

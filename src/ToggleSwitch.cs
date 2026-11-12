@@ -16,7 +16,7 @@ namespace SteamDirect
         {
             e.Graphics.Clear(BackColor);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            float scale = e.Graphics.DpiX / 96f;
+            float scale = DeviceDpi / 96f;
             float width = 36 * scale, height = 20 * scale;
             float top = (Height - height) / 2;
             Color track = Checked && Enabled ? AppTheme.Text(AppTheme.Accent) : AppTheme.Edge;

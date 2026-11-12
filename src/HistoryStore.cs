@@ -153,7 +153,7 @@ ON CONFLICT(id) DO UPDATE SET session_id=excluded.session_id, kind=excluded.kind
             }
         }
 
-        internal List<HistorySession> ListSessions(int limit = 200, int offset = 0, string game = null, string mode = null)
+        internal List<HistorySession> ListSessions(int limit = 200, int offset = 0, string game = null, string mode = null, long from = 0, long before = 0)
         {
             if (limit < 0) throw new ArgumentOutOfRangeException("limit");
             if (offset < 0) throw new ArgumentOutOfRangeException("offset");
@@ -161,13 +161,16 @@ ON CONFLICT(id) DO UPDATE SET session_id=excluded.session_id, kind=excluded.kind
             using (var db = new Connection(path, false))
             using (var statement = db.Prepare(@"SELECT id,game,mode,target,start_ms,end_ms,interrupted,report,
 EXISTS(SELECT 1 FROM history_events e WHERE e.session_id = history_sessions.id)
-FROM history_sessions WHERE INSTR(LOWER(game), LOWER(?)) > 0 AND mode = COALESCE(?, mode)
+FROM history_sessions WHERE INSTR(LOWER(game), LOWER(?)) > 0 AND mode = COALESCE(?, mode) AND start_ms >= ? AND (? = 0 OR start_ms < ?)
 ORDER BY start_ms DESC, id DESC LIMIT ? OFFSET ?"))
             {
                 statement.Text(1, game ?? "");
                 statement.Text(2, mode);
-                statement.Number(3, limit);
-                statement.Number(4, offset);
+                statement.Number(3, from);
+                statement.Number(4, before);
+                statement.Number(5, before);
+                statement.Number(6, limit);
+                statement.Number(7, offset);
                 while (statement.Read())
                 {
                     sessions.Add(new HistorySession {

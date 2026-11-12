@@ -48,6 +48,9 @@ namespace SteamDirect
         [STAThread]
         private static void Main(string[] arguments)
         {
+            if (HighDpi.EnsureConfiguration(arguments)) return;
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (sender, args) =>
             {
@@ -58,8 +61,6 @@ namespace SteamDirect
                 SaveCrash(args.ExceptionObject as Exception);
             try
             {
-                Application.EnableVisualStyles();
-                Application.SetCompatibleTextRenderingDefault(false);
                 using (var singleInstance = new Mutex(false, @"Local\SteamDirect.Desktop"))
                 {
                     bool owned;
@@ -113,7 +114,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v2.6.1";
+            Text = "Steam 直连助手 v2.7.0";
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -328,7 +329,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v2.6.1 · 游戏网络助手", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v2.7.0 · 游戏网络助手", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             shell.Controls.Add(rail, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);
@@ -1151,7 +1152,7 @@ namespace SteamDirect
             if (Width < 2 || Height < 2) return;
             e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             e.Graphics.Clear(Parent == null ? BackColor : Parent.BackColor);
-            float radius = Math.Min(CornerRadius * e.Graphics.DpiX / 96F, (Math.Min(Width, Height) - 1) / 2F);
+            float radius = Math.Min(CornerRadius * DeviceDpi / 96F, (Math.Min(Width, Height) - 1) / 2F);
             var rect = new RectangleF(0, 0, Width - 1, Height - 1);
             using (var path = UiStyle.RoundRect(rect, radius))
             {
@@ -1173,7 +1174,7 @@ namespace SteamDirect
         {
             base.OnPaint(e);
             var g = e.Graphics;
-            float scale = g.DpiX / 96F;
+            float scale = DeviceDpi / 96F;
             g.ScaleTransform(scale, scale);
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
@@ -1436,7 +1437,7 @@ namespace SteamDirect
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
             about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v2.6.1", Dock = DockStyle.Fill,
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v2.7.0", Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true, Font = UiStyle.Caption }, 0, 0);
             const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
             var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill,
