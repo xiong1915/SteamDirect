@@ -80,10 +80,19 @@ jobs:
             gh release upload $tag dist/SteamDirect.exe --clobber
             if ($LASTEXITCODE -ne 0) { throw '上传程序失败。' }
           }
-          $json = gh api "repos/$env:GH_REPO/releases?per_page=100" --paginate --jq $filter
-          if ($LASTEXITCODE -ne 0) { throw '读取发布草稿失败。' }
-          $release = $json | ConvertFrom-Json
+          # Newly created drafts can take a few seconds to appear in the release list.
+          $release = $null
+          for ($attempt = 0; $attempt -lt 6; $attempt++) {
+            $json = gh api "repos/$env:GH_REPO/releases?per_page=100" --paginate --jq $filter -H 'Cache-Control: no-cache'
+            if ($LASTEXITCODE -ne 0) { throw '读取发布草稿失败。' }
+            if ($json) { $release = $json | ConvertFrom-Json }
+            if ($null -ne $release.id) { break }
+            if ($attempt -lt 5) { Start-Sleep -Seconds 2 }
+          }
           if ($null -eq $release.id) { throw '未找到刚刚上传的发布草稿。' }
+          if (-not $release.draft -or $release.target_commitish -ne $env:RELEASE_SHA) {
+            throw '发布草稿状态或源码不匹配，已停止。'
+          }
           gh api --method PATCH "repos/$env:GH_REPO/releases/$($release.id)" -F draft=false -f make_latest=legacy --silent
           if ($LASTEXITCODE -ne 0) { throw '公开发布失败。' }
           $verify = Join-Path $env:RUNNER_TEMP 'release-download'
