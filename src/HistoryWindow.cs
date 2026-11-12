@@ -18,7 +18,6 @@ namespace SteamDirect
         private static readonly Color Ink = AppTheme.Ink;
         private static readonly Color Muted = AppTheme.Muted;
         private static readonly Color Accent = AppTheme.Accent;
-        private static readonly Color GatewayColor = AppTheme.Success;
         private static readonly Color Page = AppTheme.Page;
         private static readonly DateTimeOffset Epoch = new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -148,7 +147,7 @@ namespace SteamDirect
             records.Columns.Add("时长", 68);
             records.Columns.Add("模式", 48);
             records.Columns.Add("", 84);
-            SetColumnWeights(records, 70, 0, 0, 0, 30);
+            SetColumnWeights(records, 100, 0, 0, 0, 0);
             records.FontChanged += (sender, args) => FitRecordRows();
             records.SizeChanged += (sender, args) => FitRecordRows();
             records.ShowItemToolTips = true;
@@ -322,10 +321,6 @@ namespace SteamDirect
                 for (int i = 0; i < weights.Length; i++)
                 {
                     int width = i == weights.Length - 1 ? remaining : space * weights[i] / 100;
-                    if (view.AccessibleName == "游戏历史记录")
-                    {
-                        width = i == 0 ? Math.Max(1, space) : 0;
-                    }
                     if (view.Columns[i].Width != width) view.Columns[i].Width = width;
                     remaining -= width;
                 }

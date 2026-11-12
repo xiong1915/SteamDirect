@@ -5,19 +5,41 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 namespace SteamDirect {
  internal sealed class HistoryNetworkChart : Control {
-  private IList<HistorySample> samples = new List<HistorySample>();
-  private IList<HistoryEvent> events = new List<HistoryEvent>();
+  private IList<HistorySample> samples = Array.Empty<HistorySample>();
+  private IList<HistoryEvent> events = Array.Empty<HistoryEvent>();
   private long start,end; private string target;
+  private Bitmap imageCache;
+  private bool cachedDark;
+  private int cachedColor, cachedDpi;
   internal HistoryNetworkChart(){DoubleBuffered=true;ResizeRedraw=true;Dock=DockStyle.Fill;BackColor=AppTheme.Surface;Font=UiStyle.Caption;AccessibleName="本局网络波动图";}
   internal void SetData(HistorySession session,IList<HistorySample> values,IList<HistoryEvent> issues){
-   samples=values??new List<HistorySample>();events=issues??new List<HistoryEvent>();
+   samples=values??Array.Empty<HistorySample>();events=issues??Array.Empty<HistoryEvent>();
    start=session==null?0:session.Start;end=session==null?0:session.End;target=session==null?null:session.Target;
    if(samples.Count>0){if(start<=0)start=samples[0].At;if(end<=start)end=samples[samples.Count-1].At;}
+   ClearCache();
    AccessibleDescription="本地网关与外部目标 ICMP 延迟；超时不等于游戏实际丢包。";Invalidate();
   }
-  protected override void OnFontChanged(EventArgs e){base.OnFontChanged(e);Height=Math.Max(Parent == null ? 0 : Parent.ClientSize.Height,(UiStyle.TextHeight(this)+UiStyle.Scale(this,8))*6+UiStyle.Scale(this,80));}
+  protected override void OnFontChanged(EventArgs e){base.OnFontChanged(e);ClearCache();Height=Math.Max(Parent == null ? 0 : Parent.ClientSize.Height,(UiStyle.TextHeight(this)+UiStyle.Scale(this,8))*6+UiStyle.Scale(this,80));}
   protected override void OnPaint(PaintEventArgs e){
-   base.OnPaint(e);var g=e.Graphics;g.Clear(AppTheme.Background(AppTheme.Surface));g.SmoothingMode=SmoothingMode.AntiAlias;
+   base.OnPaint(e);
+   if(Width<=0||Height<=0)return;
+   if(imageCache==null||imageCache.Size!=ClientSize||cachedDark!=AppTheme.IsDark||cachedColor!=AppTheme.ThemeColor.ToArgb()||cachedDpi!=DeviceDpi){
+    ClearCache();
+    var image=new Bitmap(Width,Height);
+    try{
+     image.SetResolution(DeviceDpi,DeviceDpi);
+     using(var graphics=Graphics.FromImage(image))Render(graphics);
+     imageCache=image;cachedDark=AppTheme.IsDark;cachedColor=AppTheme.ThemeColor.ToArgb();cachedDpi=DeviceDpi;
+    }catch{image.Dispose();throw;}
+   }
+   e.Graphics.DrawImage(imageCache,ClientRectangle,0,0,imageCache.Width,imageCache.Height,GraphicsUnit.Pixel);
+  }
+  protected override void OnVisibleChanged(EventArgs e){base.OnVisibleChanged(e);if(!Visible)ClearCache();}
+  protected override void OnSizeChanged(EventArgs e){base.OnSizeChanged(e);ClearCache();}
+  private void ClearCache(){if(imageCache!=null){imageCache.Dispose();imageCache=null;}}
+  protected override void Dispose(bool disposing){if(disposing&&imageCache!=null){imageCache.Dispose();imageCache=null;}base.Dispose(disposing);}
+  private void Render(Graphics g){
+   g.Clear(AppTheme.Background(AppTheme.Surface));g.SmoothingMode=SmoothingMode.AntiAlias;
    int line=UiStyle.TextHeight(this)+UiStyle.Scale(this,8);int pad=UiStyle.Scale(this,12);
    DrawText(g,"网关延迟 / 外部延迟（毫秒）",new Rectangle(pad,4,Width-pad*2,line),AppTheme.Ink);
    DrawText(g,"网关 ━",new Rectangle(pad,line+4,UiStyle.Scale(this,100),line),AppTheme.Success);

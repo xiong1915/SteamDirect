@@ -291,13 +291,6 @@ namespace SteamDirect
             catch (DllNotFoundException) { }
             catch (EntryPointNotFoundException) { }
         }
-        internal static void SetDark(bool dark)
-        {
-            IsDark = dark;
-            UpdatePalette();
-            foreach (Form window in Application.OpenForms) Apply(window);
-        }
-
         internal static void SetTheme(bool dark, string colorCode)
         {
             Color color;

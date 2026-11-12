@@ -22,7 +22,6 @@ namespace SteamDirect
         internal static readonly Font PageTitle = new Font(Family, 22F);
         internal static readonly Font SectionTitle = new Font(Family, 11F, FontStyle.Bold);
         internal static readonly Font HeroTitle = new Font(Family, 17F, FontStyle.Bold);
-        internal static readonly Font Number = new Font(Family, 14F, FontStyle.Bold);
         internal static readonly Font DiagramCaption = new Font(Family, 12F, FontStyle.Regular, GraphicsUnit.Pixel);
         internal static readonly Font DiagramTitle = new Font(Family, 13.5F, FontStyle.Bold, GraphicsUnit.Pixel);
         internal static Padding PagePadding { get { return new Padding(Space24); } }
