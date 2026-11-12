@@ -106,8 +106,8 @@ namespace SteamDirect
             root.Controls.Add(filterCard, 0, 1);
 
             var body = Grid(2, 1);
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 65));
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
             body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.Controls.Add(body, 0, 2);
 
@@ -141,8 +141,10 @@ namespace SteamDirect
             records.Columns.Add("模式", 48);
             records.Columns.Add("", 84);
             SetColumnWeights(records, 70, 0, 0, 0, 30);
+            records.FontChanged += (sender, args) => FitRecordRows();
+            records.SizeChanged += (sender, args) => FitRecordRows();
             records.ShowItemToolTips = true;
-            recordImages.ImageSize = new Size(1, 54);
+            recordImages.ImageSize = new Size(1, 120);
             records.SmallImageList = recordImages;
             records.MouseClick += (sender, args) =>
             {
@@ -310,8 +312,8 @@ namespace SteamDirect
                     int width = i == weights.Length - 1 ? remaining : space * weights[i] / 100;
                     if (view.AccessibleName == "游戏历史记录")
                     {
-                        int action = TextRenderer.MeasureText("详细数据", view.Font).Width + 20;
-                        width = i == 0 ? Math.Max(1, space - action) : i == 4 ? action : 0;                    }
+                        width = i == 0 ? Math.Max(1, space) : 0;
+                    }
                     if (view.Columns[i].Width != width) view.Columns[i].Width = width;
                     remaining -= width;
                 }
@@ -332,6 +334,7 @@ namespace SteamDirect
             var view = (ListView)sender;
             var bounds = args.Bounds;
             bounds.Width = view.Columns[args.ColumnIndex].Width;
+            if (bounds.Width <= 0) return;
             var background = args.Item.Selected
                 ? AppTheme.Background(AppTheme.Pill)
                 : args.ItemIndex % 2 == 0 ? AppTheme.Background(AppTheme.Surface) : AppTheme.Background(Page);
@@ -347,29 +350,25 @@ namespace SteamDirect
             var color = args.ColumnIndex == 0 ? Ink : Muted;
             if (args.Item.Tag is HistorySession && args.ColumnIndex == 0)
             {
-                var area = Rectangle.Inflate(bounds, -8, -4);
-                int line = area.Height / 2;
-                TextRenderer.DrawText(args.Graphics, (((HistorySession)args.Item.Tag).HasAnomalies ? "● 异常 · " : "") + args.Item.Text, UiStyle.BodyStrong, new Rectangle(area.X, area.Y, area.Width, line), AppTheme.Text(((HistorySession)args.Item.Tag).HasAnomalies ? AppTheme.Error : Ink), TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
-                string caption = args.Item.SubItems[1].Text + " · " + args.Item.SubItems[2].Text + " · " + args.Item.SubItems[3].Text;
-                TextRenderer.DrawText(args.Graphics, caption, view.Font, new Rectangle(area.X, area.Y + line, area.Width, line), AppTheme.Text(Muted), TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
-                return;
-            }
-            if (args.Item.Tag is HistorySession && args.ColumnIndex == 4)
-            {
-                var action = Rectangle.Inflate(bounds, -3, -Math.Max(6, bounds.Height / 5));
+                var area = Rectangle.Inflate(bounds, -8, -6);
+                var session = (HistorySession)args.Item.Tag;
+                int[] heights = RecordTextHeights(args.Item, area.Width);
+                string title = (session.HasAnomalies ? "● 异常 · " : "") + args.Item.Text;
+                using (var font = new Font(view.Font, FontStyle.Bold))
+                    TextRenderer.DrawText(args.Graphics, title, font,
+                        new Rectangle(area.X, area.Y, area.Width, heights[0]),
+                        AppTheme.Text(session.HasAnomalies ? AppTheme.Error : Ink),
+                        TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(args.Graphics, args.Item.SubItems[1].Text, view.Font,
+                    new Rectangle(area.X, area.Y + heights[0], area.Width, heights[1]), AppTheme.Text(Muted), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(args.Graphics, args.Item.SubItems[2].Text + " · " + args.Item.SubItems[3].Text, view.Font,
+                    new Rectangle(area.X, area.Y + heights[0] + heights[1], area.Width, heights[2]), AppTheme.Text(Ink), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                var action = RecordActionBounds(args.Item);
                 using (var brush = new SolidBrush(AppTheme.Background(AppTheme.Pill)))
-                using (var path = UiStyle.RoundRect(action, UiStyle.ControlRadius * args.Graphics.DpiX / 96F))
-                {
-                    args.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                    args.Graphics.FillPath(brush, path);
-                }
-                TextRenderer.DrawText(args.Graphics, "详细数据", view.Font, action, AppTheme.Text(Accent), TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine);
+                using (var path = UiStyle.RoundRect(action, UiStyle.ControlRadius)) args.Graphics.FillPath(brush, path);
+                TextRenderer.DrawText(args.Graphics, "详细数据", view.Font, action, AppTheme.Text(Accent),
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine);
                 return;
-            }
-            if (args.Item.Tag is HistorySession && args.ColumnIndex == 3)
-            {
-                if (args.SubItem.Text == "直连") color = GatewayColor;
-                if (args.SubItem.Text == "代理") color = Accent;
             }
             TextRenderer.DrawText(args.Graphics, args.SubItem.Text, view.Font, Rectangle.Inflate(bounds, -6, 0),
                 AppTheme.Text(color), TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
@@ -380,11 +379,48 @@ namespace SteamDirect
             UiStyle.ReadOnlyText(text, label);
         }
 
+        private static Rectangle RecordActionBounds(ListViewItem item)
+        {
+            var view = item.ListView;
+            int height = view.Font.Height + 12;
+            int width = TextRenderer.MeasureText("详细数据", view.Font).Width + 24;
+            var bounds = item.Bounds;
+            return new Rectangle(bounds.Right - width - 8, bounds.Bottom - height - 6, width, height);
+        }
+
+        private static int[] RecordTextHeights(ListViewItem item, int width)
+        {
+            var font = item.ListView.Font;
+            var size = new Size(Math.Max(1, width), 1000);
+            var flags = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
+            string prefix = ((HistorySession)item.Tag).HasAnomalies ? "● 异常 · " : "";
+            int title;
+            using (var bold = new Font(font, FontStyle.Bold))
+                title = TextRenderer.MeasureText(prefix + item.Text, bold, size, flags).Height + 6;
+            return new[] { title, TextRenderer.MeasureText(item.SubItems[1].Text, font, size, flags).Height + 6,
+                TextRenderer.MeasureText(item.SubItems[2].Text + " · " + item.SubItems[3].Text, font, size, flags).Height + 6 };
+        }
+
+        private void FitRecordRows()
+        {
+            if (records.ClientSize.Width < 1) return;
+            int width = Math.Max(80, records.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 20);
+            int height = (records.Font.Height + 6) * 4 + 24;
+            foreach (ListViewItem row in records.Items)
+            {
+                int[] blocks = RecordTextHeights(row, width);
+                height = Math.Max(height, blocks[0] + blocks[1] + blocks[2] + records.Font.Height + 28);
+            }
+            height = Math.Min(256, height);
+            if (recordImages.ImageSize.Height != height) recordImages.ImageSize = new Size(1, height);
+            records.Invalidate();
+        }
+
         private HistorySession DetailedRecordAt(Point point)
         {
             if (!records.ClientRectangle.Contains(point)) return null;
             var item = records.GetItemAt(point.X, point.Y);
-            if (item == null || item.SubItems.Count <= 4 || !item.SubItems[4].Bounds.Contains(point)) return null;
+            if (item == null || item.SubItems.Count <= 4 || !RecordActionBounds(item).Contains(point)) return null;
             return item.Tag as HistorySession;
         }
 
@@ -487,8 +523,8 @@ namespace SteamDirect
                 {
                     var row = new ListViewItem(session.Game ?? "未知游戏");
                     row.ToolTipText = SessionTiming(session) + (session.HasAnomalies ? " · 网络异常，选择记录查看原因和建议" : "");
-                    row.SubItems.Add(LocalTime(session.Start, "MM-dd HH:mm"));
-                    row.SubItems.Add((session.End == 0 ? "已玩 " : "游玩 ") + SpanShort((session.End == 0 ? (long)(DateTimeOffset.UtcNow - Epoch).TotalMilliseconds : session.End) - session.Start));
+                    row.SubItems.Add(LocalTime(session.Start, "yyyy-MM-dd HH:mm:ss"));
+                    row.SubItems.Add((session.End == 0 ? "已玩 " : "游玩 ") + SpanText((session.End == 0 ? (long)(DateTimeOffset.UtcNow - Epoch).TotalMilliseconds : session.End) - session.Start));
                     row.SubItems.Add(session.Mode ?? "未知");
                     row.SubItems.Add("详细数据");
                     row.Tag = session;
@@ -503,6 +539,7 @@ namespace SteamDirect
                 }
             }
             finally { records.EndUpdate(); fillingRecords = false; }
+            FitRecordRows();
             await LoadSelectionAsync();
         }
 
@@ -962,14 +999,6 @@ namespace SteamDirect
             var elapsed = TimeSpan.FromMilliseconds(Math.Max(0, milliseconds));
             return elapsed.TotalHours >= 1 ? ((long)elapsed.TotalHours) + " 小时 " + elapsed.Minutes + " 分 " + elapsed.Seconds + " 秒" :
                 elapsed.TotalMinutes >= 1 ? elapsed.Minutes + " 分 " + elapsed.Seconds + " 秒" : elapsed.Seconds + " 秒";
-        }
-
-        private static string SpanShort(long milliseconds)
-        {
-            var elapsed = TimeSpan.FromMilliseconds(Math.Max(0, milliseconds));
-            if (elapsed.TotalHours >= 1)
-                return string.Format(CultureInfo.InvariantCulture, "{0}:{1:00}:{2:00}", (long)elapsed.TotalHours, elapsed.Minutes, elapsed.Seconds);
-            return string.Format(CultureInfo.InvariantCulture, "{0}:{1:00}", elapsed.Minutes, elapsed.Seconds);
         }
 
     }

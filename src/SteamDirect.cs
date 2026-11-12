@@ -113,7 +113,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v2.6.0";
+            Text = "Steam 直连助手 v2.6.1";
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -172,7 +172,7 @@ namespace SteamDirect
             statusLabel.AutoEllipsis = true;
             statusLabel.Font = UiStyle.HeroTitle;
             actionLayout.Controls.Add(statusLabel, 0, 1);
-            actionLayout.Controls.Add(new Label { Text = "先退出游戏。通过本机代理检查后，才会重新启动 Steam。", Dock = DockStyle.Fill, ForeColor = AppTheme.Muted }, 0, 2);
+            actionLayout.Controls.Add(new Label { Text = "先保存 ChatGPT 草稿与编辑器文件并退出游戏。检查通过后重启 Steam。", Dock = DockStyle.Fill, ForeColor = AppTheme.Muted }, 0, 2);
             runButton.Text = "严格直连并重启 Steam";
             runButton.Dock = DockStyle.Fill;
             runButton.Margin = Padding.Empty;
@@ -328,7 +328,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v2.6.0 · 游戏网络助手", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v2.6.1 · 游戏网络助手", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             shell.Controls.Add(rail, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);
@@ -602,7 +602,7 @@ namespace SteamDirect
             start.UseShellExecute = false;
             foreach (string name in ProxySettings.ProxyVariableNames)
                 start.EnvironmentVariables.Remove(name);
-            ProxySession.VerifyAndLaunch(ProxySettings.CheckDirect, () =>
+            ProxySession.VerifyAndLaunch(() => { ProxyAppShutdown.CheckStopped(); ProxySettings.CheckDirect(); }, () =>
             {
                 using (Process launched = Process.Start(start))
                 {
@@ -1436,7 +1436,7 @@ namespace SteamDirect
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
             about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v2.6.0", Dock = DockStyle.Fill,
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v2.6.1", Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true, Font = UiStyle.Caption }, 0, 0);
             const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
             var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill,

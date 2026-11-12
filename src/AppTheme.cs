@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -66,23 +66,22 @@ namespace SteamDirect
 
         private static void UpdatePalette()
         {
-            primary = IsDark ? Blend(ThemeColor, Color.White, .65) : ThemeColor;
-            canvas = IsDark ? Blend(Color.FromArgb(18, 18, 18), primary, .025) : Blend(Color.FromArgb(248, 248, 248), ThemeColor, .025);
-            surface = IsDark ? Blend(Color.FromArgb(29, 29, 29), primary, .035) : Color.White;
+            primary = ThemeColor;
+            canvas = IsDark ? Color.FromArgb(16, 17, 20) : Color.FromArgb(247, 248, 250);
+            surface = IsDark ? Color.FromArgb(26, 28, 32) : Color.White;
             inkText = IsDark ? Color.FromArgb(236, 236, 236) : Color.FromArgb(30, 30, 30);
-            mutedText = IsDark ? Blend(Color.FromArgb(183, 183, 183), primary, .035) : Color.FromArgb(96, 96, 96);
+            mutedText = IsDark ? Color.FromArgb(180, 184, 192) : Color.FromArgb(96, 96, 96);
             Color textSurface = IsDark ? surface : canvas;
             Color limit = IsDark ? Color.White : Color.Black;
             accentText = primary;
             for (int i = 0; i < 24 && Contrast(accentText, textSurface) < 4.5; i++)
                 accentText = Blend(accentText, limit, .12);
-            tone = IsDark ? Blend(surface, accentText, .23) : Blend(Color.White, accentText, .14);
+            tone = IsDark ? Color.FromArgb(38, 40, 46) : Blend(Color.White, accentText, .14);
             for (int i = 0; i < 24 && Contrast(accentText, tone) < 4.5; i++)
             {
                 accentText = Blend(accentText, limit, .12);
-                tone = IsDark ? Blend(surface, accentText, .23) : Blend(Color.White, accentText, .14);
+                tone = IsDark ? Color.FromArgb(38, 40, 46) : Blend(Color.White, accentText, .14);
             }
-            primary = accentText;
             primaryText = Contrast(primary, Color.White) >= Contrast(primary, Color.Black) ? Color.White : Color.Black;
             successText = Readable(IsDark ? Blend(Success, Color.White, .4) : Success, textSurface);
             warningText = Readable(IsDark ? Blend(Warning, Color.White, .45) : Warning, textSurface);
@@ -158,9 +157,48 @@ namespace SteamDirect
 
         internal static void ApplyTray(ContextMenuStrip menu)
         {
-            menu.Renderer = new ToolStripProfessionalRenderer(new MenuColors()) { RoundedEdges = false };
+            menu.ShowImageMargin = false;
+            menu.ShowCheckMargin = false;
+            menu.Font = UiStyle.Body;
+            menu.Padding = new Padding(6);
+            menu.Renderer = new RoundedMenuRenderer();
             menu.BackColor = Background(Color.White);
-            foreach (ToolStripItem item in menu.Items) item.ForeColor = Text(Ink);
+            foreach (ToolStripItem item in menu.Items)
+            {
+                item.ForeColor = Text(Ink);
+                item.Padding = new Padding(12, 7, 12, 7);
+            }
+            menu.SizeChanged -= RoundMenu;
+            menu.SizeChanged += RoundMenu;
+            RoundMenu(menu, EventArgs.Empty);
+        }
+
+        private static void RoundMenu(object sender, EventArgs args)
+        {
+            var menu = (ContextMenuStrip)sender;
+            if (menu.Width < 2 || menu.Height < 2) return;
+            var old = menu.Region;
+            using (var path = UiStyle.RoundRect(new RectangleF(0, 0, menu.Width, menu.Height), UiStyle.ControlRadius))
+                menu.Region = new Region(path);
+            if (old != null) old.Dispose();
+        }
+
+        private sealed class RoundedMenuRenderer : ToolStripProfessionalRenderer
+        {
+            internal RoundedMenuRenderer() : base(new MenuColors()) { RoundedEdges = false; }
+            protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+            {
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using (var path = UiStyle.RoundRect(new RectangleF(.5F, .5F, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1), UiStyle.ControlRadius))
+                using (var pen = new Pen(Edge)) e.Graphics.DrawPath(pen, path);
+            }
+            protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+            {
+                if (!e.Item.Selected) return;
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using (var path = UiStyle.RoundRect(new RectangleF(1, 1, e.Item.Width - 2, e.Item.Height - 2), UiStyle.ControlRadius - 2))
+                using (var brush = new SolidBrush(Hover)) e.Graphics.FillPath(brush, path);
+            }
         }
 
         private sealed class MenuColors : ProfessionalColorTable
@@ -244,7 +282,12 @@ namespace SteamDirect
         private static void SetTitle(Form window)
         {
             int value = IsDark ? 1 : 0;
-            try { DwmSetWindowAttribute(window.Handle, 20, ref value, 4); }
+            try
+            {
+                DwmSetWindowAttribute(window.Handle, 20, ref value, 4);
+                int corner = 2;
+                DwmSetWindowAttribute(window.Handle, 33, ref corner, 4);
+            }
             catch (DllNotFoundException) { }
             catch (EntryPointNotFoundException) { }
         }
