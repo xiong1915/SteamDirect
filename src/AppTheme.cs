@@ -24,7 +24,7 @@ namespace SteamDirect
         private static Color primary, accentText, tone, primaryText;
         private static Color canvas, surface, mutedText, inkText, successText, warningText, errorText;
         internal static Color AccentForeground { get { return primaryText; } }
-        internal static Color Edge { get { return Blend(surface, inkText, .15); } }
+        internal static Color Edge { get { return Blend(surface, inkText, IsDark ? .16 : .13); } }
         private static Color Hover { get { return Blend(tone, accentText, .12); } }
 
         internal static bool TryColor(string value, out Color color)
@@ -67,8 +67,8 @@ namespace SteamDirect
         private static void UpdatePalette()
         {
             primary = ThemeColor;
-            canvas = IsDark ? Color.FromArgb(16, 17, 20) : Color.FromArgb(247, 248, 250);
-            surface = IsDark ? Color.FromArgb(26, 28, 32) : Color.White;
+            canvas = IsDark ? Color.FromArgb(15, 17, 22) : Color.FromArgb(247, 248, 250);
+            surface = IsDark ? Color.FromArgb(26, 29, 35) : Color.White;
             inkText = IsDark ? Color.FromArgb(236, 236, 236) : Color.FromArgb(30, 30, 30);
             mutedText = IsDark ? Color.FromArgb(180, 184, 192) : Color.FromArgb(96, 96, 96);
             Color textSurface = IsDark ? surface : canvas;
@@ -76,11 +76,11 @@ namespace SteamDirect
             accentText = primary;
             for (int i = 0; i < 24 && Contrast(accentText, textSurface) < 4.5; i++)
                 accentText = Blend(accentText, limit, .12);
-            tone = IsDark ? Color.FromArgb(38, 40, 46) : Blend(Color.White, accentText, .14);
+            tone = IsDark ? Color.FromArgb(38, 42, 50) : Blend(Color.White, accentText, .14);
             for (int i = 0; i < 24 && Contrast(accentText, tone) < 4.5; i++)
             {
                 accentText = Blend(accentText, limit, .12);
-                tone = IsDark ? Color.FromArgb(38, 40, 46) : Blend(Color.White, accentText, .14);
+                tone = IsDark ? Color.FromArgb(38, 42, 50) : Blend(Color.White, accentText, .14);
             }
             primaryText = Contrast(primary, Color.White) >= Contrast(primary, Color.Black) ? Color.White : Color.Black;
             successText = Readable(IsDark ? Blend(Success, Color.White, .4) : Success, textSurface);
