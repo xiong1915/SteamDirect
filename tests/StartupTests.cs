@@ -1,0 +1,8 @@
+using System;using System.IO;
+namespace SteamDirect {internal static class StartupTests {
+ internal static int Run(){int count=0;string folder=Path.Combine(Path.GetTempPath(),"SteamDirect-startup-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(folder);
+ try{string path=HighDpi.ConfigureUserFallback(folder);if(!File.Exists(path)||!File.ReadAllText(path).Contains("PerMonitorV2"))throw new Exception("Missing fallback configuration");count++;File.WriteAllText(path,"corrupted");HighDpi.ConfigureUserFallback(folder);if(!File.ReadAllText(path).Contains("PerMonitorV2"))throw new Exception("Corrupt generated DPI configuration not repaired");count++;
+ File.WriteAllText(Path.Combine(folder,"2020-01-01.log"),"legacy");File.WriteAllText(Path.Combine(folder,"other.log"),"user");File.WriteAllText(Path.Combine(folder,"SteamDirect-2020-01-01.log"),"owned");if(LogStore.Cleanup(folder,7,DateTime.Today)!=1||!File.Exists(Path.Combine(folder,"2020-01-01.log"))||!File.Exists(Path.Combine(folder,"other.log")))throw new Exception("Log cleanup removed non-owned or legacy files");count++;
+ var settings=Path.Combine(folder,"settings.ini");UserPreferences.Save(settings,true,9,true,"#FF0000",folder,true);var read=UserPreferences.Load(settings);if(read.LogDirectory!=folder||!read.ReduceMotion)throw new Exception("Log/motion preferences not persisted");count++;return count;
+ }finally{Directory.Delete(folder,true);}}
+}}

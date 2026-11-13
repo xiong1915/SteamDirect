@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -9,11 +9,11 @@ namespace SteamDirect
     internal static class AppTheme
     {
         internal static bool IsDark;
-        internal static readonly Color Page = Color.FromArgb(247, 245, 250);
-        internal static readonly Color Ink = Color.FromArgb(32, 29, 39);
-        internal static readonly Color Muted = Color.FromArgb(99, 94, 111);
+        internal static readonly Color Page = Color.FromArgb(246, 247, 249);
+        internal static readonly Color Ink = Color.FromArgb(29, 33, 41);
+        internal static readonly Color Muted = Color.FromArgb(99, 108, 122);
         internal static readonly Color Accent = Color.FromArgb(103, 80, 164);
-        internal static readonly Color Pill = Color.FromArgb(233, 224, 249);
+        internal static readonly Color Pill = Color.FromArgb(234, 235, 240);
         internal static readonly Color Surface = Color.White;
         internal static readonly Color Success = Color.FromArgb(24, 137, 110);
         internal static readonly Color Warning = Color.FromArgb(184, 102, 24);
@@ -67,20 +67,20 @@ namespace SteamDirect
         private static void UpdatePalette()
         {
             primary = ThemeColor;
-            canvas = IsDark ? Color.FromArgb(15, 17, 22) : Color.FromArgb(247, 248, 250);
-            surface = IsDark ? Color.FromArgb(26, 29, 35) : Color.White;
-            inkText = IsDark ? Color.FromArgb(236, 236, 236) : Color.FromArgb(30, 30, 30);
-            mutedText = IsDark ? Color.FromArgb(180, 184, 192) : Color.FromArgb(96, 96, 96);
+            canvas = IsDark ? Color.FromArgb(16, 18, 23) : Color.FromArgb(247, 248, 250);
+            surface = IsDark ? Color.FromArgb(24, 27, 34) : Color.White;
+            inkText = IsDark ? Color.FromArgb(234, 238, 245) : Color.FromArgb(29, 33, 41);
+            mutedText = IsDark ? Color.FromArgb(166, 176, 192) : Color.FromArgb(99, 108, 122);
             Color textSurface = IsDark ? surface : canvas;
             Color limit = IsDark ? Color.White : Color.Black;
             accentText = primary;
             for (int i = 0; i < 24 && Contrast(accentText, textSurface) < 4.5; i++)
                 accentText = Blend(accentText, limit, .12);
-            tone = IsDark ? Color.FromArgb(38, 42, 50) : Blend(Color.White, accentText, .14);
+            tone = IsDark ? Blend(surface, primary, .10) : Blend(Color.White, accentText, .08);
             for (int i = 0; i < 24 && Contrast(accentText, tone) < 4.5; i++)
             {
                 accentText = Blend(accentText, limit, .12);
-                tone = IsDark ? Color.FromArgb(38, 42, 50) : Blend(Color.White, accentText, .14);
+                tone = IsDark ? Blend(surface, primary, .10) : Blend(Color.White, accentText, .08);
             }
             primaryText = Contrast(primary, Color.White) >= Contrast(primary, Color.Black) ? Color.White : Color.Black;
             successText = Readable(IsDark ? Blend(Success, Color.White, .4) : Success, textSurface);
@@ -228,6 +228,8 @@ namespace SteamDirect
                 grid.EnableHeadersVisualStyles = false;
                 grid.ColumnHeadersDefaultCellStyle.BackColor = Background(Page);
                 grid.ColumnHeadersDefaultCellStyle.ForeColor = Text(Muted);
+                grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = Background(Page);
+                grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = Text(Muted);
                 grid.DefaultCellStyle.BackColor = Background(Color.White);
                 grid.DefaultCellStyle.ForeColor = Text(Ink);
                 grid.DefaultCellStyle.SelectionBackColor = Background(Pill);
@@ -252,7 +254,7 @@ namespace SteamDirect
                 Color awayFromText = primaryText == Color.White ? Color.Black : Color.White;
                 push.FlatAppearance.MouseOverBackColor = primary ? Blend(AppTheme.primary, awayFromText, .08) : Hover;
                 push.FlatAppearance.MouseDownBackColor = primary ? Blend(AppTheme.primary, awayFromText, .15) : Edge;
-                push.Paint -= PaintDisabledButton; push.Paint += PaintDisabledButton;
+                push.Paint -= PaintDisabledButton; if (!(push is RoundedButton)) push.Paint += PaintDisabledButton;
             }
             foreach (Control child in control.Controls) Paint(child);
             control.Invalidate();

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -12,7 +12,7 @@ namespace SteamDirect
         internal const int Space4 = 4, Space8 = 8, Space12 = 12, Space16 = 16, Space20 = 20,
             Space24 = 24, Space32 = 32, Space40 = 40, Space48 = 48;
         internal const int HeaderHeight = 96, ButtonHeight = 40, CompactHeight = 32, Gap = Space16, SmallGap = Space8;
-        internal const float CardRadius = 14, ControlRadius = 10, NavigationRadius = 10;
+        internal const float CardRadius = 12, ControlRadius = 8, NavigationRadius = 8;
         internal const int MotionTick = 40, SpinnerStep = 9; // Continuous motion is reserved for active operations; controls animate only on interaction.
         private const string Family = "Microsoft YaHei UI";
         internal static readonly Font Body = new Font(Family, 10F);
@@ -159,9 +159,12 @@ namespace SteamDirect
     internal sealed class EntryFrame : RoundedPanel
     {
         private readonly Control input;
+        private readonly Motion.Value focus;
         internal EntryFrame(Control input, string accessibleName)
         {
+            if (input == null) throw new ArgumentNullException("input");
             this.input = input;
+            focus = new Motion.Value(this, 0F);
             Dock = DockStyle.Fill;
             Padding = new Padding(UiStyle.Space12, UiStyle.Space8, UiStyle.Space12, UiStyle.Space8);
             Margin = Padding.Empty;
@@ -179,10 +182,11 @@ namespace SteamDirect
             if (text != null) text.BorderStyle = BorderStyle.None;
             var number = input as NumericUpDown;
             if (number != null) number.BorderStyle = BorderStyle.None;
-            input.Enter += (sender, args) => Invalidate();
-            input.Leave += (sender, args) => Invalidate();
+            input.Enter += (sender, args) => focus.To(1F, 160);
+            input.Leave += (sender, args) => focus.To(0F, 160);
             Controls.Add(input);
         }
+        protected override void Dispose(bool disposing) { if (disposing && focus != null) focus.Dispose(); base.Dispose(disposing); }
         protected override void OnLayout(LayoutEventArgs e)
         {
             base.OnLayout(e);
@@ -198,18 +202,22 @@ namespace SteamDirect
             base.OnPaint(e);
             if (Width < 2 || Height < 2) return;
             using (var path = UiStyle.RoundRect(new RectangleF(.5F, .5F, Width - 1, Height - 1), CornerRadius * DeviceDpi / 96F))
-            using (var pen = new Pen(input.ContainsFocus ? AppTheme.Text(AppTheme.Accent) : AppTheme.Edge))
+            using (var pen = new Pen(Motion.Blend(AppTheme.Edge, AppTheme.Text(AppTheme.Accent), focus.Current)))
                 e.Graphics.DrawPath(pen, path);
         }
     }
 
     internal sealed class ThemedProgressBar : ProgressBar
     {
+        private readonly Motion.Value amount;
+        private float target;
         internal ThemedProgressBar()
         {
+            amount = new Motion.Value(this, 0F);
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         }
+        protected override void Dispose(bool disposing) { if (disposing && amount != null) amount.Dispose(); base.Dispose(disposing); }
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.Clear(Parent == null ? AppTheme.Background(AppTheme.Page) : Parent.BackColor);
@@ -220,7 +228,8 @@ namespace SteamDirect
             using (var brush = new SolidBrush(AppTheme.Edge))
                 e.Graphics.FillPath(brush, track);
             float portion = (Value - Minimum) / (float)Math.Max(1, Maximum - Minimum);
-            float width = Width * portion;
+            if (portion != target) { target = portion; amount.To(portion, 240); }
+            float width = Width * amount.Current;
             if (width < 1) return;
             using (var fill = UiStyle.RoundRect(new RectangleF(0, 0, width, Height), Height / 2F))
             using (var brush = new SolidBrush(AppTheme.Background(AppTheme.Accent)))

@@ -154,7 +154,7 @@ namespace SteamDirect
                 {
                     sum += sample.ExternalMs;
                     values.Add(sample.ExternalMs);
-                    if (last != null && last.ExternalMs >= 0 && last.Mode == sample.Mode && sample.At - last.At <= 25000)
+                    if (last != null && last.ExternalMs >= 0 && last.Mode == sample.Mode && sample.At > last.At && sample.At - last.At <= 25000)
                     {
                         movement += Math.Abs((long)sample.ExternalMs - last.ExternalMs);
                         result.JitterCount++;

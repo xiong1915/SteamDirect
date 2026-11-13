@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -144,8 +145,10 @@ namespace SteamDirect
             text = text.Trim(); IPAddress address; int port = 27015;
             if (!(text.StartsWith("[", StringComparison.Ordinal) && text.Contains("]:")) && IPAddress.TryParse(text, out address)) return new IPEndPoint(address, port);
             int split = text.LastIndexOf(':');
-            if (split < 1 || !int.TryParse(text.Substring(split + 1), out port) || port < 1 || port > 65535) throw new ArgumentException("请输入服务器 IP 或 IP:查询端口，例如 1.2.3.4:27015。IPv6 带端口请使用 [地址]:端口。");
-            string host = text.Substring(0, split).Trim('[', ']');
+            if (split < 1 || !int.TryParse(text.Substring(split + 1), NumberStyles.None, CultureInfo.InvariantCulture, out port) || port < 1 || port > 65535) throw new ArgumentException("请输入服务器 IP 或 IP:查询端口，例如 1.2.3.4:27015。IPv6 带端口请使用 [地址]:端口。");
+            string host = text.Substring(0, split);
+            if (host.StartsWith("[", StringComparison.Ordinal) && host.EndsWith("]", StringComparison.Ordinal)) host = host.Substring(1, host.Length - 2);
+            if (host.IndexOfAny(new[] { '[', ']' }) >= 0) throw new ArgumentException("服务器 IP 的方括号格式无效。");
             if (!IPAddress.TryParse(host, out address)) throw new ArgumentException("服务器地址必须是有效 IP；可留空。");
             return new IPEndPoint(address, port);
         }

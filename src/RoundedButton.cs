@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -8,14 +8,15 @@ namespace SteamDirect
     internal class RoundedButton : Button
     {
         private bool hovering, pressed;
-        private float interaction;
-        private readonly Timer transition = new Timer();
+        private readonly Motion.Value interaction;
+        private readonly Motion.Value selection;
         private bool selected;
         internal bool SelectedNavigation
         {
             get { return selected; }
             set { if (selected == value) return; selected = value; UpdateMotion(); }
         }
+        internal bool HorizontalIndicator;
         internal UiIcon Icon = UiIcon.None;
         internal float CornerRadius = UiStyle.ControlRadius;
 
@@ -25,26 +26,20 @@ namespace SteamDirect
             FlatAppearance.BorderSize = 0;
             UseVisualStyleBackColor = false;
             Cursor = Cursors.Hand;
-            transition.Interval = 16;
-            transition.Tick += (sender, args) =>
-            {
-                float target = (hovering || pressed || selected) ? 1F : 0F;
-                interaction += (target - interaction) * .32F;
-                if (Math.Abs(target - interaction) < .02F) { interaction = target; transition.Stop(); }
-                Invalidate();
-            };
+            interaction = new Motion.Value(this, 0F);
+            selection = new Motion.Value(this, 0F);
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         }
 
         private void UpdateMotion()
         {
-            if (!IsHandleCreated || !Visible || !Enabled) { transition.Stop(); interaction = (hovering || selected) ? 1F : 0F; Invalidate(); return; }
-            transition.Start();
-            Invalidate();
+            if (interaction == null || selection == null) return;
+            interaction.To(pressed ? 1F : hovering ? .55F : 0F, pressed ? 90 : 180);
+            selection.To(selected ? 1F : 0F, 210);
         }
-        protected override void Dispose(bool disposing) { if (disposing) transition.Dispose(); base.Dispose(disposing); }
-        protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); if (!Visible) transition.Stop(); }
+        protected override void Dispose(bool disposing) { if (disposing) { interaction.Dispose(); selection.Dispose(); } base.Dispose(disposing); }
+        protected override void OnEnabledChanged(EventArgs e) { base.OnEnabledChanged(e); if (!Enabled) hovering = pressed = false; UpdateMotion(); }
         protected override void OnMouseEnter(EventArgs e) { hovering = true; UpdateMotion(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { hovering = pressed = false; UpdateMotion(); base.OnMouseLeave(e); }
         protected override void OnMouseDown(MouseEventArgs e) { pressed = e.Button == MouseButtons.Left; UpdateMotion(); base.OnMouseDown(e); }
@@ -61,18 +56,11 @@ namespace SteamDirect
             float scale = DeviceDpi / 96F;
             float radius = Math.Min(CornerRadius * scale, (Math.Min(Width, Height) - 1) / 2f);
             var box = new RectangleF(.5f, .5f, Width - 1, Height - 1);
+            Color hover = FlatAppearance.MouseOverBackColor.A == 0 ? BackColor : FlatAppearance.MouseOverBackColor;
+            Color down = FlatAppearance.MouseDownBackColor.A == 0 ? hover : FlatAppearance.MouseDownBackColor;
+            float amount = interaction.Current;
             Color fill = !Enabled ? AppTheme.Background(AppTheme.Page) :
-                pressed ? FlatAppearance.MouseDownBackColor :
-                hovering ? FlatAppearance.MouseOverBackColor : BackColor;
-            if (fill.A == 0) fill = BackColor;
-            if (interaction > 0 && !pressed && Enabled)
-            {
-                Color hover = FlatAppearance.MouseOverBackColor;
-                if (hover.A == 0) hover = BackColor;
-                fill = Color.FromArgb((int)(fill.R + (hover.R - fill.R) * interaction),
-                    (int)(fill.G + (hover.G - fill.G) * interaction),
-                    (int)(fill.B + (hover.B - fill.B) * interaction));
-            }
+                amount <= .55F ? Motion.Blend(BackColor, hover, amount / .55F) : Motion.Blend(hover, down, (amount - .55F) / .45F);
             using (var path = UiStyle.RoundRect(box, radius))
             using (var brush = new SolidBrush(fill))
             {
@@ -91,10 +79,15 @@ namespace SteamDirect
             }
             TextRenderer.DrawText(e.Graphics, Text, Font, bounds, textColor,
                 alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
-            if (selected && Width > 8 && Height > 8)
+            if (selection.Current > 0 && Width > 8 && Height > 8)
             {
                 using (var marker = new SolidBrush(AppTheme.Background(AppTheme.Accent)))
-                    e.Graphics.FillRectangle(marker, 1, (int)(Height * .22F), Math.Max(2, (int)(3 * scale)), (int)(Height * .56F));
+                {
+                    if (HorizontalIndicator)
+                        e.Graphics.FillRectangle(marker, (int)(Width * .18F), Height - Math.Max(2, (int)(2 * scale)), Math.Max(1, (int)(Width * .64F * selection.Current)), Math.Max(2, (int)(2 * scale)));
+                    else
+                        e.Graphics.FillRectangle(marker, 1, (int)(Height * .22F), Math.Max(2, (int)(3 * scale)), Math.Max(1, (int)(Height * .56F * selection.Current)));
+                }
             }
             if (Focused && ShowFocusCues)
                 ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(ClientRectangle, -8, -6), ForeColor, fill);

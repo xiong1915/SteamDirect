@@ -20,6 +20,7 @@ namespace SteamDirect
         internal static readonly string DefaultPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamDirect", "network-history.sqlite3");
         private readonly Func<List<SteamGameProcess>> scan;
+        private readonly object lifecycle = new object();
         private readonly CancellationTokenSource stop = new CancellationTokenSource();
         private readonly Dictionary<string, ActiveGame> active = new Dictionary<string, ActiveGame>();
         private readonly Dictionary<string, HistorySession> pendingSessions = new Dictionary<string, HistorySession>();
@@ -49,8 +50,12 @@ namespace SteamDirect
 
         internal void Start()
         {
-            if (Interlocked.Exchange(ref started, 1) != 0 || Volatile.Read(ref disposed) != 0) return;
-            worker = Task.Factory.StartNew(Work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            lock (lifecycle)
+            {
+                if (started != 0 || disposed != 0) return;
+                started = 1;
+                worker = Task.Factory.StartNew(Work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
         }
 
         internal static int Interval(double load) { return load >= .85 ? 20 : load >= .70 ? 10 : 5; }
@@ -251,11 +256,17 @@ namespace SteamDirect
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-            stop.Cancel();
-            if (worker == null) { stop.Dispose(); return; }
-            if (worker.Wait(6000)) stop.Dispose();
-            else worker.ContinueWith(t => stop.Dispose(), TaskScheduler.Default);
+            Task running;
+            lock (lifecycle)
+            {
+                if (disposed != 0) return;
+                disposed = 1;
+                stop.Cancel();
+                running = worker;
+            }
+            if (running == null) { stop.Dispose(); return; }
+            if (running.Wait(6000)) stop.Dispose();
+            else running.ContinueWith(t => stop.Dispose(), TaskScheduler.Default);
         }
     }
 }
