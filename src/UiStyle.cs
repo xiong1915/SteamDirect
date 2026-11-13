@@ -12,8 +12,8 @@ namespace SteamDirect
         internal const int Space4 = 4, Space8 = 8, Space12 = 12, Space16 = 16, Space20 = 20,
             Space24 = 24, Space32 = 32, Space40 = 40, Space48 = 48;
         internal const int HeaderHeight = 96, ButtonHeight = 40, CompactHeight = 32, Gap = Space16, SmallGap = Space8;
-        internal const float CardRadius = 16, ControlRadius = 10, NavigationRadius = 12;
-        internal const int MotionTick = 40, SpinnerStep = 9;
+        internal const float CardRadius = 14, ControlRadius = 10, NavigationRadius = 10;
+        internal const int MotionTick = 40, SpinnerStep = 9; // Continuous motion is reserved for active operations; controls animate only on interaction.
         private const string Family = "Microsoft YaHei UI";
         internal static readonly Font Body = new Font(Family, 10F);
         internal static readonly Font BodyStrong = new Font(Family, 10F, FontStyle.Bold);
