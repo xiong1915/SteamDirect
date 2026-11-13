@@ -1159,6 +1159,8 @@ namespace SteamDirect
             using (var path = UiStyle.RoundRect(rect, radius))
             {
                 using (var brush = new SolidBrush(BackColor)) e.Graphics.FillPath(brush, path);
+                using (var border = new Pen(AppTheme.Edge, 1F))
+                    e.Graphics.DrawPath(border, path);
             }
         }
     }
