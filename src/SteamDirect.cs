@@ -343,6 +343,8 @@ namespace SteamDirect
             {
                 AppTheme.SetBackground(entry.Value, entry.Key == page ? AppTheme.Pill : AppTheme.Page);
                 AppTheme.SetForeground(entry.Value, entry.Key == page ? AppTheme.Accent : AppTheme.Muted);
+                var nav = entry.Value as RoundedButton;
+                if (nav != null) nav.SelectedNavigation = entry.Key == page;
             }
         }
 
