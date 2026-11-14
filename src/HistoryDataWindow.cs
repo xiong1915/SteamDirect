@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
@@ -26,7 +26,7 @@ namespace SteamDirect
         internal void Add(string title, Control page)
         {
             int index = pages.Count;
-            var button = new RoundedButton { Text = title, AutoSize = false, Width = 116, Height = UiStyle.ButtonHeight, MinimumSize = new Size(116, UiStyle.ButtonHeight), Margin = new Padding(0, 0, 8, 0) };
+            var button = new RoundedButton { HorizontalIndicator = true, Text = title, AutoSize = false, Width = 116, Height = UiStyle.ButtonHeight, MinimumSize = new Size(116, UiStyle.ButtonHeight), Margin = new Padding(0, 0, 8, 0) };
             AppTheme.ActionButton(button, false);
             button.Font = UiStyle.Button;
             button.Click += (sender, args) => SelectPage(index);
@@ -63,10 +63,12 @@ namespace SteamDirect
 
         internal void SelectPage(int index)
         {
+            if (index < 0 || index >= pages.Count) throw new ArgumentOutOfRangeException("index");
             SelectedIndex = index;
             for (int i = 0; i < pages.Count; i++)
             {
                 pages[i].Visible = i == index;
+                ((RoundedButton)buttons[i]).SelectedNavigation = i == index;
                 AppTheme.SetBackground(buttons[i], i == index ? AppTheme.Pill : AppTheme.Surface);
                 AppTheme.SetForeground(buttons[i], i == index ? AppTheme.Accent : AppTheme.Muted);
             }
@@ -86,13 +88,15 @@ namespace SteamDirect
         private readonly Button previous = new RoundedButton(), next = new RoundedButton();
         private readonly List<HistoryEvent> eventRows = new List<HistoryEvent>();
         private int page;
-        private bool busy, closed;
+        private bool busy, closed, hasNext;
         internal HistoryDataWindow(HistoryStore store, HistorySession session, Func<bool> isGaming)
         {
             SuspendLayout();
             this.store = store; this.session = session; this.isGaming = isGaming;
             Text = session.Game + " · 详细数据";
-            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            var ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            Icon = ownedIcon;
+            Disposed += (sender, args) => { if (ownedIcon != null) ownedIcon.Dispose(); };
             Font = UiStyle.Body;
             AutoScaleDimensions = new SizeF(96, 96); AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(940, 660); MinimumSize = new Size(760, 540);
@@ -143,6 +147,10 @@ namespace SteamDirect
             view.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             view.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCellsExceptHeaders;
             view.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            view.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+            view.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
+            view.ColumnHeadersDefaultCellStyle.Padding = new Padding(8, 10, 8, 10);
+            view.DefaultCellStyle.Padding = new Padding(8, 8, 8, 8);
             view.BorderStyle = BorderStyle.None; view.BackgroundColor = AppTheme.Surface;
             view.EnableHeadersVisualStyles = false;
             view.ColumnHeadersDefaultCellStyle.BackColor = AppTheme.Background(AppTheme.Page);
@@ -220,15 +228,15 @@ namespace SteamDirect
                     }
                 }
                 finally { samples.ResumeLayout(); events.ResumeLayout(); }
-                page = requested; previous.Enabled = page > 0; next.Enabled = rows.Count > PageSize || eventRows.Count > (page + 1) * PageSize;
+                page = requested; hasNext = rows.Count > PageSize || eventRows.Count > (page + 1) * PageSize;
                 state.Text = "第 " + (page + 1) + " 页 · 每页最多 200 条 · 本地只读数据";
             }
             catch (OperationCanceledException) { if (!closed) state.Text = "游戏运行中，已暂停读取，请退出游戏后重新打开。"; }
             catch (Exception ex) { if (!closed) state.Text = "读取失败：" + ex.Message; }
-            finally { busy = false; }
+            finally { busy = false; if (!closed) { previous.Enabled = page > 0; next.Enabled = hasNext; } }
         }
         private static string Delay(int value) { return value == -1 ? "超时" : value < 0 ? "未检测" : value + " ms"; }
-        private static string Time(long value) { return value <= 0 ? "—" : new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero).AddMilliseconds(value).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture); }
+        private static string Time(long value) { return value <= 0 ? "—" : value > 253402300799999L ? "时间无效" : new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero).AddMilliseconds(value).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture); }
         protected override void Dispose(bool disposing)
         {
             if (disposing && !closed) { closed = true; lifetime.Cancel(); lifetime.Dispose(); }

@@ -11,87 +11,69 @@ namespace SteamDirect
     {
         internal static bool IsAllowed(string processName, string executable, ISet<string> folders)
         {
-            if (string.IsNullOrWhiteSpace(executable)) return false;
+            if (string.IsNullOrWhiteSpace(executable) || !Path.IsPathRooted(executable)) return false;
             if (processName != "FlClash" && processName != "FlClashCore") return false;
             try
             {
-                return string.Equals(Path.GetFileName(executable), processName + ".exe", StringComparison.OrdinalIgnoreCase) && folders.Contains(Path.GetDirectoryName(Path.GetFullPath(executable)));
+                return string.Equals(Path.GetFileName(executable), processName + ".exe", StringComparison.OrdinalIgnoreCase) &&
+                    folders.Contains(Path.GetDirectoryName(Path.GetFullPath(executable)));
             }
             catch (ArgumentException) { return false; }
+            catch (NotSupportedException) { return false; }
+            catch (PathTooLongException) { return false; }
         }
-        private static void Wait(string name, int milliseconds)
+
+        private sealed class Target
         {
-            var watch = Stopwatch.StartNew();
-            while (watch.ElapsedMilliseconds < milliseconds)
-            {
-                Process[] found = Process.GetProcessesByName(name);
-                bool present = found.Length > 0;
-                foreach (var process in found) process.Dispose();
-                if (!present) return;
-                Thread.Sleep(100);
-            }
+            internal int Id;
+            internal long Started;
+            internal string Path, Name;
         }
-        private static void StopVerified(string name, HashSet<string> folders, Action<string> log)
+
+        private static List<Target> Snapshot(HashSet<string> folders)
         {
-            Process[] processes = Process.GetProcessesByName(name);
-            try
-            {
-                foreach (var process in processes)
-                {
-                    try
+            var result = new List<Target>();
+            foreach (string name in new[] { "FlClash", "FlClashCore" })
+                foreach (var process in Process.GetProcessesByName(name))
+                    using (process)
                     {
-                        string path = process.MainModule.FileName;
-                        if (!IsAllowed(name, path, folders)) throw new InvalidOperationException("无法核对 " + name + " 的安装路径，已停止；未结束未知程序。");
-                        process.Kill();
-                        if (!process.WaitForExit(3000)) throw new InvalidOperationException(name + " 自动退出超时。");
-                        log("已自动结束 " + name + "（PID " + process.Id + "）。");
+                        try
+                        {
+                            string path = process.MainModule.FileName;
+                            if (!IsAllowed(name, path, folders) || !TempCleaner.NoReparseAncestors(path))
+                                throw new InvalidOperationException("无法确认 " + name + " 的可信安装位置。请手动退出自定义目录中的 FlClash 和内核后重试；未关闭未知程序。");
+                            result.Add(new Target { Id = process.Id, Started = process.StartTime.ToUniversalTime().Ticks, Path = path, Name = name });
+                        }
+                        catch (ArgumentException) { }
+                        catch (Win32Exception ex) { throw new InvalidOperationException("无法确认 FlClash 进程身份，请手动退出后重试。", ex); }
                     }
-                    catch (InvalidOperationException) { if (!process.HasExited) throw; }
-                    catch (Win32Exception ex) { throw new InvalidOperationException("无法自动退出 " + name + "：" + ex.Message + "。系统权限可能不足，已停止流程。", ex); }
-                }
-            }
-            finally { foreach (var process in processes) process.Dispose(); }
+            return result;
         }
+
         internal static void Run(Action<string> log)
         {
-            var folders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            Process[] apps = Process.GetProcessesByName("FlClash");
-            try
+            var folders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                foreach (var app in apps)
-                {
-                    try
-                    {
-                        string path = app.MainModule.FileName;
-                        if (!string.Equals(Path.GetFileName(path), "FlClash.exe", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("FlClash 安装路径无法确认。");
-                        folders.Add(Path.GetDirectoryName(Path.GetFullPath(path)));
-                        app.CloseMainWindow();
-                    }
-                    catch (InvalidOperationException) { if (!app.HasExited) throw; }
-                }
-            }
-            finally { foreach (var app in apps) app.Dispose(); }
-            // Also recover an orphaned core whose executable is next to the installed FlClash GUI.
-            Process[] cores = Process.GetProcessesByName("FlClashCore");
-            try
+                @"D:\FlClash",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "FlClash"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "FlClash")
+            };
+            // Never infer trust from the running executable itself or a same-named neighboring file.
+            var watch = Stopwatch.StartNew();
+            while (true)
             {
-                foreach (var core in cores)
+                var targets = Snapshot(folders);
+                if (targets.Count == 0) break;
+                if (watch.ElapsedMilliseconds >= 5000) throw new InvalidOperationException("FlClash 或内核未结束，已停止后续步骤。");
+                foreach (var target in targets)
                 {
-                    try
-                    {
-                        string path = core.MainModule.FileName;
-                        string directory = Path.GetDirectoryName(Path.GetFullPath(path));
-                        if (File.Exists(Path.Combine(directory, "FlClash.exe"))) folders.Add(directory);
-                    }
-                    catch (InvalidOperationException) { if (!core.HasExited) throw; }
+                    ProxyAppShutdown.KillVerified(new ProxyAppShutdown.AppProcess { Id = target.Id, Started = target.Started, Path = target.Path, Name = target.Name },
+                        path => IsAllowed(target.Name, path, folders));
+                    log("已结束 " + target.Name + "（PID " + target.Id + "）。");
                 }
+                Thread.Sleep(100);
             }
-            finally { foreach (var core in cores) core.Dispose(); }
-            Wait("FlClash", 2000);
-            StopVerified("FlClash", folders, log);
-            Wait("FlClashCore", 500);
-            StopVerified("FlClashCore", folders, log);
-            log("FlClash 主程序和对应内核自动退出完成；配置与订阅保留。");
+            log("已确认 FlClash 主程序和内核均已退出；配置与订阅保留。");
         }
     }
 }

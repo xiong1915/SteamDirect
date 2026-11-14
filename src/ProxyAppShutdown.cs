@@ -18,7 +18,8 @@ namespace SteamDirect
         {
             internal IntPtr Handle;
             internal uint ProcessId;
-            internal string Name;
+            internal string Name, Path;
+            internal long Started;
         }
 
         private delegate bool WindowCallback(IntPtr window, IntPtr state);
@@ -44,7 +45,11 @@ namespace SteamDirect
 
         internal static string Identify(string path, string appId, string localApps, string programFiles)
         {
-            if (string.IsNullOrEmpty(path)) return null;
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(localApps) || string.IsNullOrEmpty(programFiles) || !Path.IsPathRooted(path)) return null;
+            try { if (!string.Equals(path, Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase)) return null; }
+            catch (ArgumentException) { return null; }
+            catch (NotSupportedException) { return null; }
+            catch (PathTooLongException) { return null; }
             string executable = Path.GetFileName(path);
             if (string.Equals(executable, "Antigravity.exe", StringComparison.OrdinalIgnoreCase) &&
                 (string.Equals(path, Path.Combine(localApps, "Programs", "antigravity", executable), StringComparison.OrdinalIgnoreCase) ||
@@ -62,7 +67,10 @@ namespace SteamDirect
             }
 
             if (string.Equals(executable, "chrome.exe", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(appId, YouTubeAppId, StringComparison.OrdinalIgnoreCase)) return "YouTube";
+                string.Equals(appId, YouTubeAppId, StringComparison.OrdinalIgnoreCase) &&
+                (string.Equals(path, Path.Combine(programFiles, "Google", "Chrome", "Application", "chrome.exe"), StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(path, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Google", "Chrome", "Application", "chrome.exe"), StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(path, Path.Combine(localApps, "Google", "Chrome", "Application", "chrome.exe"), StringComparison.OrdinalIgnoreCase))) return "YouTube";
             return null;
         }
 
@@ -87,31 +95,31 @@ namespace SteamDirect
             var windows = new List<AppWindow>();
             string localApps = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-            var paths = new Dictionary<uint, string>();
+
             if (!EnumWindows((window, state) =>
             {
 
                 uint pid;
                 if (GetWindowThreadProcessId(window, out pid) == 0) return true;
-                string path;
-                if (!paths.TryGetValue(pid, out path))
+                string path = null;
+                long started = 0;
+                try
                 {
-                    path = null;
-                    try
+                    using (var process = Process.GetProcessById((int)pid))
                     {
-                        using (var process = Process.GetProcessById((int)pid))
+                        string name = process.ProcessName;
+                        if (string.Equals(name, "ChatGPT", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(name, "Antigravity", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(name, "chrome", StringComparison.OrdinalIgnoreCase))
                         {
-                            string name = process.ProcessName;
-                            if (string.Equals(name, "ChatGPT", StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(name, "Antigravity", StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(name, "chrome", StringComparison.OrdinalIgnoreCase)) path = process.MainModule.FileName;
+                            path = process.MainModule.FileName;
+                            started = process.StartTime.ToUniversalTime().Ticks;
                         }
                     }
-                    catch (ArgumentException) { }
-                    catch (InvalidOperationException) { }
-                    catch (Win32Exception) { }
-                    paths[pid] = path;
                 }
+                catch (ArgumentException) { }
+                catch (InvalidOperationException) { }
+                catch (Win32Exception) { }
                 string appId = null;
                 if (string.Equals(Path.GetFileName(path), "chrome.exe", StringComparison.OrdinalIgnoreCase))
                 {
@@ -119,7 +127,7 @@ namespace SteamDirect
                     catch (COMException) { }
                 }
                 string app = Identify(path, appId, localApps, programFiles);
-                if (app != null) windows.Add(new AppWindow { Handle = window, ProcessId = pid, Name = app });
+                if (app != null && TempCleaner.NoReparseAncestors(path)) windows.Add(new AppWindow { Handle = window, ProcessId = pid, Name = app, Path = path, Started = started });
                 return true;
             }, IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error(), "无法枚举需要关闭的应用窗口。");
             return windows;
@@ -145,7 +153,7 @@ namespace SteamDirect
                         {
                             string path = process.MainModule.FileName;
                             string app = Identify(path, null, local, programs);
-                            if (app != null) result.Add(new AppProcess { Id = process.Id, Name = app, Path = path, Started = process.StartTime.ToUniversalTime().Ticks });
+                            if (app != null && TempCleaner.NoReparseAncestors(path)) result.Add(new AppProcess { Id = process.Id, Name = app, Path = path, Started = process.StartTime.ToUniversalTime().Ticks });
                             else throw new InvalidOperationException("发现身份未能确认的 " + executable + " 进程，已停止直连流程。");
                         }
                         catch (ArgumentException) { }
@@ -155,25 +163,35 @@ namespace SteamDirect
             return result;
         }
 
-        private static void EndChatGpt(AppProcess target)
+        internal static bool SameIdentity(int id, long started, string path, int actualId, long actualStarted, string actualPath)
+        {
+            return id > 0 && started > 0 && !string.IsNullOrWhiteSpace(path) && id == actualId &&
+                started == actualStarted && string.Equals(path, actualPath, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool TerminateProcess(IntPtr process, uint exitCode);
+        internal static void KillVerified(AppProcess target, Func<string, bool> trusted)
         {
             try
             {
                 using (var process = Process.GetProcessById(target.Id))
                 {
-                    if (process.StartTime.ToUniversalTime().Ticks != target.Started ||
-                        !string.Equals(process.MainModule.FileName, target.Path, StringComparison.OrdinalIgnoreCase)) return;
-                    process.Kill();
+                    var handle = process.Handle;
+                    if (process.HasExited) return;
+                    string path = process.MainModule.FileName;
+                    if (!SameIdentity(target.Id, target.Started, target.Path, process.Id, process.StartTime.ToUniversalTime().Ticks, path) ||
+                        !TempCleaner.NoReparseAncestors(path) || !trusted(path))
+                        throw new InvalidOperationException("进程身份已变化，拒绝终止。");
+                    if (!TerminateProcess(handle, 0) && !process.HasExited) throw new Win32Exception(Marshal.GetLastWin32Error(), "无法终止已核实的后台进程。");
                 }
             }
             catch (ArgumentException) { }
-            catch (InvalidOperationException) { }
         }
 
-        internal static void FinishProcesses(Func<List<AppProcess>> find, Action<AppProcess> endChatGpt,
-            Action<int> wait, Func<long> elapsed, Action<string> log)
+        internal static void FinishProcesses(Func<List<AppProcess>> find,
+            Action<int> wait, Func<long> elapsed, Action<string> log, Action<AppProcess> force = null)
         {
-            var ended = new HashSet<string>();
             while (true)
             {
                 var remaining = find();
@@ -184,13 +202,7 @@ namespace SteamDirect
                     foreach (var process in remaining) names.Add(process.Name);
                     throw new InvalidOperationException("仍在运行：" + string.Join("、", names) + "。已停止流程，不会启动 Steam。请处理保存/退出提示或查看日志后重试。");
                 }
-                if (elapsed() >= 2000)
-                    foreach (var process in remaining)
-                        if (process.Name == "ChatGPT" && ended.Add(process.Id + ":" + process.Started))
-                        {
-                            log("正在完整退出 ChatGPT 后台进程（PID " + process.Id + "）。");
-                            endChatGpt(process);
-                        }
+                if (force != null) foreach (var process in remaining.ToArray()) force(process);
                 wait(250);
             }
         }
@@ -203,10 +215,12 @@ namespace SteamDirect
 
         internal static void Run(Action<string> log)
         {
+            log("正在结束已核实的 ChatGPT / Antigravity 后台；未保存内容可能丢失。");
             var targets = FindWindows();
 
             foreach (var target in targets)
             {
+                if (target.Name != "YouTube") continue;
                 if (target.Name == "YouTube")
                 {
                     try { if (!string.Equals(ReadAppId(target.Handle), YouTubeAppId, StringComparison.Ordinal)) continue; }
@@ -214,11 +228,25 @@ namespace SteamDirect
                 }
                 uint pid;
                 if (GetWindowThreadProcessId(target.Handle, out pid) == 0 || pid != target.ProcessId) continue;
-                if (PostMessage(target.Handle, CloseMessage, IntPtr.Zero, IntPtr.Zero)) log("已请求正常关闭 " + target.Name + " 窗口。");
+                try
+                {
+                    using (var process = Process.GetProcessById((int)pid))
+                    {
+                        if (!TempCleaner.NoReparseAncestors(target.Path) || !SameIdentity((int)target.ProcessId, target.Started, target.Path, process.Id,
+                            process.StartTime.ToUniversalTime().Ticks, process.MainModule.FileName))
+                            throw new InvalidOperationException("应用进程身份已变化，已停止关闭请求。");
+                        if (GetWindowThreadProcessId(target.Handle, out pid) == 0 || pid != target.ProcessId)
+                            throw new InvalidOperationException("应用窗口归属已变化，已停止关闭请求。");
+                        if (PostMessage(target.Handle, CloseMessage, IntPtr.Zero, IntPtr.Zero)) log("已请求正常关闭 " + target.Name + " 窗口。");
                 else log("关闭请求未送达 " + target.Name + "，将复查窗口状态。");
+                    }
+                }
+                catch (ArgumentException) { }
+                catch (Win32Exception ex) { throw new InvalidOperationException("无法确认应用身份；请手动保存并退出后重试。", ex); }
             }
             var processWatch = Stopwatch.StartNew();
-            FinishProcesses(FindProcesses, EndChatGpt, Thread.Sleep, () => processWatch.ElapsedMilliseconds, log);
+            FinishProcesses(FindProcesses, Thread.Sleep, () => processWatch.ElapsedMilliseconds, log, target =>
+            { KillVerified(target, path => Identify(path, null, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)) == target.Name); log("已结束 " + target.Name + " 后台（PID " + target.Id + "）。"); });
             var watch = Stopwatch.StartNew();
             while (true)
             {

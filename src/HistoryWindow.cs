@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
@@ -33,6 +33,7 @@ namespace SteamDirect
         private readonly TextBox comparisonText = new TextBox();
         private readonly Label overviewTitle = new Label();
         private readonly Label overviewNote = new Label();
+        private readonly Label[] metricValues = { new Label(), new Label(), new Label() };
         private readonly TextBox overviewText = new TextBox();
         private readonly Label status = new Label();
         private readonly Label detailTitle = new Label();
@@ -53,7 +54,9 @@ namespace SteamDirect
             this.isGaming = isGaming;
             SuspendLayout();
             Text = "游戏网络报告";
-            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            var ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            Icon = ownedIcon;
+            Disposed += (sender, args) => { if (ownedIcon != null) ownedIcon.Dispose(); };
             AutoScaleDimensions = new SizeF(96, 96);
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(1100, 720);
@@ -113,8 +116,8 @@ namespace SteamDirect
             root.Controls.Add(filterCard, 0, 1);
 
             var body = Grid(2, 1);
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36));
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 64));
             body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.Controls.Add(body, 0, 2);
 
@@ -262,10 +265,11 @@ namespace SteamDirect
 
         private Control BuildOverview()
         {
-            var layout = Grid(1, 3);
+            var layout = Grid(1, 4);
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             overviewTitle.Text = "选择记录后显示本局结果";
             overviewTitle.Dock = DockStyle.Fill;
@@ -275,9 +279,23 @@ namespace SteamDirect
             overviewNote.ForeColor = Muted;
             overviewNote.AutoEllipsis = true;
             layout.Controls.Add(overviewNote, 0, 1);
+            var metrics = Grid(3, 2);
+            metrics.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+            metrics.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            string[] headings = { "外部平均 · ICMP", "探测超时", "探测总次数" };
+            for (int i = 0; i < metricValues.Length; i++)
+            {
+                metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 3));
+                metrics.Controls.Add(Caption(headings[i]), i, 0);
+                var value = metricValues[i];
+                value.Text = "—"; value.Font = UiStyle.HeroTitle; value.Dock = DockStyle.Fill;
+                value.AutoEllipsis = true; value.Margin = Padding.Empty; value.AccessibleName = headings[i];
+                metrics.Controls.Add(value, i, 1);
+            }
+            layout.Controls.Add(metrics, 0, 2);
             SetupText(overviewText, "本局结果说明与建议");
             overviewText.Font = UiStyle.Body;
-            layout.Controls.Add(overviewText, 0, 2);
+            layout.Controls.Add(overviewText, 0, 3);
             return layout;
         }
 
@@ -466,8 +484,9 @@ namespace SteamDirect
             refresh.Enabled = gameFilter.Enabled = modeFilter.Enabled = recordScope.Enabled = previousPage.Enabled = nextPage.Enabled = false;
             string name = gameFilter.Text.Trim();
             string mode = modeFilter.SelectedItem as string;
-            long from = recordScope.SelectedIndex == 0 ? (long)(new DateTimeOffset(DateTime.Today).ToUniversalTime() - Epoch).TotalMilliseconds : 0;
-            long before = recordScope.SelectedIndex == 0 ? (long)(new DateTimeOffset(DateTime.Today.AddDays(1)).ToUniversalTime() - Epoch).TotalMilliseconds : 0;
+            DateTime today = DateTime.Today;
+            long from = recordScope.SelectedIndex == 0 ? (long)(new DateTimeOffset(today).ToUniversalTime() - Epoch).TotalMilliseconds : 0;
+            long before = recordScope.SelectedIndex == 0 ? (long)(new DateTimeOffset(today.AddDays(1)).ToUniversalTime() - Epoch).TotalMilliseconds : 0;
             status.Text = "正在读取本地记录…";
             try
             {
@@ -627,6 +646,7 @@ namespace SteamDirect
             incidents.Items.Clear();
             UiStyle.SetState(overviewTitle, overviewNote, "选择记录后显示本局结果", "左侧列出了自动保存的游戏记录。");
             overviewText.Clear();
+            foreach (var value in metricValues) value.Text = "—";
             networkChart.SetData(null, null, null);
         }
 
@@ -851,6 +871,10 @@ namespace SteamDirect
         private void ShowDetails(Detail detail)
         {
             UiStyle.SetState(overviewTitle, overviewNote, detail.OverviewTitle, detail.OverviewNote);
+            var metrics = detail.Metrics;
+            metricValues[0].Text = metrics.Attempts > metrics.Lost ? metrics.Average.ToString("F1", CultureInfo.InvariantCulture) + " ms" : "—";
+            metricValues[1].Text = metrics.Attempts > 0 ? metrics.LossRate.ToString("F1", CultureInfo.InvariantCulture) + "%" : "—";
+            metricValues[2].Text = metrics.Attempts.ToString(CultureInfo.InvariantCulture);
             overviewText.Text = detail.OverviewText;
             overviewText.Select(0, 0);
             comparisonText.Text = detail.Comparison;
@@ -990,11 +1014,12 @@ namespace SteamDirect
 
         private static string LocalTime(long at, string format)
         {
-            return at <= 0 ? "—" : Epoch.AddMilliseconds(at).ToLocalTime().ToString(format, CultureInfo.InvariantCulture);
+            return at <= 0 ? "—" : at > 253402300799999L ? "时间无效" : Epoch.AddMilliseconds(at).ToLocalTime().ToString(format, CultureInfo.InvariantCulture);
         }
 
         private static string UtcTime(long at)
         {
+            if (at > 253402300799999L) return "invalid_timestamp:" + at.ToString(CultureInfo.InvariantCulture);
             return at <= 0 ? "" : Epoch.AddMilliseconds(at).ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
         }
 
@@ -1008,7 +1033,8 @@ namespace SteamDirect
         }
         private static string SpanText(long milliseconds)
         {
-            var elapsed = TimeSpan.FromMilliseconds(Math.Max(0, milliseconds));
+            if (milliseconds < 0 || milliseconds > 315537897599999L) return "时长无效";
+            var elapsed = TimeSpan.FromMilliseconds(milliseconds);
             return elapsed.TotalHours >= 1 ? ((long)elapsed.TotalHours) + " 小时 " + elapsed.Minutes + " 分 " + elapsed.Seconds + " 秒" :
                 elapsed.TotalMinutes >= 1 ? elapsed.Minutes + " 分 " + elapsed.Seconds + " 秒" : elapsed.Seconds + " 秒";
         }

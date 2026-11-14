@@ -8,7 +8,7 @@ namespace SteamDirect
         internal static DialogResult Show(IWin32Window owner, string message, string title,
             MessageBoxButtons buttons = MessageBoxButtons.OK, MessageBoxIcon icon = MessageBoxIcon.None)
         {
-            if (buttons != MessageBoxButtons.OK) return MessageBox.Show(owner, message, title, buttons, icon);
+            if (buttons != MessageBoxButtons.OK && buttons != MessageBoxButtons.YesNo && buttons != MessageBoxButtons.OKCancel) return MessageBox.Show(owner, message, title, buttons, icon);
             using (var window = new Form())
             {
                 window.SuspendLayout();
@@ -40,16 +40,22 @@ namespace SteamDirect
                 UiStyle.ReadOnlyText(body, title + "提示内容");
                 card.Controls.Add(body);
                 layout.Controls.Add(card, 0, 1);
-                var close = new RoundedButton { Text = "知道了", DialogResult = DialogResult.OK,
+                var close = new RoundedButton { Text = buttons == MessageBoxButtons.OK ? "知道了" : "取消", DialogResult = buttons == MessageBoxButtons.OK ? DialogResult.OK : buttons == MessageBoxButtons.YesNo ? DialogResult.No : DialogResult.Cancel,
                     Dock = DockStyle.Right, Width = 120, Margin = new Padding(0, UiStyle.Space4, 0, UiStyle.Space4) };
                 AppTheme.ActionButton(close, true);
-                layout.Controls.Add(close, 0, 2);
+                var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
+                actions.Controls.Add(close);
+                if (buttons != MessageBoxButtons.OK) { var yes = new RoundedButton { Text = "确认", DialogResult = buttons == MessageBoxButtons.YesNo ? DialogResult.Yes : DialogResult.OK, Width = 120, Height = 40 }; AppTheme.ActionButton(yes, true); actions.Controls.Add(yes); }
+                layout.Controls.Add(actions, 0, 2);
                 window.AcceptButton = window.CancelButton = close;
                 window.Controls.Add(layout);
                 AppTheme.Apply(window);
                 window.ResumeLayout(true);
                 var control = owner as Control;
-                return window.ShowDialog(control == null ? owner : control.TopLevelControl);
+                Motion.Value fade = null;
+                fade = new Motion.Value(window, 0, () => { if (!window.IsDisposed && fade != null) window.Opacity = .9 + .1 * fade.Current; });
+                window.Shown += (sender, args) => fade.To(1, 140);
+                try { return window.ShowDialog(control == null ? owner : control.TopLevelControl); } finally { fade.Dispose(); }
             }
         }
     }

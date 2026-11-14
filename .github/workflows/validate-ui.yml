@@ -1,0 +1,30 @@
+name: Validate visual overhaul
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'Build.ps1'
+      - 'tests/**'
+      - '.github/workflows/validate-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Compile with warnings as errors
+        run: .\Build.ps1
+      - name: Run isolated regression tests
+        run: .\tests\Run.ps1
+      - name: Verify output
+        run: |
+          if (-not (Test-Path dist/SteamDirect.exe)) { throw 'Executable missing' }
+          Write-Output (Get-Item dist/SteamDirect.exe).Length
