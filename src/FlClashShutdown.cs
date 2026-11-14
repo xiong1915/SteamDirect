@@ -54,32 +54,23 @@ namespace SteamDirect
         {
             var folders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
+                @"D:\FlClash",
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "FlClash"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "FlClash")
             };
             // Never infer trust from the running executable itself or a same-named neighboring file.
-            var targets = Snapshot(folders);
-            foreach (var target in targets)
-            {
-                if (target.Name != "FlClash") continue;
-                try
-                {
-                    using (var process = Process.GetProcessById(target.Id))
-                    {
-                        if (!ProxyAppShutdown.SameIdentity(target.Id, target.Started, target.Path, process.Id,
-                            process.StartTime.ToUniversalTime().Ticks, process.MainModule.FileName))
-                            throw new InvalidOperationException("FlClash 进程身份已变化，已停止关闭请求。");
-                        if (process.CloseMainWindow()) log("已请求 FlClash 正常关闭；不会强制结束程序或内核。");
-                    }
-                }
-                catch (ArgumentException) { }
-                catch (Win32Exception ex) { throw new InvalidOperationException("无法请求 FlClash 正常退出，请手动退出后重试。", ex); }
-            }
             var watch = Stopwatch.StartNew();
-            while (Snapshot(folders).Count != 0)
+            while (true)
             {
-                if (watch.ElapsedMilliseconds >= 5000)
-                    throw new InvalidOperationException("FlClash 或内核仍在运行。关闭窗口可能只是最小化到托盘，请通过 FlClash 菜单选择退出后重试；未强制终止进程。");
+                var targets = Snapshot(folders);
+                if (targets.Count == 0) break;
+                if (watch.ElapsedMilliseconds >= 5000) throw new InvalidOperationException("FlClash 或内核未结束，已停止后续步骤。");
+                foreach (var target in targets)
+                {
+                    ProxyAppShutdown.KillVerified(new ProxyAppShutdown.AppProcess { Id = target.Id, Started = target.Started, Path = target.Path, Name = target.Name },
+                        path => IsAllowed(target.Name, path, folders));
+                    log("已结束 " + target.Name + "（PID " + target.Id + "）。");
+                }
                 Thread.Sleep(100);
             }
             log("已确认 FlClash 主程序和内核均已退出；配置与订阅保留。");

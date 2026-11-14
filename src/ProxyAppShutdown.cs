@@ -169,8 +169,28 @@ namespace SteamDirect
                 started == actualStarted && string.Equals(path, actualPath, StringComparison.OrdinalIgnoreCase);
         }
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool TerminateProcess(IntPtr process, uint exitCode);
+        internal static void KillVerified(AppProcess target, Func<string, bool> trusted)
+        {
+            try
+            {
+                using (var process = Process.GetProcessById(target.Id))
+                {
+                    var handle = process.Handle;
+                    if (process.HasExited) return;
+                    string path = process.MainModule.FileName;
+                    if (!SameIdentity(target.Id, target.Started, target.Path, process.Id, process.StartTime.ToUniversalTime().Ticks, path) ||
+                        !TempCleaner.NoReparseAncestors(path) || !trusted(path))
+                        throw new InvalidOperationException("进程身份已变化，拒绝终止。");
+                    if (!TerminateProcess(handle, 0) && !process.HasExited) throw new Win32Exception(Marshal.GetLastWin32Error(), "无法终止已核实的后台进程。");
+                }
+            }
+            catch (ArgumentException) { }
+        }
+
         internal static void FinishProcesses(Func<List<AppProcess>> find,
-            Action<int> wait, Func<long> elapsed, Action<string> log)
+            Action<int> wait, Func<long> elapsed, Action<string> log, Action<AppProcess> force = null)
         {
             while (true)
             {
@@ -182,6 +202,7 @@ namespace SteamDirect
                     foreach (var process in remaining) names.Add(process.Name);
                     throw new InvalidOperationException("仍在运行：" + string.Join("、", names) + "。已停止流程，不会启动 Steam。请处理保存/退出提示或查看日志后重试。");
                 }
+                if (force != null) foreach (var process in remaining.ToArray()) force(process);
                 wait(250);
             }
         }
@@ -194,11 +215,12 @@ namespace SteamDirect
 
         internal static void Run(Action<string> log)
         {
-            log("仅发送正常关闭请求；请先保存 ChatGPT、Antigravity 或浏览器中的未保存内容。程序不会强制结束这些应用。");
+            log("正在结束已核实的 ChatGPT / Antigravity 后台；未保存内容可能丢失。");
             var targets = FindWindows();
 
             foreach (var target in targets)
             {
+                if (target.Name != "YouTube") continue;
                 if (target.Name == "YouTube")
                 {
                     try { if (!string.Equals(ReadAppId(target.Handle), YouTubeAppId, StringComparison.Ordinal)) continue; }
@@ -223,7 +245,8 @@ namespace SteamDirect
                 catch (Win32Exception ex) { throw new InvalidOperationException("无法确认应用身份；请手动保存并退出后重试。", ex); }
             }
             var processWatch = Stopwatch.StartNew();
-            FinishProcesses(FindProcesses, Thread.Sleep, () => processWatch.ElapsedMilliseconds, log);
+            FinishProcesses(FindProcesses, Thread.Sleep, () => processWatch.ElapsedMilliseconds, log, target =>
+            { KillVerified(target, path => Identify(path, null, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)) == target.Name); log("已结束 " + target.Name + " 后台（PID " + target.Id + "）。"); });
             var watch = Stopwatch.StartNew();
             while (true)
             {

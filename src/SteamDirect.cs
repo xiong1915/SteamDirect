@@ -129,7 +129,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.0";
+            Text = "Steam 直连助手 v3.0.1";
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -188,7 +188,7 @@ namespace SteamDirect
             statusLabel.AutoEllipsis = true;
             statusLabel.Font = UiStyle.HeroTitle;
             actionLayout.Controls.Add(statusLabel, 0, 1);
-            actionLayout.Controls.Add(new Label { Text = "先保存 ChatGPT 草稿与编辑器文件并退出游戏。检查通过后重启 Steam。", Dock = DockStyle.Fill, ForeColor = AppTheme.Muted }, 0, 2);
+            actionLayout.Controls.Add(new Label { Text = "请先保存草稿并退出游戏。执行将强制结束已核实的应用后台，检查通过后重启 Steam。", Dock = DockStyle.Fill, ForeColor = AppTheme.Muted }, 0, 2);
             runButton.Text = "严格直连并重启 Steam";
             runButton.Dock = DockStyle.Fill;
             runButton.Margin = Padding.Empty;
@@ -290,7 +290,7 @@ namespace SteamDirect
                 {
                     args.Cancel = true;
                     exitRequested = false;
-                    NoticeDialog.Show(this, "操作正在进行，请等待完成后退出。", "提示");
+                    Status("操作正在进行，请等待完成后退出。");
                 }
             };
             Shown += (sender, args) => { if (background && preferences.TrayEnabled) Hide(); };
@@ -344,7 +344,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.0 · 游戏网络助手", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.1 · 游戏网络助手", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             shell.Controls.Add(rail, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);
@@ -367,7 +367,7 @@ namespace SteamDirect
         {
             if (page != "概览" && running)
             {
-                NoticeDialog.Show(this, "请等待直连流程完成后再切换页面。", "正在执行");
+                Status("请等待直连流程完成后再切换页面。");
                 return;
             }
             if (page == "游戏记录" && history.IsPlaying)
@@ -569,14 +569,12 @@ namespace SteamDirect
                 FinishProgress(true);
                 Status("完成 · 已提交 Steam 启动请求");
                 Log("成功：本机代理检查通过，已提交 Steam 启动请求。");
-                NoticeDialog.Show(this, "Steam 启动请求已提交，已通过本机严格检查。\n原代理设置已备份，可使用恢复按钮。不能保证排除网络侧透明代理。", "操作完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
                 FinishProgress(false);
                 Status("已停止 · 请查看操作记录");
                 Log("停止：" + ex.Message);
-                NoticeDialog.Show(this, ex.Message + "\n\n为避免误用代理或中断游戏，已停止流程。可查看日志定位问题。", "未能完成", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             finally
             {

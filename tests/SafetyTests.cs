@@ -17,6 +17,10 @@ namespace SteamDirect
             }
             catch (InvalidOperationException) { }
             Assert(elapsed == 8000, "Leave unsaved ChatGPT running and stop workflow on graceful-exit timeout.");
+            elapsed = 0; int terminated = 0;
+            var pending = new List<ProxyAppShutdown.AppProcess> { new ProxyAppShutdown.AppProcess { Id = 99, Name = "Antigravity", Path = @"C:\known\Antigravity.exe", Started = 1 } };
+            ProxyAppShutdown.FinishProcesses(() => pending, ms => elapsed += ms, () => elapsed, text => { }, process => { terminated++; pending.Clear(); });
+            Assert(terminated == 1 && elapsed == 250, "Authorized force mode terminates targets and verifies the next snapshot.");
             var folders = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { @"C:\Apps\FlClash" };
             Assert(!FlClashShutdown.IsAllowed("FlClash", @"C:\Apps\FlClash2\FlClash.exe", folders), "Reject sibling prefix.");
             Assert(!FlClashShutdown.IsAllowed("Other", @"C:\Apps\FlClash\Other.exe", folders), "Reject unrelated process.");
@@ -48,7 +52,7 @@ namespace SteamDirect
                 Assert(deleted.Files == 0 && File.Exists(stale) && File.Exists(document), "Even confirmed candidates outside owned roots cannot be deleted.");
             }
             finally { Directory.Delete(root, true); }
-            return 15;
+            return 16;
         }
         private static void Assert(bool value, string message) { if (!value) throw new Exception(message); }
         private static int Main() { try { Console.WriteLine("Safety tests: " + Run() + " passed"); return 0; } catch (Exception ex) { Console.Error.WriteLine(ex); return 1; } }
