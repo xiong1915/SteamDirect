@@ -96,7 +96,7 @@ namespace SteamDirect
         }
     }
 
-    internal sealed class MainWindow : Form
+    internal sealed class MainWindow : DesktopForm
     {
         private readonly Button runButton = new RoundedButton();
         private readonly Button logButton = new RoundedButton();
@@ -112,10 +112,14 @@ namespace SteamDirect
         private readonly System.Windows.Forms.Timer animationTimer = new System.Windows.Forms.Timer();
         private readonly Stopwatch operationWatch = new Stopwatch();
 
+        private readonly Icon ownedMainIcon;
         private readonly NotifyIcon trayIcon = new NotifyIcon();
         private readonly ContextMenuStrip trayMenu = new ContextMenuStrip();
         private readonly UserPreferences preferences = UserPreferences.Load(UserPreferences.DefaultPath);
         private bool exitRequested;
+        private bool restoring;
+        private FormWindowState lastVisibleState = FormWindowState.Normal;
+        private readonly WindowDiagnostics windowDiagnostics;
         private readonly HistoryMonitor history;
         private readonly Panel pageHost = new Panel { Dock = DockStyle.Fill };
         private readonly Dictionary<string, Button> navigation = new Dictionary<string, Button>();
@@ -124,13 +128,14 @@ namespace SteamDirect
 
         internal MainWindow(bool background = false, HistoryMonitor historyOverride = null)
         {
+            windowDiagnostics = new WindowDiagnostics(this) { Enabled = preferences.WindowDiagnostics };
             history = historyOverride ?? new HistoryMonitor(HistoryMonitor.DefaultPath);
             Motion.Reduced = preferences.ReduceMotion; Motion.IsGaming = () => history.IsPlaying;
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.1";
-            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            Text = "Steam 直连助手 v3.0.2";
+            ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
             Font = UiStyle.Body;
@@ -253,11 +258,12 @@ namespace SteamDirect
             logBox.Font = UiStyle.Caption;
             logBox.BorderStyle = BorderStyle.None;
             logBox.AccessibleName = "操作记录";
-            logFrame.Controls.Add(logBox);
+            logFrame.Controls.Add(new NativeScrollFrame(logBox));
             footer.Controls.Add(logFrame, 0, 1);
             animationTimer.Interval = UiStyle.MotionTick;
             animationTimer.Tick += (sender, args) =>
             {
+                if (!Visible || WindowState == FormWindowState.Minimized || !Motion.Allowed) { animationTimer.Stop(); return; }
                 timeline.Angle = (timeline.Angle + UiStyle.SpinnerStep) % 360;
                 timeline.Invalidate();
                 if (timeline.ActiveStep >= 0 && timeline.ActiveStep < timeline.StepCount)
@@ -277,7 +283,7 @@ namespace SteamDirect
             trayIcon.Icon = Icon;
             trayIcon.ContextMenuStrip = trayMenu;
             trayIcon.DoubleClick += (sender, args) => ShowMainWindow();
-            trayIcon.Visible = preferences.TrayEnabled;
+            trayIcon.Visible = preferences.TrayEnabled && !WindowEnvironment.OffscreenTests;
             FormClosing += (sender, args) =>
             {
                 if (args.CloseReason == CloseReason.UserClosing && !exitRequested && preferences.TrayEnabled)
@@ -344,7 +350,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.1 · 游戏网络助手", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.2 · 游戏网络助手", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             shell.Controls.Add(rail, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);
@@ -390,7 +396,7 @@ namespace SteamDirect
             else
             {
                 var settings = new SettingsWindow(preferences.TrayEnabled, StartupSettings.IsEnabled(),
-                    preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor, preferences.LogDirectory, preferences.ReduceMotion);
+                    preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor, preferences.LogDirectory, preferences.ReduceMotion, preferences.WindowDiagnostics);
                 settings.SaveRequested += () => SaveSettings(settings);
                 settings.CancelRequested += () => NavigateTo("概览");
                 activePage = settings;
@@ -416,9 +422,11 @@ namespace SteamDirect
                     activePage = null;
                 }
                 history.Dispose();
+                windowDiagnostics.Dispose();
                 animationTimer.Dispose();
                 trayIcon.Dispose();
                 trayMenu.Dispose();
+                if (ownedMainIcon != null) ownedMainIcon.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -431,15 +439,30 @@ namespace SteamDirect
 
         internal void ShowMainWindow()
         {
-            Show();
-            WindowState = FormWindowState.Normal;
-            Activate();
+            if (IsDisposed || restoring) return;
+            restoring = true;
+            try {
+                windowDiagnostics.Begin();
+                if (!Visible) Show();
+                if (WindowState == FormWindowState.Minimized) WindowState = lastVisibleState;
+                CheckWorkArea();
+                windowDiagnostics.Displayed();
+                if (!WindowEnvironment.OffscreenTests) Activate();
+            } finally { restoring = false; }
         }
 
         internal void RequestExit()
         {
             exitRequested = true;
             Close();
+        }
+
+        protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); UpdateOperationAnimation(); }
+        protected override void OnResize(EventArgs e) { base.OnResize(e); if (Visible && WindowState != FormWindowState.Minimized) lastVisibleState = WindowState; UpdateOperationAnimation(); }
+        private void UpdateOperationAnimation()
+        {
+            if (animationTimer == null) return;
+            if (running && Visible && WindowState != FormWindowState.Minimized && Motion.Allowed) animationTimer.Start(); else animationTimer.Stop();
         }
 
         private void OpenSettings()
@@ -455,8 +478,9 @@ namespace SteamDirect
                     if (!dialog.ValidateThemeColor()) return;
                     Directory.CreateDirectory(dialog.LogDirectory);
                     if (dialog.AutoStart != StartupSettings.IsEnabled()) StartupSettings.SetEnabled(dialog.AutoStart);
-                    UserPreferences.Save(UserPreferences.DefaultPath, dialog.TrayEnabled, dialog.RetentionDays, dialog.NightMode, dialog.ThemeColor, dialog.LogDirectory, dialog.ReduceMotion);
+                    UserPreferences.Save(UserPreferences.DefaultPath, dialog.TrayEnabled, dialog.RetentionDays, dialog.NightMode, dialog.ThemeColor, dialog.LogDirectory, dialog.ReduceMotion, dialog.DiagnosticsEnabled);
                     preferences.LogDirectory = dialog.LogDirectory; LogStore.DirectoryPath = preferences.LogDirectory;
+                    preferences.WindowDiagnostics = dialog.DiagnosticsEnabled; windowDiagnostics.Enabled = preferences.WindowDiagnostics;
                     preferences.ReduceMotion = dialog.ReduceMotion; Motion.Reduced = preferences.ReduceMotion;
                     preferences.NightMode = dialog.NightMode;
                     preferences.ThemeColor = dialog.ThemeColor;
@@ -464,7 +488,7 @@ namespace SteamDirect
                     preferences.RetentionDays = dialog.RetentionDays;
                     lastCleanupDate = DateTime.MinValue;
                     preferences.TrayEnabled = dialog.TrayEnabled;
-                    trayIcon.Visible = preferences.TrayEnabled;
+                    trayIcon.Visible = preferences.TrayEnabled && !WindowEnvironment.OffscreenTests;
                     Log("设置已保存：托盘" + (preferences.TrayEnabled ? "开启" : "关闭") + "，开机自启" + (dialog.AutoStart ? "开启" : "关闭") + "。");
                     dialog.ShowSaved();
                 }
@@ -557,7 +581,7 @@ namespace SteamDirect
             timeline.ActiveStep = 0;
             timeline.Failed = false;
             operationWatch.Restart();
-            animationTimer.Start();
+            UpdateOperationAnimation();
             runButton.Enabled = false;
             restoreButton.Enabled = false;
             cleanupPanel.AllowCleanup(false);

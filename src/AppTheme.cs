@@ -15,6 +15,8 @@ namespace SteamDirect
         internal static readonly Color Accent = Color.FromArgb(103, 80, 164);
         internal static readonly Color Pill = Color.FromArgb(234, 235, 240);
         internal static readonly Color Surface = Color.White;
+        internal static readonly Color InputSurface = Color.FromArgb(242, 244, 247);
+        internal static readonly Color ElevatedSurface = Color.FromArgb(236, 239, 243);
         internal static readonly Color Success = Color.FromArgb(24, 137, 110);
         internal static readonly Color Warning = Color.FromArgb(184, 102, 24);
         internal static readonly Color Error = Color.FromArgb(191, 72, 57);
@@ -67,8 +69,8 @@ namespace SteamDirect
         private static void UpdatePalette()
         {
             primary = ThemeColor;
-            canvas = IsDark ? Color.FromArgb(16, 18, 23) : Color.FromArgb(247, 248, 250);
-            surface = IsDark ? Color.FromArgb(24, 27, 34) : Color.White;
+            canvas = IsDark ? Color.FromArgb(16, 17, 20) : Color.FromArgb(247, 248, 250);
+            surface = IsDark ? Color.FromArgb(25, 28, 34) : Color.White;
             inkText = IsDark ? Color.FromArgb(234, 238, 245) : Color.FromArgb(29, 33, 41);
             mutedText = IsDark ? Color.FromArgb(166, 176, 192) : Color.FromArgb(99, 108, 122);
             Color textSurface = IsDark ? surface : canvas;
@@ -125,6 +127,8 @@ namespace SteamDirect
         internal static Color Background(Color light)
         {
             if (light.A == 0) return light;
+            if (light.ToArgb() == InputSurface.ToArgb()) return IsDark ? Color.FromArgb(23, 26, 32) : InputSurface;
+            if (light.ToArgb() == ElevatedSurface.ToArgb()) return IsDark ? Color.FromArgb(32, 36, 44) : ElevatedSurface;
             if (light.ToArgb() == Pill.ToArgb()) return tone;
             if (light.ToArgb() == Accent.ToArgb()) return primary;
             bool page = light.ToArgb() == Page.ToArgb();
@@ -220,6 +224,12 @@ namespace SteamDirect
             var original = originals.GetValue(control, c => new Original(c));
             control.BackColor = Background(original.Back);
             control.ForeColor = Text(original.Fore);
+            if (control is ListView || control is TextBoxBase || control is ComboBox || control is DataGridView || control is ScrollableControl)
+            {
+                control.HandleCreated -= NativeThemeCreated;
+                control.HandleCreated += NativeThemeCreated;
+                if (control.IsHandleCreated) ApplyNativeTheme(control);
+            }
             var grid = control as DataGridView;
             if (grid != null)
             {
@@ -258,6 +268,13 @@ namespace SteamDirect
             }
             foreach (Control child in control.Controls) Paint(child);
             control.Invalidate();
+        }
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] private static extern int SetWindowTheme(IntPtr window, string app, string id);
+        private static void NativeThemeCreated(object sender, EventArgs args) { ApplyNativeTheme((Control)sender); }
+        private static void ApplyNativeTheme(Control control)
+        {
+            try { SetWindowTheme(control.Handle, IsDark ? "DarkMode_Explorer" : "Explorer", null); }
+            catch (DllNotFoundException) { } catch (EntryPointNotFoundException) { }
         }
         private static void PaintDisabledButton(object sender, PaintEventArgs args)
         {

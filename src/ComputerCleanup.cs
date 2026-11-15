@@ -265,8 +265,9 @@ namespace SteamDirect
             clean.Click += async (sender, args) => await CleanAsync(); layout.Controls.Add(clean, 0, 3); layout.SetColumnSpan(clean, 2);
             frame.Controls.Add(layout); Controls.Add(frame);
             Load += async (sender, args) => { UpdateMemory(); await RefreshEstimateAsync(); };
-            timer.Interval = 5000; timer.Tick += (sender, args) => UpdateMemory(); timer.Start();
+            timer.Interval = 5000; timer.Tick += (sender, args) => { if (!Visible) { timer.Stop(); return; } if (Motion.IsGaming != null && Motion.IsGaming()) return; UpdateMemory(); }; if (Visible) timer.Start();
         }
+        protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); if (timer == null) return; if (Visible) { UpdateMemory(); timer.Start(); } else timer.Stop(); }
         internal void AllowCleanup(bool value) { allowed = value; clean.Enabled = allowed && !busy; }
         private void UpdateMemory()
         {

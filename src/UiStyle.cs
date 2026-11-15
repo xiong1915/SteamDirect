@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -28,8 +28,10 @@ namespace SteamDirect
         internal static Padding CardPadding { get { return new Padding(Space20); } }
         internal static Padding DensePadding { get { return new Padding(Space16); } }
 
-        internal static int Scale(Control control, int value) { return (int)Math.Round(value * control.DeviceDpi / 96F); }
-        internal static int TextHeight(Control control) { return (int)Math.Ceiling(control.Font.GetHeight(control.DeviceDpi)); }
+        private static int NativeDpi(Control control) { Control root = control; while (root.Parent != null) root = root.Parent; return root.DeviceDpi; }
+        internal static int Dpi(Control control) { return WindowEnvironment.OffscreenTests && WindowEnvironment.LayoutDpi > 0 ? WindowEnvironment.LayoutDpi : NativeDpi(control); }
+        internal static int Scale(Control control, int value) { return (int)Math.Round(value * Dpi(control) / 96F); }
+        internal static int TextHeight(Control control) { return (int)Math.Ceiling(control.Font.GetHeight(NativeDpi(control))); }
         internal static TableLayoutPanel Grid(int columns, int rows)
         {
             return new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = columns, RowCount = rows, Margin = Padding.Empty };
@@ -168,11 +170,11 @@ namespace SteamDirect
             Dock = DockStyle.Fill;
             Padding = new Padding(UiStyle.Space12, UiStyle.Space8, UiStyle.Space12, UiStyle.Space8);
             Margin = Padding.Empty;
-            BackColor = AppTheme.Surface;
+            BackColor = AppTheme.InputSurface;
             CornerRadius = UiStyle.ControlRadius;
             input.AccessibleName = accessibleName;
             input.Font = UiStyle.Body;
-            input.BackColor = AppTheme.Surface;
+            input.BackColor = AppTheme.InputSurface;
             input.ForeColor = AppTheme.Ink;
             input.Dock = DockStyle.None;
             input.Margin = Padding.Empty;
@@ -201,7 +203,7 @@ namespace SteamDirect
         {
             base.OnPaint(e);
             if (Width < 2 || Height < 2) return;
-            using (var path = UiStyle.RoundRect(new RectangleF(.5F, .5F, Width - 1, Height - 1), CornerRadius * DeviceDpi / 96F))
+            using (var path = UiStyle.RoundRect(new RectangleF(.5F, .5F, Width - 1, Height - 1), CornerRadius * UiStyle.Dpi(this) / 96F))
             using (var pen = new Pen(Motion.Blend(AppTheme.Edge, AppTheme.Text(AppTheme.Accent), focus.Current)))
                 e.Graphics.DrawPath(pen, path);
         }

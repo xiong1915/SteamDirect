@@ -29,6 +29,8 @@ namespace SteamDirect
         [STAThread]
         private static int Main()
         {
+            System.Windows.Forms.Application.SetUnhandledExceptionMode(System.Windows.Forms.UnhandledExceptionMode.ThrowException);
+            WindowEnvironment.OffscreenTests = true;
             Check("proxy backup and fault injection", ProxyRecovery);
             Check("SQLite transactions, recovery and Unicode", Storage);
             Check("statistics and incident tracking", Statistics);

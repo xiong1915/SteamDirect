@@ -24,6 +24,17 @@ jobs:
         run: .\Build.ps1
       - name: Run isolated regression tests
         run: .\tests\Run.ps1
+      - name: Offscreen layout and restore acceptance
+        run: .\tests\Run-Render.ps1
+      - name: Preserve offscreen acceptance artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: offscreen-acceptance
+          path: |
+            dist/render-acceptance/*.png
+            dist/render-acceptance/results.txt
+          retention-days: 7
       - name: Verify output
         run: |
           if (-not (Test-Path dist/SteamDirect.exe)) { throw 'Executable missing' }

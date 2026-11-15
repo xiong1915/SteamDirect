@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -26,7 +26,7 @@ namespace SteamDirect
         {
             e.Graphics.Clear(BackColor);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            float scale = DeviceDpi / 96f;
+            float scale = UiStyle.Dpi(this) / 96f;
             float width = 36 * scale, height = 20 * scale;
             float top = (Height - height) / 2;
             Color track = Motion.Blend(AppTheme.Edge, AppTheme.Text(AppTheme.Accent), Enabled ? position.Current : 0);

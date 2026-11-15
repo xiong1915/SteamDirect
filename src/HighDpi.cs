@@ -22,10 +22,20 @@ namespace SteamDirect {
   internal static void EnablePerMonitorContext() { try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch(EntryPointNotFoundException) { SetProcessDPIAware(); } }
   private static void RunUserConfigured(string[] args) {
    EnablePerMonitorContext();
-   var setup=new AppDomainSetup { ApplicationBase=Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location),ConfigurationFile=ConfigureUserFallback(),TargetFrameworkName=".NETFramework,Version=v4.8" };
+   var setup=new AppDomainSetup { ApplicationBase=Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location),ConfigurationFile=SafeFallbackConfiguration(),TargetFrameworkName=".NETFramework,Version=v4.8" };
    var domain=AppDomain.CreateDomain("SteamDirect.HighDpi.UI",null,setup);
    try { var entry=(DpiEntry)domain.CreateInstanceAndUnwrap(typeof(DpiEntry).Assembly.FullName,typeof(DpiEntry).FullName);entry.Run(args); }
    finally { AppDomain.Unload(domain); }
+  }
+  private static string SafeFallbackConfiguration() {
+   try { return ConfigureUserFallback(); }
+   catch(IOException) { return null; }
+   catch(UnauthorizedAccessException) { return null; }
+  }
+  [DllImport("user32.dll")] private static extern IntPtr GetThreadDpiAwarenessContext();
+  [DllImport("user32.dll")] private static extern bool AreDpiAwarenessContextsEqual(IntPtr first,IntPtr second);
+  internal static string Awareness {
+   get { try { var context=GetThreadDpiAwarenessContext(); if(AreDpiAwarenessContextsEqual(context,new IntPtr(-4)))return "PerMonitorV2";if(AreDpiAwarenessContextsEqual(context,new IntPtr(-3)))return "PerMonitor";if(AreDpiAwarenessContextsEqual(context,new IntPtr(-2)))return "SystemAware";return "Unaware/other"; } catch(EntryPointNotFoundException) { return "Unavailable"; } }
   }
   internal static bool EnsureConfiguration(string[] args) {
    string executable=Assembly.GetExecutingAssembly().Location;

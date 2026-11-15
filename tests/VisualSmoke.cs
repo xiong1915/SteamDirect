@@ -35,7 +35,7 @@ namespace SteamDirect
         }
         [STAThread] private static int Main(string[] arguments)
         {
-            HighDpi.EnablePerMonitorContext();
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException); WindowEnvironment.OffscreenTests = true; HighDpi.EnablePerMonitorContext();
             Application.EnableVisualStyles();
             string temporary = Path.Combine(Path.GetTempPath(), "SteamDirect-visual-" + Guid.NewGuid().ToString("N"));
             string output = Path.GetFullPath(arguments.Length == 0 ? "dist/visual-smoke" : arguments[0]);
@@ -64,7 +64,7 @@ namespace SteamDirect
                             {
                                 Navigate(main, page); Pump(page == "游戏记录" ? 400 : 0);
                                 Capture(main, Path.Combine(output, mode + "-" + page + ".png"));
-                                if (page == "概览") { Size normal = main.Size; main.Size = main.MinimumSize; Capture(main, Path.Combine(output, mode + "-minimum.png")); main.Size = normal; }
+                                if (page == "概览" || page == "游戏记录") { Size normal = main.Size; main.Size = main.MinimumSize; Pump(50); Capture(main, Path.Combine(output, mode + "-" + page + "-minimum.png")); main.Size = normal; }
                             }
                         }
                         using (var details = new HistoryDataWindow(monitor.Store, session, () => false))

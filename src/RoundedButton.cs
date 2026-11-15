@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -53,7 +53,7 @@ namespace SteamDirect
             e.Graphics.Clear(Parent == null ? AppTheme.Background(AppTheme.Page) : Parent.BackColor);
             if (Width < 2 || Height < 2) return;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            float scale = DeviceDpi / 96F;
+            float scale = UiStyle.Dpi(this) / 96F;
             float radius = Math.Min(CornerRadius * scale, (Math.Min(Width, Height) - 1) / 2f);
             var box = new RectangleF(.5f, .5f, Width - 1, Height - 1);
             Color hover = FlatAppearance.MouseOverBackColor.A == 0 ? BackColor : FlatAppearance.MouseOverBackColor;

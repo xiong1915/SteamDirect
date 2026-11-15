@@ -22,6 +22,7 @@ namespace SteamDirect
         internal static readonly string DefaultPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamDirect", "settings.ini");
         internal string LogDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamDirect", "Logs");
         internal bool ReduceMotion;
+        internal bool WindowDiagnostics;
         internal bool TrayEnabled = true;
         internal int RetentionDays = 7;
         internal bool NightMode = true;
@@ -34,6 +35,7 @@ namespace SteamDirect
             foreach (string line in lines)
             {
                 if (line.StartsWith("LogDirectory=", StringComparison.Ordinal)) { try { var value = line.Substring(13); if (Path.IsPathRooted(value)) result.LogDirectory = Path.GetFullPath(value); } catch (ArgumentException) { } catch (NotSupportedException) { } catch (PathTooLongException) { } }
+                bool diagnostic; if (line.StartsWith("WindowDiagnostics=", StringComparison.Ordinal) && bool.TryParse(line.Substring(18), out diagnostic)) result.WindowDiagnostics = diagnostic;
                 bool reduce; if (line.StartsWith("ReduceMotion=", StringComparison.Ordinal) && bool.TryParse(line.Substring(13), out reduce)) result.ReduceMotion = reduce;
                 bool tray;
                 int days;
@@ -47,7 +49,7 @@ namespace SteamDirect
             }
             return result;
         }
-        internal static void Save(string path, bool trayEnabled, int retentionDays, bool nightMode = false, string themeColor = "#6750A4", string logDirectory = null, bool reduceMotion = false)
+        internal static void Save(string path, bool trayEnabled, int retentionDays, bool nightMode = false, string themeColor = "#6750A4", string logDirectory = null, bool reduceMotion = false, bool windowDiagnostics = false)
         {
             if (retentionDays < 1 || retentionDays > 365) throw new ArgumentOutOfRangeException("retentionDays");
             Color color;
@@ -58,7 +60,7 @@ namespace SteamDirect
             logDirectory = Path.GetFullPath(logDirectory);
             string stage = path + ".new-" + Guid.NewGuid().ToString("N");
             try { File.WriteAllLines(stage, new[] { "TrayEnabled=" + trayEnabled, "RetentionDays=" + retentionDays, "NightMode=" + nightMode,
-                "ThemeColor=" + AppTheme.ColorCode(color), "LogDirectory=" + (logDirectory ?? new UserPreferences().LogDirectory), "ReduceMotion=" + reduceMotion }, Encoding.UTF8);
+                "ThemeColor=" + AppTheme.ColorCode(color), "LogDirectory=" + (logDirectory ?? new UserPreferences().LogDirectory), "ReduceMotion=" + reduceMotion, "WindowDiagnostics=" + windowDiagnostics }, Encoding.UTF8);
             if (File.Exists(path)) File.Replace(stage, path, null); else File.Move(stage, path); } finally { if (File.Exists(stage)) File.Delete(stage); }
         }
     }
@@ -108,7 +110,7 @@ namespace SteamDirect
         }
     }
 
-    internal sealed class SettingsWindow : Form
+    internal sealed class SettingsWindow : DesktopForm
     {
         internal event Action SaveRequested;
         internal event Action CancelRequested;
@@ -120,6 +122,8 @@ namespace SteamDirect
         private readonly TextBox colorCode = new TextBox();
         private readonly TextBox logDirectoryBox = new TextBox();
         private readonly CheckBox reduce = new ToggleSwitch();
+        private readonly CheckBox diagnostic = new ToggleSwitch();
+        internal bool DiagnosticsEnabled { get { return diagnostic.Checked; } }
         internal string LogDirectory { get { return Path.GetFullPath(logDirectoryBox.Text.Trim()); } }
         internal bool ReduceMotion { get { return reduce.Checked; } }
         private Color selectedColor;
@@ -128,7 +132,7 @@ namespace SteamDirect
         internal bool NightMode { get { return night.Checked; } }
         internal int RetentionDays { get { return (int)days.Value; } }
         internal string ThemeColor { get { return colorCode.Text.Trim().ToUpperInvariant(); } }
-        internal SettingsWindow(bool trayEnabled, bool autoStart, int retentionDays, bool nightMode = false, string themeColor = "#6750A4", string logDirectory = null, bool reduceMotion = false)
+        internal SettingsWindow(bool trayEnabled, bool autoStart, int retentionDays, bool nightMode = false, string themeColor = "#6750A4", string logDirectory = null, bool reduceMotion = false, bool windowDiagnostics = false)
         {
             SuspendLayout();
             Text = "设置";
@@ -154,9 +158,9 @@ namespace SteamDirect
             var viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Margin = Padding.Empty };
             var cards = UiStyle.Grid(1, 3);
             cards.Dock = DockStyle.Top;
-            cards.Height = 528;
+            cards.Height = 568;
             cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 176, 152, 200 }) cards.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
+            foreach (int height in new[] { 176, 192, 200 }) cards.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             viewport.Controls.Add(cards);
             layout.Controls.Add(viewport, 0, 1);
 
@@ -169,7 +173,7 @@ namespace SteamDirect
             appearance.Controls.Add(new Label { Text = "选择主题色或输入 #RRGGBB，保存后生效。", Dock = DockStyle.Fill,
                 ForeColor = AppTheme.Muted, AutoEllipsis = true, Margin = Padding.Empty, Font = UiStyle.Caption }, 0, 3);
 
-            var behavior = Section(cards, 1, "启动与托盘", 32, 40);
+            var behavior = Section(cards, 1, "启动与托盘", 32, 40, 40);
             tray.Text = "关闭窗口后留在托盘";
             tray.Checked = trayEnabled;
             tray.Dock = DockStyle.Fill;
@@ -178,6 +182,7 @@ namespace SteamDirect
             startup.Dock = DockStyle.Fill;
             behavior.Controls.Add(tray, 0, 1);
             behavior.Controls.Add(startup, 0, 2);
+            diagnostic.Text = "窗口性能诊断（默认关闭）"; diagnostic.Checked = windowDiagnostics; diagnostic.Dock = DockStyle.Fill; behavior.Controls.Add(diagnostic, 0, 3);
 
             var logs = Section(cards, 2, "日志与动效", 32, 40, 40);
             logDirectoryBox.Text = logDirectory ?? LogStore.DirectoryPath;
@@ -239,7 +244,7 @@ namespace SteamDirect
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
             about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.1", Dock = DockStyle.Fill,
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.2", Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true, Font = UiStyle.Caption }, 0, 0);
             const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
             var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill,

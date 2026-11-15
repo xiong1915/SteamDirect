@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
@@ -75,7 +75,7 @@ namespace SteamDirect
         }
     }
 
-    internal sealed class HistoryDataWindow : Form
+    internal sealed class HistoryDataWindow : DesktopForm
     {
         private const int PageSize = 200;
         private readonly HistoryStore store;

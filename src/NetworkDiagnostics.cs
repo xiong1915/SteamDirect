@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -346,7 +346,7 @@ namespace SteamDirect
 
 namespace SteamDirect
 {
-    internal sealed class NetworkWindow : Form
+    internal sealed class NetworkWindow : DesktopForm
     {
         private readonly TextBox target = new TextBox();
         private readonly TextBox details = new TextBox();
@@ -511,7 +511,7 @@ namespace SteamDirect
             box.Margin = Padding.Empty;
             box.ForeColor = foreground;
             if (box == details) box.Font = UiStyle.Caption;
-            layout.Controls.Add(box, 0, 1);
+            layout.Controls.Add(new NativeScrollFrame(box), 0, 1);
             frame.Controls.Add(layout);
             return frame;
         }

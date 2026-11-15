@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
@@ -10,7 +10,7 @@ using System.Windows.Forms;
 
 namespace SteamDirect
 {
-    internal sealed class HistoryWindow : Form
+    internal sealed class HistoryWindow : DesktopForm
     {
         private const int RecordLimit = 200;
         private const int ComparisonLimit = 20;
@@ -27,14 +27,14 @@ namespace SteamDirect
         private readonly ListView records = new HistoryRecordList();
         private readonly ListView incidents = new ListView();
         private readonly TextBox gameFilter = new TextBox();
-        private readonly ComboBox modeFilter = new ComboBox();
-        private readonly ComboBox recordScope = new ComboBox();
+        private readonly ComboBox modeFilter = new DarkComboBox();
+        private readonly ComboBox recordScope = new DarkComboBox();
         private readonly HistoryNetworkChart networkChart = new HistoryNetworkChart();
-        private readonly TextBox comparisonText = new TextBox();
+        private readonly RichTextBox comparisonText = new RichTextBox();
         private readonly Label overviewTitle = new Label();
         private readonly Label overviewNote = new Label();
         private readonly Label[] metricValues = { new Label(), new Label(), new Label() };
-        private readonly TextBox overviewText = new TextBox();
+        private readonly RichTextBox overviewText = new RichTextBox();
         private readonly Label status = new Label();
         private readonly Label detailTitle = new Label();
         private readonly Label detailMeta = new Label();
@@ -69,7 +69,7 @@ namespace SteamDirect
             var root = Grid(1, 4);
             root.Padding = UiStyle.PagePadding;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
@@ -79,39 +79,15 @@ namespace SteamDirect
 
             var filterCard = UiStyle.Card(true);
             filterCard.Margin = new Padding(0, 0, 0, UiStyle.Gap);
-            var filters = Grid(6, 2);
-            filters.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
-            filters.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int width in new[] { 126, 180, 12, 88, 106 }) filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, width));
-            filters.Controls.Add(Caption("游戏名称"), 0, 0);
-            gameFilter.Dock = DockStyle.Fill;
-            gameFilter.Margin = new Padding(3, 1, 12, 0);
-            gameFilter.BorderStyle = BorderStyle.FixedSingle;
-            gameFilter.AccessibleName = "按游戏名称筛选";
-            filters.Controls.Add(UiStyle.Entry(gameFilter, "按游戏名称筛选"), 0, 1);
-            filters.Controls.Add(Caption("网络模式"), 1, 0);
-            modeFilter.Dock = DockStyle.Fill;
-            modeFilter.Margin = new Padding(3, 1, 0, 0);
-            modeFilter.AccessibleName = "按网络模式筛选";
-            modeFilter.DropDownStyle = ComboBoxStyle.DropDownList;
+            modeFilter.DropDownStyle = recordScope.DropDownStyle = ComboBoxStyle.DropDownList;
             modeFilter.Items.AddRange(new object[] { "全部", "直连", "代理", "未知", "混合" });
-            modeFilter.SelectedIndex = 0;
-            UiStyle.ConfigureChoice(modeFilter);
-            filters.Controls.Add(UiStyle.Entry(modeFilter, "按网络模式筛选"), 1, 1);
-            filters.Controls.Add(Caption("记录范围"), 2, 0);
-            recordScope.DropDownStyle = ComboBoxStyle.DropDownList;
             recordScope.Items.AddRange(new object[] { "今天的对局", "查看历史对局" });
-            recordScope.SelectedIndex = 0;
-            UiStyle.ConfigureChoice(recordScope);
-            filters.Controls.Add(UiStyle.Entry(recordScope, "查看当天或历史对局记录"), 2, 1);
+            modeFilter.SelectedIndex = recordScope.SelectedIndex = 0;
+            UiStyle.ConfigureChoice(modeFilter); UiStyle.ConfigureChoice(recordScope);
             recordScope.SelectedIndexChanged += async (sender, args) => { if (IsHandleCreated && !loadingRecords) await RefreshAsync(); };
-            StyleButton(refresh, "查询", false);
-            StyleButton(export, "导出记录", false);
-            refresh.Margin = export.Margin = new Padding(3, 0, 0, 1);
-            export.Enabled = false;
-            filters.Controls.Add(refresh, 4, 1);
-            filters.Controls.Add(export, 5, 1);
+            StyleButton(refresh, "查询", true); StyleButton(export, "导出记录", false); export.Enabled = false;
+            var filters = new ReportFilters(gameFilter, modeFilter, recordScope, refresh, export);
+            filters.HeightRequired += height => { float required = height + filterCard.Padding.Vertical + filterCard.Margin.Vertical; if (root.RowStyles[1].Height != required) root.RowStyles[1].Height = required; };
             filterCard.Controls.Add(filters);
             root.Controls.Add(filterCard, 0, 1);
 
@@ -170,13 +146,14 @@ namespace SteamDirect
             {
                 if (records.SelectedItems.Count == 1) OpenDetailedData(records.SelectedItems[0].Tag as HistorySession);
             });
+            records.Disposed += (sender, args) => recordMenu.Dispose();
             recordMenu.Opening += (sender, args) => AppTheme.ApplyTray(recordMenu);
             records.ContextMenuStrip = recordMenu;
             records.MouseMove += (sender, args) =>
             {
                 records.Cursor = DetailedRecordAt(args.Location) != null ? Cursors.Hand : Cursors.Default;
             };
-            listLayout.Controls.Add(records, 0, 1);
+            listLayout.Controls.Add(new NativeScrollFrame(records), 0, 1);
             var pages = Grid(2, 1);
             pages.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             pages.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
@@ -220,18 +197,23 @@ namespace SteamDirect
             incidents.Columns.Add("恢复用时", 94);
             SetColumnWeights(incidents, 31, 25, 25, 19);
             tabs.Add("本局报告", BuildOverview());
-            var chartScroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = AppTheme.Surface };
-            networkChart.Dock = DockStyle.Top;
+            var chartScroll = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Surface };
+            networkChart.Dock = DockStyle.Fill;
             networkChart.Height = 240;
             chartScroll.Controls.Add(networkChart);
-            chartScroll.SizeChanged += (sender, args) => networkChart.Height = Math.Max(chartScroll.ClientSize.Height, (UiStyle.TextHeight(networkChart) + UiStyle.Scale(networkChart, 8)) * 6 + UiStyle.Scale(networkChart, 80));
+
             tabs.Add("网络波动", chartScroll);
-            tabs.Add("异常时间线", incidents);
-            tabs.Add("历史参考", comparisonText);
+            tabs.Add("异常时间线", new NativeScrollFrame(incidents));
+            tabs.Add("历史参考", new NativeScrollFrame(comparisonText));
             detail.Controls.Add(tabs, 0, 2);
             detailCard.Controls.Add(detail);
             body.Controls.Add(detailCard, 1, 0);
-
+            body.SizeChanged += (sender, args) => {
+                float left = Math.Min(body.ClientSize.Width * .45F, Math.Max(UiStyle.Scale(body, 240), Math.Min(UiStyle.Scale(body, 360), body.ClientSize.Width * .34F)));
+                if (body.ColumnStyles[0].SizeType != SizeType.Absolute || Math.Abs(body.ColumnStyles[0].Width - left) > 1) {
+                    body.ColumnStyles[0].SizeType = SizeType.Absolute; body.ColumnStyles[0].Width = left;
+                }
+            };
             status.Dock = DockStyle.Fill;
             status.Margin = Padding.Empty;
             status.Font = UiStyle.Caption;
@@ -295,7 +277,7 @@ namespace SteamDirect
             layout.Controls.Add(metrics, 0, 2);
             SetupText(overviewText, "本局结果说明与建议");
             overviewText.Font = UiStyle.Body;
-            layout.Controls.Add(overviewText, 0, 3);
+            layout.Controls.Add(new NativeScrollFrame(overviewText), 0, 3);
             return layout;
         }
 
@@ -362,7 +344,7 @@ namespace SteamDirect
             if (bounds.Width <= 0) return;
             var background = args.Item.Selected
                 ? AppTheme.Background(AppTheme.Pill)
-                : args.ItemIndex % 2 == 0 ? AppTheme.Background(AppTheme.Surface) : AppTheme.Background(Page);
+                : view is HistoryRecordList && ((HistoryRecordList)view).HoveredIndex == args.ItemIndex ? AppTheme.Background(AppTheme.Page) : AppTheme.Background(AppTheme.Surface);
             using (var brush = new SolidBrush(background)) args.Graphics.FillRectangle(brush, bounds);
             if (args.Item.Selected && args.ColumnIndex == 0)
             {
@@ -399,11 +381,22 @@ namespace SteamDirect
                 AppTheme.Text(color), TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
         }
 
-        private static void SetupText(TextBox text, string label)
+        private static void SetupText(RichTextBox text, string label)
         {
-            UiStyle.ReadOnlyText(text, label);
+            text.AccessibleName = label; text.Dock = DockStyle.Fill; text.Font = UiStyle.Body; text.ReadOnly = true; text.BorderStyle = BorderStyle.None; text.BackColor = AppTheme.Surface; text.ForeColor = Ink; text.ScrollBars = RichTextBoxScrollBars.Vertical; text.DetectUrls = false; text.HideSelection = true;
         }
 
+        private static void FormatNarrative(RichTextBox text)
+        {
+            text.SelectAll(); text.SelectionFont = text.Font; text.SelectionColor = AppTheme.Text(Ink);
+            foreach (string heading in new[] { "问题在哪", "怎么处理", "恢复情况", "判断范围", "比较范围", "怎么使用这个结论", "直连和代理，哪种表现更好" })
+            {
+                int at = text.Text.IndexOf(heading, StringComparison.Ordinal);
+                if (at < 0) continue;
+                text.Select(at, heading.Length); using (var bold = new Font(text.Font, FontStyle.Bold)) text.SelectionFont = bold;
+            }
+            text.Select(0, 0); text.ScrollToCaret();
+        }
         private static Rectangle RecordActionBounds(ListViewItem item)
         {
             var view = item.ListView;
@@ -415,10 +408,10 @@ namespace SteamDirect
 
         private static int[] RecordTextHeights(ListViewItem item, int width)
         {
-            var font = item.ListView.Font;
+            var font = item.ListView == null ? UiStyle.Caption : item.ListView.Font;
             var size = new Size(Math.Max(1, width), 1000);
             var flags = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
-            string prefix = ((HistorySession)item.Tag).HasAnomalies ? "● 异常 · " : "";
+            string prefix = item.Tag is HistorySession && ((HistorySession)item.Tag).HasAnomalies ? "● 异常 · " : "";
             int title;
             using (var bold = new Font(font, FontStyle.Bold))
                 title = TextRenderer.MeasureText(prefix + item.Text, bold, size, flags).Height + 6;
@@ -428,11 +421,12 @@ namespace SteamDirect
 
         private void FitRecordRows()
         {
-            if (records.ClientSize.Width < 1) return;
+            if (fillingRecords || shuttingDown || records.IsDisposed || records.ClientSize.Width < 1) return;
             int width = Math.Max(80, records.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 20);
             int height = (UiStyle.TextHeight(records) + UiStyle.Scale(records, 6)) * 4 + UiStyle.Scale(records, 24);
             foreach (ListViewItem row in records.Items)
             {
+                if (row == null || row.ListView != records || !(row.Tag is HistorySession) || row.SubItems.Count < 4) continue;
                 int[] blocks = RecordTextHeights(row, width);
                 height = Math.Max(height, blocks[0] + blocks[1] + blocks[2] + UiStyle.TextHeight(records) + UiStyle.Scale(records, 28));
             }
@@ -876,9 +870,9 @@ namespace SteamDirect
             metricValues[1].Text = metrics.Attempts > 0 ? metrics.LossRate.ToString("F1", CultureInfo.InvariantCulture) + "%" : "—";
             metricValues[2].Text = metrics.Attempts.ToString(CultureInfo.InvariantCulture);
             overviewText.Text = detail.OverviewText;
-            overviewText.Select(0, 0);
+            FormatNarrative(overviewText);
             comparisonText.Text = detail.Comparison;
-            comparisonText.Select(0, 0);
+            FormatNarrative(comparisonText);
             networkChart.SetData(detail.Session, detail.Samples, detail.Events);
             incidents.BeginUpdate();
             try

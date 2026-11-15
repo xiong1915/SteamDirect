@@ -12,6 +12,9 @@ namespace SteamDirect {
   private bool invalidData;
   private Bitmap imageCache;
   private readonly Motion.Value reveal;
+  private readonly ToolTip dataTip = new ToolTip { ShowAlways = false };
+  private readonly List<HistorySample> tipSamples = new List<HistorySample>();
+  private long tipAt = long.MinValue;
   private bool cachedDark;
   private int cachedColor, cachedDpi;
   internal HistoryNetworkChart(){reveal=new Motion.Value(this,1F);DoubleBuffered=true;ResizeRedraw=true;Dock=DockStyle.Fill;BackColor=AppTheme.Surface;Font=UiStyle.Caption;AccessibleName="本局网络波动图";}
@@ -22,20 +25,21 @@ namespace SteamDirect {
    invalidData=(session!=null&&session.End>0&&session.End<session.Start)||start<0||start>253402300799999L||end<0||end>253402300799999L;
    foreach(var sample in samples)if(sample==null||sample.At<0||sample.At>253402300799999L)invalidData=true;
    foreach(var issue in events)if(issue==null||issue.Start<0||issue.Start>253402300799999L||issue.End<0||issue.End>253402300799999L)invalidData=true;
+   tipSamples.Clear(); if(!invalidData){tipSamples.AddRange(samples);tipSamples.Sort((a,b)=>a.At.CompareTo(b.At));}tipAt=long.MinValue;dataTip.SetToolTip(this,null);
    ClearCache();reveal.Set(samples.Count==0?1F:0F);reveal.To(1F,240);
    AccessibleDescription="本地网关与外部目标 ICMP 延迟；超时不等于游戏实际丢包。";Invalidate();
   }
-  protected override void OnFontChanged(EventArgs e){base.OnFontChanged(e);ClearCache();Height=Math.Max(Parent == null ? 0 : Parent.ClientSize.Height,(UiStyle.TextHeight(this)+UiStyle.Scale(this,8))*6+UiStyle.Scale(this,80));}
+  protected override void OnFontChanged(EventArgs e){base.OnFontChanged(e);ClearCache();}
   protected override void OnPaint(PaintEventArgs e){
    base.OnPaint(e);
    if(Width<=0||Height<=0)return;
-   if(imageCache==null||imageCache.Size!=ClientSize||cachedDark!=AppTheme.IsDark||cachedColor!=AppTheme.ThemeColor.ToArgb()||cachedDpi!=DeviceDpi){
+   if(imageCache==null||imageCache.Size!=ClientSize||cachedDark!=AppTheme.IsDark||cachedColor!=AppTheme.ThemeColor.ToArgb()||cachedDpi!=UiStyle.Dpi(this)){
     ClearCache();
     var image=new Bitmap(Width,Height);
     try{
-     image.SetResolution(DeviceDpi,DeviceDpi);
+     image.SetResolution(UiStyle.Dpi(this),UiStyle.Dpi(this));
      using(var graphics=Graphics.FromImage(image))Render(graphics);
-     imageCache=image;cachedDark=AppTheme.IsDark;cachedColor=AppTheme.ThemeColor.ToArgb();cachedDpi=DeviceDpi;
+     imageCache=image;cachedDark=AppTheme.IsDark;cachedColor=AppTheme.ThemeColor.ToArgb();cachedDpi=UiStyle.Dpi(this);
     }catch{image.Dispose();throw;}
    }
    if(reveal.Current>=.999F)e.Graphics.DrawImage(imageCache,ClientRectangle,0,0,imageCache.Width,imageCache.Height,GraphicsUnit.Pixel);
@@ -47,10 +51,20 @@ namespace SteamDirect {
     }
    }
   }
-  protected override void OnVisibleChanged(EventArgs e){base.OnVisibleChanged(e);if(!Visible)ClearCache();}
+  // Visibility alone does not invalidate data, size, theme or DPI. Keep the bounded cache for tray/tab restore.
   protected override void OnSizeChanged(EventArgs e){base.OnSizeChanged(e);ClearCache();}
   private void ClearCache(){if(imageCache!=null){imageCache.Dispose();imageCache=null;}}
-  protected override void Dispose(bool disposing){if(disposing)reveal.Dispose();if(disposing&&imageCache!=null){imageCache.Dispose();imageCache=null;}base.Dispose(disposing);}
+  protected override void Dispose(bool disposing){if(disposing){reveal.Dispose();dataTip.Dispose();}if(disposing&&imageCache!=null){imageCache.Dispose();imageCache=null;}base.Dispose(disposing);}
+  protected override void OnMouseMove(MouseEventArgs e){
+   base.OnMouseMove(e);if(tipSamples.Count==0||Width<=UiStyle.Scale(this,64))return;
+   double fraction=Math.Max(0,Math.Min(1,(e.X-UiStyle.Scale(this,48))/(double)Math.Max(1,Width-UiStyle.Scale(this,64))));
+   long at=start+(long)((Math.Max(start+1,end)-start)*fraction);int low=0,high=tipSamples.Count-1;
+   while(low<high){int mid=low+(high-low)/2;if(tipSamples[mid].At<at)low=mid+1;else high=mid;}
+   if(low>0&&Math.Abs(tipSamples[low-1].At-at)<Math.Abs(tipSamples[low].At-at))low--;
+   var sample=tipSamples[low];if(tipAt==sample.At)return;tipAt=sample.At;
+   dataTip.SetToolTip(this,FormatTime(sample.At)+" · "+sample.Mode+Environment.NewLine+"网关 ICMP："+ProbeText(sample.GatewayMs)+Environment.NewLine+"外部 ICMP："+ProbeText(sample.ExternalMs)+Environment.NewLine+"探测数据，不代表游戏服务器实际延迟。");
+  }
+  private static string ProbeText(int value){return value>=0?value+" ms":value==-1?"超时":"未检测";}
   private void Render(Graphics g){
    g.Clear(AppTheme.Background(AppTheme.Surface));g.SmoothingMode=SmoothingMode.AntiAlias;
    int line=UiStyle.TextHeight(this)+UiStyle.Scale(this,8);int pad=UiStyle.Scale(this,12);

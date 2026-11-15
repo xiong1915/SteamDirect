@@ -5,6 +5,9 @@ namespace SteamDirect {
  // Own a native image list so high-DPI text rows are not capped at ImageList's 256px limit.
  internal sealed class HistoryRecordList : ListView {
   private IntPtr images;private int rowHeight=120;
+  private int hoveredIndex = -1; internal int HoveredIndex { get { return hoveredIndex; } private set { hoveredIndex = value; } }
+  protected override void OnMouseMove(MouseEventArgs e){base.OnMouseMove(e);var item=GetItemAt(e.X,e.Y);int next=item==null?-1:item.Index;if(next==HoveredIndex)return;int previous=HoveredIndex;HoveredIndex=next;if(previous>=0&&previous<Items.Count)Invalidate(Items[previous].Bounds);if(next>=0&&next<Items.Count)Invalidate(Items[next].Bounds);}
+  protected override void OnMouseLeave(EventArgs e){base.OnMouseLeave(e);int previous=HoveredIndex;HoveredIndex=-1;if(previous>=0&&previous<Items.Count)Invalidate(Items[previous].Bounds);}
   [DllImport("comctl32.dll")]private static extern IntPtr ImageList_Create(int width,int height,uint flags,int initial,int grow);
   [DllImport("comctl32.dll")]private static extern bool ImageList_Destroy(IntPtr list);
   [DllImport("user32.dll")]private static extern IntPtr SendMessage(IntPtr window,int message,IntPtr parameter,IntPtr value);
