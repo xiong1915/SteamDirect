@@ -97,10 +97,12 @@ namespace SteamDirect
         private readonly Control content;
         private readonly Observer observer;
         private bool synchronizing;
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] private static extern int GetWindowStyle(IntPtr window, int index);
         [DllImport("user32.dll")] private static extern bool ShowScrollBar(IntPtr window, int bar, bool show);
         [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
         internal NativeScrollFrame(Control content)
         {
+            DoubleBuffered = true;
             var text = content as TextBox; if (text != null) text.ScrollBars = ScrollBars.None;
             var rich = content as RichTextBox; if (rich != null) rich.ScrollBars = RichTextBoxScrollBars.None;
             this.content = content; Dock = DockStyle.Fill; Margin = Padding.Empty;
@@ -127,7 +129,8 @@ namespace SteamDirect
             try {
                 var list = content as ListView;
                 if (list != null) {
-                    ShowScrollBar(content.Handle, 3, false);
+                    // Reapplying ShowScrollBar on every WM_PAINT triggers native style/layout churn.
+                    if ((GetWindowStyle(content.Handle, -16) & 0x00300000) != 0) ShowScrollBar(content.Handle, 3, false);
                     // Handle-created/paint callbacks can run while the managed Items collection is mutating.
                     // Query the native view atomically instead of dereferencing transient ListViewItems.
                     int count = SendMessage(content.Handle, 0x1004, IntPtr.Zero, IntPtr.Zero).ToInt32();

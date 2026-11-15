@@ -51,7 +51,9 @@ namespace SteamDirect
                         for (int m = 0; m < matrix.GetLength(0); m++) {
                             if (baseline && m != 1 && m != 5) continue;
                             using (var form = new HistoryWindow(store)) {
+                                Console.WriteLine("BEGIN fixture "+theme+" matrix="+m);
                                 form.ShowInTaskbar = false; form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-24000,-24000); form.Show(); Await(Refresh(form));
+                                Console.WriteLine("READY data "+theme+" matrix="+m);
                                 int native = form.DeviceDpi, desired = matrix[m,2]; WindowEnvironment.LayoutDpi = desired;
                                 // Geometric/font simulation only. Does not claim a physical DPI or display switch.
                                 var originals = new Dictionary<Control,Font>(); Collect(form, originals); var owned = new List<Font>();

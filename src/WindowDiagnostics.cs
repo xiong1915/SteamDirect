@@ -58,8 +58,12 @@ namespace SteamDirect
                     " dpi=" + window.DeviceDpi + " motion_active=" + Motion.ActiveCount;
             }
             // Parent Paint and queue delay are proxies; not a claim of child composition or exact UI blocking.
+            Record(LastResult);
+        }
+        internal static void Record(string result)
+        {
             if (WindowEnvironment.OffscreenTests) return;
-            string directory = LogStore.DirectoryPath, result = LastResult;
+            string directory = LogStore.DirectoryPath;
             if (Interlocked.CompareExchange(ref writerBusy, 1, 0) != 0) return;
             Task.Run(() => { try { Write(directory, result); } finally { Interlocked.Exchange(ref writerBusy, 0); } });
         }

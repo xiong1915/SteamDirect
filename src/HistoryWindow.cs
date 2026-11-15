@@ -10,7 +10,7 @@ using System.Windows.Forms;
 
 namespace SteamDirect
 {
-    internal sealed class HistoryWindow : DesktopForm
+    internal sealed class HistoryWindow : DesktopForm, IManagedPage
     {
         private const int RecordLimit = 200;
         private const int ComparisonLimit = 20;
@@ -47,6 +47,27 @@ namespace SteamDirect
         private List<HistorySession> sessions = new List<HistorySession>();
         private CancellationTokenSource selectionWork;
         private bool fillingRecords, exporting, loadingRecords, shuttingDown;
+        private CancellationTokenSource queryWork;
+        private int queryGeneration;
+        private long loadedRevision = -1;
+        private DateTime loadedDay;
+        private bool selectionPending;
+        internal double LastDataLoadMilliseconds { get; private set; }
+        internal double LastQueryMilliseconds { get; private set; }
+        internal double LastAnalysisMilliseconds { get; private set; }
+        public async void EnterPage()
+        {
+            if (!Available) return;
+            if (queryWork != null && !queryWork.IsCancellationRequested) return;
+            if (loadedRevision != store.Revision || loadedDay != DateTime.Today)
+                await RefreshAsync(loadedDay == DateTime.Today ? page : 0);
+            else if (selectionPending) { selectionPending = false; await LoadSelectionAsync(); }
+        }
+        public void LeavePage()
+        {
+            if (queryWork != null) { queryWork.Cancel(); loadedRevision = -1; }
+            if (selectionWork != null) { selectionPending = true; selectionWork.Cancel(); }
+        }
 
         internal HistoryWindow(HistoryStore store, Func<bool> isGaming = null)
         {
@@ -234,7 +255,7 @@ namespace SteamDirect
             records.SelectedIndexChanged += async (sender, args) => { if (!fillingRecords) await LoadSelectionAsync(); };
             refresh.Click += async (sender, args) => await RefreshAsync();
             export.Click += async (sender, args) => await ExportAsync();
-            Shown += async (sender, args) => await RefreshAsync();
+            Shown += (sender, args) => { if (TopLevel) EnterPage(); };
             ParentChanged += (sender, args) => { if (!TopLevel) MinimumSize = Size.Empty; };
             AppTheme.Apply(this);
             ResumeLayout(true);
@@ -247,6 +268,8 @@ namespace SteamDirect
 
         private Control BuildOverview()
         {
+            // At 1080p/175%, fixed report headings can consume the whole remaining height.
+            // Keep a usable report body and scroll the section rather than collapsing it to zero.
             var layout = Grid(1, 4);
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
@@ -278,7 +301,40 @@ namespace SteamDirect
             SetupText(overviewText, "本局结果说明与建议");
             overviewText.Font = UiStyle.Body;
             layout.Controls.Add(new NativeScrollFrame(overviewText), 0, 3);
-            return layout;
+            return new ReportViewport(layout);
+        }
+
+        private sealed class ReportViewport : Panel
+        {
+            private readonly Control content;
+            private readonly DarkScrollBar scroll = new DarkScrollBar();
+            private bool arranging;
+            internal ReportViewport(Control content)
+            {
+                this.content = content; Dock = DockStyle.Fill; Margin = Padding.Empty;
+                BackColor = AppTheme.Surface; DoubleBuffered = true;
+                content.Dock = DockStyle.None; Controls.Add(content); Controls.Add(scroll);
+                scroll.ScrollTo += value => { scroll.SetRange(Math.Max(0, content.Height - Height), Math.Max(1, Height), value); PerformLayout(); };
+            }
+            protected override void OnLayout(LayoutEventArgs args)
+            {
+                if (arranging || content == null) return;
+                arranging = true;
+                try {
+                    base.OnLayout(args);
+                    int height = Math.Max(Height, UiStyle.Scale(this, 340));
+                    int width = height > Height ? UiStyle.Scale(this, 14) : 0;
+                    scroll.SetRange(Math.Max(0, height - Height), Math.Max(1, Height), scroll.Value);
+                    scroll.Bounds = new Rectangle(Math.Max(0, Width - width), 0, width, Height);
+                    content.Bounds = new Rectangle(0, -scroll.Value, Math.Max(1, Width - width), height);
+                } finally { arranging = false; }
+            }
+            protected override void OnMouseWheel(MouseEventArgs args)
+            {
+                base.OnMouseWheel(args);
+                scroll.SetRange(Math.Max(0, content.Height - Height), Math.Max(1, Height), scroll.Value - Math.Sign(args.Delta) * UiStyle.Scale(this, 40));
+                PerformLayout();
+            }
         }
 
         private static Label Caption(string text)
@@ -462,6 +518,7 @@ namespace SteamDirect
             {
                 shuttingDown = true;
                 lifetime.Cancel();
+                if (queryWork != null) queryWork.Cancel();
                 if (selectionWork != null) selectionWork.Cancel();
                 lifetime.Dispose();
 
@@ -472,8 +529,16 @@ namespace SteamDirect
 
         private async Task RefreshAsync(int requestedPage = 0)
         {
-            if (!Available || loadingRecords) return;
+            if (!Available) return;
             if (Gaming) { status.Text = "游戏运行中，请在退出游戏后刷新。"; return; }
+            if (queryWork != null) queryWork.Cancel();
+            if (selectionWork != null) selectionWork.Cancel();
+            var work = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+            queryWork = work;
+            var token = work.Token;
+            int generation = ++queryGeneration;
+            long revision = store.Revision;
+            var dataClock = System.Diagnostics.Stopwatch.StartNew();
             loadingRecords = true;
             refresh.Enabled = gameFilter.Enabled = modeFilter.Enabled = recordScope.Enabled = previousPage.Enabled = nextPage.Enabled = false;
             string name = gameFilter.Text.Trim();
@@ -482,30 +547,39 @@ namespace SteamDirect
             long from = recordScope.SelectedIndex == 0 ? (long)(new DateTimeOffset(today).ToUniversalTime() - Epoch).TotalMilliseconds : 0;
             long before = recordScope.SelectedIndex == 0 ? (long)(new DateTimeOffset(today.AddDays(1)).ToUniversalTime() - Epoch).TotalMilliseconds : 0;
             status.Text = "正在读取本地记录…";
+            if (sessions.Count == 0) UiStyle.SetState(overviewTitle, overviewNote, "正在读取游戏记录…", "读取完成后，在这里查看本局网络报告。");
+            double queryMilliseconds = 0;
             try
             {
-                var token = lifetime.Token;
                 var result = await Task.Run(() =>
                 {
                     CheckAnalysis(token);
+                    var queryClock = System.Diagnostics.Stopwatch.StartNew();
                     var loaded = store.ListSessions(RecordLimit + 1, requestedPage * RecordLimit, name, mode == "全部" ? null : mode, from, before);
+                    queryMilliseconds = queryClock.Elapsed.TotalMilliseconds;
                     CheckAnalysis(token);
                     return loaded;
                 }, token);
-                if (Available)
+                if (Available && !token.IsCancellationRequested && generation == queryGeneration)
                 {
                     page = requestedPage;
+                    LastQueryMilliseconds = queryMilliseconds;
                     hasNext = result.Count > RecordLimit;
                     if (hasNext) result.RemoveAt(RecordLimit);
                     sessions = result;
                     pageLabel.Text = "第 " + (page + 1) + " 页 · " + sessions.Count + " 条";
                     await ShowSessionsAsync();
+                    if (!token.IsCancellationRequested && generation == queryGeneration)
+                    {
+                        loadedRevision = revision; loadedDay = today;
+                        LastDataLoadMilliseconds = dataClock.Elapsed.TotalMilliseconds;
+                    }
                 }
             }
-            catch (OperationCanceledException) { if (Available) status.Text = "已暂停读取。游戏退出后可刷新。"; }
+            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                if (Available)
+                if (Available && !token.IsCancellationRequested && generation == queryGeneration)
                 {
                     ClearDetails();
                     UiStyle.SetState(overviewTitle, overviewNote, "历史记录暂时无法读取", "点击查询重试，错误详情见下方。", true);
@@ -515,8 +589,10 @@ namespace SteamDirect
             }
             finally
             {
-                loadingRecords = false;
-                if (Available)
+                if (queryWork == work) queryWork = null;
+                work.Dispose();
+                if (generation == queryGeneration) loadingRecords = false;
+                if (Available && generation == queryGeneration)
                 {
                     refresh.Enabled = gameFilter.Enabled = modeFilter.Enabled = recordScope.Enabled = true;
                     previousPage.Enabled = page > 0;
@@ -566,6 +642,7 @@ namespace SteamDirect
 
         private async Task LoadSelectionAsync()
         {
+            selectionPending = true;
             if (selectionWork != null) selectionWork.Cancel();
             if (!Available) return;
             var selected = Selected();
@@ -573,6 +650,7 @@ namespace SteamDirect
             export.Enabled = selected != null && selected.End != 0 && !exporting && !Gaming;
             if (selected == null)
             {
+                selectionPending = false;
                 status.Text = recordScope.SelectedIndex == 0 ? "今天没有匹配的对局。可切换“查看历史对局”读取以前的记录。" : "没有匹配的历史对局记录。";
                 UiStyle.SetState(overviewTitle, overviewNote, "暂无可用报告", "完成一局后，点击查询查看网络报告。");
                 overviewText.Text = status.Text;
@@ -595,8 +673,10 @@ namespace SteamDirect
             UiStyle.SetState(overviewTitle, overviewNote, "正在整理本局结果…", "正在读取本地记录，请稍候。");
             try
             {
+                double analysisMilliseconds = 0;
                 var result = await Task.Run(() =>
                 {
+                    var analysisClock = System.Diagnostics.Stopwatch.StartNew();
                     CheckAnalysis(token);
                     var previous = store.ListComparisonSessions(selected, "直连", ComparisonLimit);
                     CheckAnalysis(token);
@@ -606,11 +686,15 @@ namespace SteamDirect
                         int order = b.Start.CompareTo(a.Start);
                         return order != 0 ? order : string.Compare(b.Id, a.Id, StringComparison.Ordinal);
                     });
-                    return BuildDetails(selected, previous, token);
+                    var detail = BuildDetails(selected, previous, token);
+                    analysisMilliseconds = analysisClock.Elapsed.TotalMilliseconds;
+                    return detail;
                 }, token);
                 if (!Available || token.IsCancellationRequested) return;
                 if (Gaming) { status.Text = "游戏运行中，报告计算已暂停。"; return; }
                 ShowDetails(result);
+                LastAnalysisMilliseconds = analysisMilliseconds;
+                selectionPending = false;
                 status.Text = "报告已生成 · " + (selected.Interrupted ? "本局记录曾中断，详见报告" : "左侧可切换其他对局");
             }
             catch (OperationCanceledException)
@@ -863,6 +947,11 @@ namespace SteamDirect
         }
 
         private void ShowDetails(Detail detail)
+        {
+            using (new RedrawBatch(this)) ApplyDetails(detail);
+        }
+
+        private void ApplyDetails(Detail detail)
         {
             UiStyle.SetState(overviewTitle, overviewNote, detail.OverviewTitle, detail.OverviewNote);
             var metrics = detail.Metrics;

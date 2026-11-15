@@ -36,7 +36,7 @@ namespace SteamDirect
         {
             if (interaction == null || selection == null) return;
             interaction.To(pressed ? 1F : hovering ? .55F : 0F, pressed ? 90 : 180);
-            selection.To(selected ? 1F : 0F, 210);
+            selection.To(selected ? 1F : 0F, 150);
         }
         protected override void Dispose(bool disposing) { if (disposing) { interaction.Dispose(); selection.Dispose(); } base.Dispose(disposing); }
         protected override void OnEnabledChanged(EventArgs e) { base.OnEnabledChanged(e); if (!Enabled) hovering = pressed = false; UpdateMotion(); }

@@ -121,10 +121,9 @@ namespace SteamDirect
         private FormWindowState lastVisibleState = FormWindowState.Normal;
         private readonly WindowDiagnostics windowDiagnostics;
         private readonly HistoryMonitor history;
-        private readonly Panel pageHost = new Panel { Dock = DockStyle.Fill };
+        private readonly Panel pageHost = new PageHost();
         private readonly Dictionary<string, Button> navigation = new Dictionary<string, Button>();
-        private Control dashboard;
-        private Form activePage;
+        private PageManager pages;
 
         internal MainWindow(bool background = false, HistoryMonitor historyOverride = null)
         {
@@ -134,7 +133,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.2";
+            Text = "Steam 直连助手 v3.0.3";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -152,8 +151,8 @@ namespace SteamDirect
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 448));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            dashboard = root;
             pageHost.Controls.Add(root);
+            pages = new PageManager(pageHost, root);
             var header = UiStyle.Header("概览", "准备好网络，再开始游戏。");
             root.Controls.Add(header, 0, 0);
 
@@ -350,7 +349,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.2 · 游戏网络助手", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.3 · 游戏网络助手", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             shell.Controls.Add(rail, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);
@@ -381,46 +380,30 @@ namespace SteamDirect
                 NoticeDialog.Show(this, "游戏结束后可查看报告。", "游戏记录");
                 return;
             }
-            if (activePage != null && activePage.Tag as string == page) return;
-            if (activePage != null)
+            pages.DiagnosticsEnabled = preferences.WindowDiagnostics;
+            if (pages.Navigate(page, () => CreatePage(page)))
             {
-                activePage.Close();
-                activePage.Dispose();
-                activePage = null;
+                SelectNavigation(page);
             }
-            dashboard.Visible = page == "概览";
-            SelectNavigation(page);
-            if (page == "概览") return;
-            if (page == "网络诊断") activePage = new NetworkWindow(Log);
-            else if (page == "游戏记录") activePage = new HistoryWindow(history.Store, () => history.IsPlaying);
-            else
-            {
-                var settings = new SettingsWindow(preferences.TrayEnabled, StartupSettings.IsEnabled(),
-                    preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor, preferences.LogDirectory, preferences.ReduceMotion, preferences.WindowDiagnostics);
-                settings.SaveRequested += () => SaveSettings(settings);
-                settings.CancelRequested += () => NavigateTo("概览");
-                activePage = settings;
-            }
-            activePage.Tag = page;
-            activePage.TopLevel = false;
-            activePage.FormBorderStyle = FormBorderStyle.None;
-            activePage.MinimumSize = Size.Empty;
-            activePage.Dock = DockStyle.Fill;
-            pageHost.Controls.Add(activePage);
-            activePage.Show();
-            activePage.BringToFront();
+        }
+
+        private Form CreatePage(string page)
+        {
+            if (page == "网络诊断") return new NetworkWindow(Log);
+            if (page == "游戏记录") return new HistoryWindow(history.Store, () => history.IsPlaying);
+            var settings = new SettingsWindow(preferences.TrayEnabled, StartupSettings.IsEnabled(),
+                preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor, preferences.LogDirectory, preferences.ReduceMotion, preferences.WindowDiagnostics);
+            settings.Synchronize = () => settings.Reload(preferences, StartupSettings.IsEnabled());
+            settings.SaveRequested += () => SaveSettings(settings);
+            settings.CancelRequested += () => NavigateTo("概览");
+            return settings;
         }
 
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
-                if (activePage != null)
-                {
-                    activePage.Close();
-                    activePage.Dispose();
-                    activePage = null;
-                }
+                if (pages != null) pages.Dispose();
                 history.Dispose();
                 windowDiagnostics.Dispose();
                 animationTimer.Dispose();

@@ -19,6 +19,12 @@ namespace SteamDirect
 
     internal class DesktopForm : Form
     {
+        protected override void OnLayout(LayoutEventArgs args)
+        {
+            var trace = NavigationTrace.Current;
+            if (trace != null) trace.BeginLayout();
+            try { base.OnLayout(args); } finally { if (trace != null) trace.EndLayout(); }
+        }
         private bool displayPending, fitting;
         private FormWindowState previousState;
         protected override bool ShowWithoutActivation { get { return WindowEnvironment.OffscreenTests; } }

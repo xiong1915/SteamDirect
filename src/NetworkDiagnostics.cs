@@ -346,7 +346,7 @@ namespace SteamDirect
 
 namespace SteamDirect
 {
-    internal sealed class NetworkWindow : DesktopForm
+    internal sealed class NetworkWindow : DesktopForm, IManagedPage
     {
         private readonly TextBox target = new TextBox();
         private readonly TextBox details = new TextBox();
@@ -358,12 +358,24 @@ namespace SteamDirect
         private readonly Label[] notes = new Label[6];
         private CancellationTokenSource cancellation;
         private readonly Action<string> log;
-        internal NetworkWindow(Action<string> saveLog)
+        private readonly Func<IPEndPoint, Action<DiagnosticUpdate>, Action<string>, CancellationToken, NetworkEvidence> diagnose;
+        // A single bounded diagnostic continues across navigation; its result remains on this page.
+        public void EnterPage() { }
+        public void LeavePage() { }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && cancellation != null) cancellation.Cancel();
+            base.Dispose(disposing);
+        }
+        internal NetworkWindow(Action<string> saveLog, Func<IPEndPoint, Action<DiagnosticUpdate>, Action<string>, CancellationToken, NetworkEvidence> diagnose = null)
         {
             log = saveLog;
+            this.diagnose = diagnose ?? NetworkDiagnostics.Run;
             SuspendLayout();
             Text = "CS2 × Steam 网络诊断";
-            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            var ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            Icon = ownedIcon;
+            Disposed += (sender, args) => { if (ownedIcon != null) ownedIcon.Dispose(); };
             AutoScaleDimensions = new SizeF(96, 96);
             AutoScaleMode = AutoScaleMode.Dpi;
             Font = UiStyle.Body;
@@ -541,6 +553,7 @@ namespace SteamDirect
         }
         private async Task RunAsync()
         {
+            if (cancellation != null || IsDisposed || Disposing) return;
             IPEndPoint server;
             try { server = NetworkDiagnostics.ParseServer(target.Text); } catch (ArgumentException ex) { NoticeDialog.Show(this, ex.Message, "服务器地址"); return; }
             progressBar.Value = 0;
@@ -548,10 +561,11 @@ namespace SteamDirect
             target.Enabled = false; start.Text = "取消检测"; details.Clear(); conclusion.Text = "正在收集证据，请等待各项检查完成。";
             for (int i = 0; i < 6; i++) { states[i].Text = "待检测"; AppTheme.SetForeground(states[i], AppTheme.Ink); notes[i].Text = "等待检测"; }
             cancellation = new CancellationTokenSource();
+            var token = cancellation.Token;
             var watch = Stopwatch.StartNew();
             try
             {
-                var evidence = await Task.Run(() => NetworkDiagnostics.Run(server, Apply, Append, cancellation.Token));
+                var evidence = await Task.Run(() => diagnose(server, Apply, Append, token));
                 if (!IsDisposed)
                 {
                     conclusion.Text = evidence.Conclusion(); progress.Text = "检测完成 · 耗时 " + watch.Elapsed.TotalSeconds.ToString("0.0") + " 秒 · 明细如下";

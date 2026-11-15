@@ -18,6 +18,7 @@ namespace SteamDirect
         internal int PageCount { get { return pages.Count; } }
         internal HistorySections()
         {
+            DoubleBuffered = true;
             Dock = DockStyle.Fill;
             BackColor = AppTheme.Surface;
             Controls.Add(content);
@@ -65,6 +66,10 @@ namespace SteamDirect
         {
             if (index < 0 || index >= pages.Count) throw new ArgumentOutOfRangeException("index");
             SelectedIndex = index;
+            content.SuspendLayout();
+            try {
+            pages[index].Visible = true;
+            pages[index].BringToFront();
             for (int i = 0; i < pages.Count; i++)
             {
                 pages[i].Visible = i == index;
@@ -72,6 +77,7 @@ namespace SteamDirect
                 AppTheme.SetBackground(buttons[i], i == index ? AppTheme.Pill : AppTheme.Surface);
                 AppTheme.SetForeground(buttons[i], i == index ? AppTheme.Accent : AppTheme.Muted);
             }
+            } finally { content.ResumeLayout(false); }
         }
     }
 

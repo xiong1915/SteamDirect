@@ -9,6 +9,8 @@ namespace SteamDirect
     internal sealed class HistoryStore
     {
         private readonly string path;
+        private long revision;
+        internal long Revision { get { return System.Threading.Interlocked.Read(ref revision); } }
 
         internal HistoryStore(string path)
         {
@@ -62,6 +64,7 @@ CREATE INDEX IF NOT EXISTS history_events_session_start ON history_events(sessio
 SET end_ms = MAX(start_ms, COALESCE((SELECT MAX(at_ms) FROM history_samples WHERE session_id = history_sessions.id), start_ms)),
     interrupted = 1
 WHERE end_ms = 0");
+            System.Threading.Interlocked.Increment(ref revision);
         }
 
         internal void WriteBatch(IList<HistorySession> sessions, IList<HistorySample> samples, IList<HistoryEvent> events)
@@ -76,6 +79,7 @@ WHERE end_ms = 0");
                     WriteSamples(db, samples);
                     WriteEvents(db, events);
                     db.Execute("COMMIT");
+                    System.Threading.Interlocked.Increment(ref revision);
                 }
                 catch
                 {

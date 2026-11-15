@@ -34,7 +34,18 @@ namespace SteamDirect
         internal static int TextHeight(Control control) { return (int)Math.Ceiling(control.Font.GetHeight(NativeDpi(control))); }
         internal static TableLayoutPanel Grid(int columns, int rows)
         {
-            return new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = columns, RowCount = rows, Margin = Padding.Empty };
+            return new BufferedGrid { Dock = DockStyle.Fill, ColumnCount = columns, RowCount = rows, Margin = Padding.Empty };
+        }
+
+        private sealed class BufferedGrid : TableLayoutPanel
+        {
+            internal BufferedGrid() { DoubleBuffered = true; }
+            protected override void OnLayout(LayoutEventArgs args)
+            {
+                var trace = NavigationTrace.Current;
+                if (trace != null) trace.BeginLayout();
+                try { base.OnLayout(args); } finally { if (trace != null) trace.EndLayout(); }
+            }
         }
 
         internal static TableLayoutPanel Header(string title, string description)
