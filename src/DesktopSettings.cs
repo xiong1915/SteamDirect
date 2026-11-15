@@ -260,7 +260,7 @@ namespace SteamDirect
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
             about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.3", Dock = DockStyle.Fill,
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.4", Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true, Font = UiStyle.Caption }, 0, 0);
             const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
             var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill,

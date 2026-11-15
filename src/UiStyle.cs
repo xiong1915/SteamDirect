@@ -7,6 +7,43 @@ namespace SteamDirect
 {
     internal enum UiIcon { None, Home, Network, History, Settings, External }
 
+    // Explicit content bounds avoid AutoScroll/Dock feedback and preserve readable minimum heights.
+    internal sealed class ContentViewport : Panel
+    {
+        private readonly Control content;
+        private readonly int minimumHeight;
+        private readonly DarkScrollBar scroll = new DarkScrollBar();
+        private bool arranging;
+        internal ContentViewport(Control content, int minimumHeight)
+        {
+            this.content = content; this.minimumHeight = minimumHeight;
+            Dock = DockStyle.Fill; Margin = Padding.Empty; BackColor = content.BackColor; DoubleBuffered = true;
+            content.Dock = DockStyle.None; Controls.Add(content); Controls.Add(scroll);
+            scroll.ScrollTo += ScrollTo;
+        }
+        internal void ScrollTo(int value)
+        {
+            scroll.SetRange(Math.Max(0, content.Height - Height), Math.Max(1, Height), value); PerformLayout();
+        }
+        protected override void OnLayout(LayoutEventArgs args)
+        {
+            if (arranging || content == null) return;
+            arranging = true;
+            try {
+                base.OnLayout(args);
+                int height = Math.Max(Height, UiStyle.Scale(this, minimumHeight));
+                int width = height > Height ? UiStyle.Scale(this, 14) : 0;
+                scroll.SetRange(Math.Max(0, height - Height), Math.Max(1, Height), scroll.Value);
+                scroll.Bounds = new Rectangle(Math.Max(0, Width - width), 0, width, Height);
+                content.Bounds = new Rectangle(0, -scroll.Value, Math.Max(1, Width - width), height);
+            } finally { arranging = false; }
+        }
+        protected override void OnMouseWheel(MouseEventArgs args)
+        {
+            base.OnMouseWheel(args); ScrollTo(scroll.Value - Math.Sign(args.Delta) * UiStyle.Scale(this, 40));
+        }
+    }
+
     internal static class UiStyle
     {
         internal const int Space4 = 4, Space8 = 8, Space12 = 12, Space16 = 16, Space20 = 20,

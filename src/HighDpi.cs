@@ -7,6 +7,11 @@ using System.Runtime.InteropServices;
 namespace SteamDirect {
  public sealed class DpiEntry : MarshalByRefObject { public void Run(string[] args) { Program.RunApplication(args); } public override object InitializeLifetimeService() { return null; } }
  internal static class HighDpi {
+  internal static void InitializeUi() {
+   EnablePerMonitorContext();
+   System.Windows.Forms.Application.EnableVisualStyles();
+   System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+  }
   [DllImport("user32.dll")] private static extern bool SetProcessDPIAware();
   internal static string ConfigureUserFallback(string directory = null) {
    string folder=directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"SteamDirect");

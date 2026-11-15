@@ -29,6 +29,7 @@ namespace SteamDirect
         [STAThread]
         private static int Main()
         {
+            HighDpi.InitializeUi();
             System.Windows.Forms.Application.SetUnhandledExceptionMode(System.Windows.Forms.UnhandledExceptionMode.ThrowException);
             WindowEnvironment.OffscreenTests = true;
             Check("proxy backup and fault injection", ProxyRecovery);

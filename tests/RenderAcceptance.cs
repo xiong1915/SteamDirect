@@ -26,7 +26,10 @@ namespace SteamDirect
         private static void Need(bool value, string message) { if (!value) throw new Exception(message); }
         [STAThread] private static int Main(string[] args)
         {
-            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException); Application.ThreadException += (sender,eventArgs) => { Console.Error.WriteLine(eventArgs.Exception.ToString()); Environment.Exit(1); }; WindowEnvironment.OffscreenTests = true; HighDpi.EnablePerMonitorContext(); Application.EnableVisualStyles(); Motion.Reduced = true;
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException); Application.ThreadException += (sender,eventArgs) => { Console.Error.WriteLine(eventArgs.Exception.ToString()); Environment.Exit(1); }; WindowEnvironment.OffscreenTests = true;
+            var initializeUi=typeof(HighDpi).GetMethod("InitializeUi",BindingFlags.Static|BindingFlags.NonPublic);
+            if(initializeUi!=null)initializeUi.Invoke(null,null);else{HighDpi.EnablePerMonitorContext();Application.EnableVisualStyles();}
+            Motion.Reduced = true;
             bool baseline = args.Length > 1 && args[1] == "baseline";
             string output = Path.GetFullPath(args[0]), temporary = Path.Combine(Path.GetTempPath(), "SteamDirect-render-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(output); Directory.CreateDirectory(temporary); LogStore.DirectoryPath = Path.Combine(temporary, "Logs");

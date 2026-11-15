@@ -89,7 +89,7 @@ namespace SteamDirect
         protected override void OnMouseWheel(MouseEventArgs e) { base.OnMouseWheel(e); MoveTo(value - Math.Sign(e.Delta) * Math.Max(1, SystemInformation.MouseWheelScrollLines)); }
     }
 
-    // Replace native scroll chrome while retaining content, selection, keyboard and IME.
+    // Text uses themed scroll chrome; ListView exclusively owns its native scrolling.
     internal sealed class NativeScrollFrame : UserControl
     {
         private readonly Panel viewport = new Panel { Margin = Padding.Empty };
@@ -97,8 +97,6 @@ namespace SteamDirect
         private readonly Control content;
         private readonly Observer observer;
         private bool synchronizing;
-        [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] private static extern int GetWindowStyle(IntPtr window, int index);
-        [DllImport("user32.dll")] private static extern bool ShowScrollBar(IntPtr window, int bar, bool show);
         [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
         internal NativeScrollFrame(Control content)
         {
@@ -106,54 +104,43 @@ namespace SteamDirect
             var text = content as TextBox; if (text != null) text.ScrollBars = ScrollBars.None;
             var rich = content as RichTextBox; if (rich != null) rich.ScrollBars = RichTextBoxScrollBars.None;
             this.content = content; Dock = DockStyle.Fill; Margin = Padding.Empty;
+            if (content is ListView) bar.Visible = false;
             Controls.Add(viewport); Controls.Add(bar); viewport.Controls.Add(content); content.Dock = DockStyle.None;
             bar.Width = UiStyle.Scale(this, 14); bar.ScrollTo += ScrollContent;
             observer = new Observer(this); content.HandleCreated += HandleCreatedContent; content.HandleDestroyed += HandleDestroyedContent;
-            if (content.IsHandleCreated) observer.AssignHandle(content.Handle);
+            if (content.IsHandleCreated) HandleCreatedContent(content, EventArgs.Empty);
         }
-        private void HandleCreatedContent(object sender, EventArgs e) { observer.AssignHandle(content.Handle); Synchronize(); }
+        private void HandleCreatedContent(object sender, EventArgs e)
+        {
+            if (content is ListView) { SendMessage(content.Handle, 0x1036, new IntPtr(0x10000), new IntPtr(0x10000)); return; }
+            observer.AssignHandle(content.Handle); Synchronize();
+        }
         private void HandleDestroyedContent(object sender, EventArgs e) { observer.ReleaseHandle(); }
         protected override void OnLayout(LayoutEventArgs e)
         {
             base.OnLayout(e); if (content == null) return;
             bar.Bounds = new Rectangle(Math.Max(0, Width - UiStyle.Scale(this, 14)), 0, UiStyle.Scale(this, 14), Height);
-            viewport.Bounds = new Rectangle(0, 0, Math.Max(1, bar.Left), Height);
-            // A separate scroll surface avoids native white chrome, including during offscreen capture.
+            viewport.Bounds = new Rectangle(0, 0, Math.Max(1, content is ListView ? Width : bar.Left), Height);
+            // ListView uses the full viewport; text reserves space for its custom scrollbar.
             content.Bounds = new Rectangle(0, 0, Math.Max(1, viewport.ClientSize.Width), Math.Max(1, viewport.ClientSize.Height));
             Synchronize();
         }
         private void Synchronize()
         {
-            if (synchronizing || content == null || content.IsDisposed || content.Disposing || !content.IsHandleCreated || IsDisposed || Disposing) return;
+            if (synchronizing || content == null || content is ListView || content.IsDisposed || content.Disposing || !content.IsHandleCreated || IsDisposed || Disposing) return;
             synchronizing = true;
             try {
-                var list = content as ListView;
-                if (list != null) {
-                    // Reapplying ShowScrollBar on every WM_PAINT triggers native style/layout churn.
-                    if ((GetWindowStyle(content.Handle, -16) & 0x00300000) != 0) ShowScrollBar(content.Handle, 3, false);
-                    // Handle-created/paint callbacks can run while the managed Items collection is mutating.
-                    // Query the native view atomically instead of dereferencing transient ListViewItems.
-                    int count = SendMessage(content.Handle, 0x1004, IntPtr.Zero, IntPtr.Zero).ToInt32();
-                    int visible = Math.Max(1, SendMessage(content.Handle, 0x1028, IntPtr.Zero, IntPtr.Zero).ToInt32());
-                    int position = SendMessage(content.Handle, 0x1027, IntPtr.Zero, IntPtr.Zero).ToInt32();
-                    bar.SetRange(Math.Max(0, count - visible), visible, position);
-                } else {
-                    int lines = SendMessage(content.Handle, 0x00BA, IntPtr.Zero, IntPtr.Zero).ToInt32();
-                    int first = SendMessage(content.Handle, 0x00CE, IntPtr.Zero, IntPtr.Zero).ToInt32();
-                    int visible = Math.Max(1, content.ClientSize.Height / Math.Max(1, UiStyle.TextHeight(content)));
-                    bar.SetRange(Math.Max(first, lines - visible), visible, first);
-                }
+                int lines = SendMessage(content.Handle, 0x00BA, IntPtr.Zero, IntPtr.Zero).ToInt32();
+                int first = SendMessage(content.Handle, 0x00CE, IntPtr.Zero, IntPtr.Zero).ToInt32();
+                int visible = Math.Max(1, content.ClientSize.Height / Math.Max(1, UiStyle.TextHeight(content)));
+                bar.SetRange(Math.Max(first, lines - visible), visible, first);
             } finally { synchronizing = false; }
         }
         private void ScrollContent(int position)
         {
             if (!content.IsHandleCreated) return;
             int difference = position - bar.Value;
-            var list = content as ListView;
-            if (list != null) {
-                int row = list.Items.Count == 0 ? 1 : list.Items[0].Bounds.Height;
-                SendMessage(content.Handle, 0x1014, IntPtr.Zero, new IntPtr(difference * Math.Max(1, row)));
-            } else SendMessage(content.Handle, 0x00B6, IntPtr.Zero, new IntPtr(difference)); // EM_LINESCROLL
+            SendMessage(content.Handle, 0x00B6, IntPtr.Zero, new IntPtr(difference)); // EM_LINESCROLL
             Synchronize();
         }
         protected override void Dispose(bool disposing) { if (disposing) { observer.ReleaseHandle(); content.HandleCreated -= HandleCreatedContent; content.HandleDestroyed -= HandleDestroyedContent; } base.Dispose(disposing); }
@@ -161,7 +148,7 @@ namespace SteamDirect
         {
             private readonly NativeScrollFrame owner;
             internal Observer(NativeScrollFrame owner) { this.owner = owner; }
-            protected override void WndProc(ref Message message) { base.WndProc(ref message); if (message.Msg == 0xF || message.Msg == 0x115 || message.Msg == 0x20A || message.Msg == 5 || message.Msg == 0x100 || message.Msg == 0xC || message.Msg == 0x1014) owner.Synchronize(); }
+            protected override void WndProc(ref Message message) { base.WndProc(ref message); if (message.Msg == 0xF || message.Msg == 0x115 || message.Msg == 0x20A || message.Msg == 5 || message.Msg == 0x100 || message.Msg == 0xC) owner.Synchronize(); }
         }
     }
 }

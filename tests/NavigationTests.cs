@@ -61,7 +61,7 @@ namespace SteamDirect
                     var records=(ListView)Field(history,"records");Need(records.Items.Count==2,"Initial asynchronous history load");
                     var report=(RichTextBox)Field(history,"overviewText");Control viewport=report.Parent.Parent.Parent.Parent;
                     history.MinimumSize=Size.Empty;history.ClientSize=new Size(1300,700);history.PerformLayout();
-                    Need(viewport.GetType().Name=="ReportViewport"&&report.Height>0,"Constrained report retains narrative area");
+                    Need(viewport is ContentViewport&&report.Height>0,"Constrained report retains narrative area");
                     double loaded=history.LastDataLoadMilliseconds;history.LeavePage();history.EnterPage();Need(history.LastDataLoadMilliseconds==loaded&&!(bool)Field(history,"loadingRecords"),"Valid history reused without query");
                     var filter=(TextBox)Field(history,"gameFilter");filter.Text="Alpha";Task stale=Query(history);filter.Text="Beta";Task latest=Query(history);Wait(()=>stale.IsCompleted&&latest.IsCompleted);Need(records.Items.Count==1&&records.Items[0].Text=="Beta","Old query cannot overwrite newer filter");
                     filter.Text="Alpha";Task hidden=Query(history);history.LeavePage();Wait(()=>hidden.IsCompleted);Need(records.Items[0].Text=="Beta","Cancelled hidden query cannot replace visible data");

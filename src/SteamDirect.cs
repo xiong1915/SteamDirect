@@ -53,8 +53,7 @@ namespace SteamDirect
         }
         internal static void RunApplication(string[] arguments)
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
+            HighDpi.InitializeUi();
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (sender, args) =>
             {
@@ -133,7 +132,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.3";
+            Text = "Steam 直连助手 v3.0.4";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -147,12 +146,14 @@ namespace SteamDirect
 
             BuildNavigation();
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = UiStyle.PagePadding, ColumnCount = 1, RowCount = 3 };
+            root.BackColor = AppTheme.Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 448));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            pageHost.Controls.Add(root);
-            pages = new PageManager(pageHost, root);
+            var overview = new ContentViewport(root, 800) { BackColor = AppTheme.Page };
+            pageHost.Controls.Add(overview);
+            pages = new PageManager(pageHost, overview);
             var header = UiStyle.Header("概览", "准备好网络，再开始游戏。");
             root.Controls.Add(header, 0, 0);
 
@@ -254,7 +255,7 @@ namespace SteamDirect
             logBox.ScrollBars = ScrollBars.Vertical;
             logBox.BackColor = Color.White;
             logBox.ForeColor = AppTheme.Muted;
-            logBox.Font = UiStyle.Caption;
+            logBox.Font = UiStyle.Body;
             logBox.BorderStyle = BorderStyle.None;
             logBox.AccessibleName = "操作记录";
             logFrame.Controls.Add(new NativeScrollFrame(logBox));
@@ -349,7 +350,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.3 · 游戏网络助手", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.4 · 游戏网络助手", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             shell.Controls.Add(rail, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);

@@ -15,6 +15,9 @@ namespace SteamDirect
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
         [DllImport("user32.dll")] private static extern int GetGuiResources(IntPtr process, int kind);
+        [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr h,int m,IntPtr w,IntPtr l);
+        [DllImport("gdi32.dll",EntryPoint="GetObjectW")]private static extern int GetFontObject(IntPtr h,int size,IntPtr data);
+        private static void FontMetrics(MainWindow main){var text=(TextBox)Field(main,"logBox");IntPtr data=Marshal.AllocHGlobal(92);try{Need(GetFontObject(SendMessage(text.Handle,0x31,IntPtr.Zero,IntPtr.Zero),92,data)==92,"Cannot inspect native log font");int height=Math.Abs(Marshal.ReadInt32(data));Console.WriteLine("LOGFONT managed_points="+text.Font.SizeInPoints+" native_height="+height+" root_dpi="+main.DeviceDpi+" text_dpi="+text.DeviceDpi+" root_font_points="+main.Font.SizeInPoints);Need(height>=Math.Round(text.Font.SizeInPoints*main.DeviceDpi/72.0)-1,"Native log font did not scale to window DPI");}finally{Marshal.FreeHGlobal(data);}}
         private static void Need(bool value, string message) { if (!value) throw new Exception(message); }
         private static void Pump(int ms) { var timer=Stopwatch.StartNew(); do { Application.DoEvents(); uint id; GetWindowThreadProcessId(GetForegroundWindow(),out id); Need(id!=(uint)Process.GetCurrentProcess().Id,"Fixture took foreground"); Thread.Sleep(2); } while(timer.ElapsedMilliseconds<ms); }
         private static object Field(object obj,string name) { return obj.GetType().GetField(name,Private).GetValue(obj); }
@@ -22,7 +25,10 @@ namespace SteamDirect
         [STAThread] private static int Main(string[] args)
         {
             WindowEnvironment.OffscreenTests=true; Motion.Reduced=true;
-            HighDpi.EnablePerMonitorContext(); Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+            if(args.Length>=4&&args[3]=="production") {
+                var initialize=typeof(HighDpi).GetMethod("InitializeUi",BindingFlags.Static|BindingFlags.NonPublic);
+                if(initialize!=null)initialize.Invoke(null,null);else{Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);}
+            }else{HighDpi.EnablePerMonitorContext();Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);}
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException+=(s,e)=>{Console.Error.WriteLine(e.Exception);Environment.Exit(1);};
             string temp=Path.Combine(Path.GetTempPath(),"SteamDirect-navigation-"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(temp); LogStore.DirectoryPath=Path.Combine(temp,"Logs");
@@ -34,6 +40,7 @@ namespace SteamDirect
                     using(var main=new MainWindow(false,monitor)) {
                         main.ShowInTaskbar=false;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.MinimumSize=Size.Empty;main.ClientSize=fourK?new Size(3760,2060):new Size(1840,980);main.Show();Pump(20);
                         Console.WriteLine("ENV client="+main.ClientSize+" native_dpi="+main.DeviceDpi+" awareness="+HighDpi.Awareness+" reduced="+Motion.Reduced+" baseline="+baseline);
+                        FontMetrics(main);
                         var nav=typeof(MainWindow).GetMethod("NavigateTo",Private);
                         string[] pages={"网络诊断","游戏记录","设置","概览"};
                         var first=new Dictionary<string,Form>();
@@ -51,6 +58,7 @@ namespace SteamDirect
                             Pump(i<8?60:2);
                             if(i==7){GC.Collect();GC.WaitForPendingFinalizers();gdiWarm=GetGuiResources(Process.GetCurrentProcess().Handle,0);memoryWarm=Process.GetCurrentProcess().PrivateMemorySize64;}
                             if(i==1&&!baseline){Console.WriteLine("DATA pipeline_elapsed_ms="+typeof(HistoryWindow).GetProperty("LastDataLoadMilliseconds",Private).GetValue(current,null)+" sqlite_worker_ms="+typeof(HistoryWindow).GetProperty("LastQueryMilliseconds",Private).GetValue(current,null)+" report_worker_ms="+typeof(HistoryWindow).GetProperty("LastAnalysisMilliseconds",Private).GetValue(current,null));CaptureCurrent(main,args[0],"history-loaded.png");Need(((Control)Field(current,"overviewText")).Height>=UiStyle.Scale(current,80),"Report body collapsed at constrained height");}
+                            if(i==3&&!baseline){var log=(TextBox)Field(main,"logBox");Need(log.Height>=UiStyle.Scale(log,80),"Overview log collapsed at constrained height");var viewport=Field(Field(main,"pages"),"current") as ContentViewport;if(viewport!=null){viewport.ScrollTo(int.MaxValue);CaptureCurrent(main,args[0],"overview-log.png");viewport.ScrollTo(0);}}
                             if(i>=8&&(i-7)%25==0){GC.Collect();GC.WaitForPendingFinalizers();Console.WriteLine("CHECKPOINT switches="+(i-7)+" GDI="+GetGuiResources(Process.GetCurrentProcess().Handle,0)+" private_MB="+(Process.GetCurrentProcess().PrivateMemorySize64/1048576.0).ToString("F1"));}
                         }
                         foreach(var item in warm){item.Value.Sort();double sum=0;foreach(double value in item.Value)sum+=value;Console.WriteLine("WARM100 page="+item.Key+" n="+item.Value.Count+" mean_ms="+(sum/item.Value.Count).ToString("F3")+" p95_ms="+item.Value[(int)Math.Ceiling(item.Value.Count*0.95)-1].ToString("F3"));}

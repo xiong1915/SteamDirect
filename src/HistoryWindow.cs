@@ -301,40 +301,7 @@ namespace SteamDirect
             SetupText(overviewText, "本局结果说明与建议");
             overviewText.Font = UiStyle.Body;
             layout.Controls.Add(new NativeScrollFrame(overviewText), 0, 3);
-            return new ReportViewport(layout);
-        }
-
-        private sealed class ReportViewport : Panel
-        {
-            private readonly Control content;
-            private readonly DarkScrollBar scroll = new DarkScrollBar();
-            private bool arranging;
-            internal ReportViewport(Control content)
-            {
-                this.content = content; Dock = DockStyle.Fill; Margin = Padding.Empty;
-                BackColor = AppTheme.Surface; DoubleBuffered = true;
-                content.Dock = DockStyle.None; Controls.Add(content); Controls.Add(scroll);
-                scroll.ScrollTo += value => { scroll.SetRange(Math.Max(0, content.Height - Height), Math.Max(1, Height), value); PerformLayout(); };
-            }
-            protected override void OnLayout(LayoutEventArgs args)
-            {
-                if (arranging || content == null) return;
-                arranging = true;
-                try {
-                    base.OnLayout(args);
-                    int height = Math.Max(Height, UiStyle.Scale(this, 340));
-                    int width = height > Height ? UiStyle.Scale(this, 14) : 0;
-                    scroll.SetRange(Math.Max(0, height - Height), Math.Max(1, Height), scroll.Value);
-                    scroll.Bounds = new Rectangle(Math.Max(0, Width - width), 0, width, Height);
-                    content.Bounds = new Rectangle(0, -scroll.Value, Math.Max(1, Width - width), height);
-                } finally { arranging = false; }
-            }
-            protected override void OnMouseWheel(MouseEventArgs args)
-            {
-                base.OnMouseWheel(args);
-                scroll.SetRange(Math.Max(0, content.Height - Height), Math.Max(1, Height), scroll.Value - Math.Sign(args.Delta) * UiStyle.Scale(this, 40));
-                PerformLayout();
-            }
+            return new ContentViewport(layout, 340);
         }
 
         private static Label Caption(string text)
