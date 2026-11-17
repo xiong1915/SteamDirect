@@ -7,14 +7,16 @@ namespace SteamDirect
     // Enlarge only the synthetic HWND's tracking limit, never the host display settings.
     internal sealed class OffscreenGeometry : NativeWindow
     {
+        [DllImport("user32.dll",SetLastError=true)]private static extern bool SetWindowPos(IntPtr window,IntPtr after,int x,int y,int width,int height,uint flags);
         internal static void Resize(Form form,Size size)
         {
             if(!WindowEnvironment.OffscreenTests)throw new InvalidOperationException("Synthetic geometry is test-only");
             var observer=new OffscreenGeometry();observer.AssignHandle(form.Handle);
             try{
                 form.MaximumSize=new Size(12000,12000);
-                form.MinimumSize=new Size(size.Width+form.Width-form.ClientSize.Width,size.Height+form.Height-form.ClientSize.Height);
-                form.ClientSize=size;
+                int width=size.Width+form.Width-form.ClientSize.Width,height=size.Height+form.Height-form.ClientSize.Height;
+                if(!SetWindowPos(form.Handle,IntPtr.Zero,0,0,width,height,0x416))throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                form.PerformLayout();
             }finally{observer.ReleaseHandle();}
         }
         protected override void WndProc(ref Message message)
