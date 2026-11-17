@@ -396,7 +396,7 @@ namespace SteamDirect
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, statusHeight));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-            root.Controls.Add(UiStyle.Header("网络诊断", "CS2 · Steam    查看连接状态与网络路径"), 0, 0);
+            root.Controls.Add(UiStyle.Header("网络诊断", "Steam · CS2"), 0, 0);
 
             root.Controls.Add(BuildControls(), 0, 1);
             root.Controls.Add(BuildStatusCards(), 0, 2);
@@ -537,6 +537,7 @@ namespace SteamDirect
         {
             if (IsDisposed || Disposing) return;
             if (InvokeRequired) { try { BeginInvoke(new Action<DiagnosticUpdate>(Apply), item); } catch (InvalidOperationException) { } return; }
+            if (cancellation != null && SteamGameDiscovery.IsSteamGameActive()) { cancellation.Cancel(); return; }
             if (item.CompletedUnits >= 0)
             {
                 progressBar.Value = Math.Max(0, Math.Min(100, item.CompletedUnits * 100 / 8));
@@ -554,6 +555,10 @@ namespace SteamDirect
         private async Task RunAsync()
         {
             if (cancellation != null || IsDisposed || Disposing) return;
+            if (SteamGameDiscovery.IsSteamGameActive() || Motion.IsGaming != null && Motion.IsGaming())
+            {
+                conclusion.Text = "游戏进行中，全面检测已暂停。"; progress.Text = "游戏保护"; return;
+            }
             IPEndPoint server;
             try { server = NetworkDiagnostics.ParseServer(target.Text); } catch (ArgumentException ex) { NoticeDialog.Show(this, ex.Message, "服务器地址"); return; }
             progressBar.Value = 0;

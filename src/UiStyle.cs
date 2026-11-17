@@ -10,6 +10,7 @@ namespace SteamDirect
     // Explicit content bounds avoid AutoScroll/Dock feedback and preserve readable minimum heights.
     internal sealed class ContentViewport : Panel
     {
+        protected override void OnPaintBackground(PaintEventArgs args) { Control owner=Parent;while(owner!=null&&!(owner is RoundedPanel))owner=owner.Parent;if(owner!=null){if(!Wallpaper.PaintGlass(this,args.Graphics))base.OnPaintBackground(args);}else if(!Wallpaper.Paint(this,args.Graphics))base.OnPaintBackground(args); }
         private readonly Control content;
         private readonly int minimumHeight;
         private readonly DarkScrollBar scroll = new DarkScrollBar();
@@ -46,21 +47,28 @@ namespace SteamDirect
 
     internal static class UiStyle
     {
+        internal static void ReleaseHiddenRendering(Control root)
+        {
+            var panel=root as RoundedPanel;if(panel!=null)panel.ClearBackdrop();
+            var scroll=root as NativeScrollFrame;if(scroll!=null)scroll.ReleaseGlass();
+            foreach(Control child in root.Controls)ReleaseHiddenRendering(child);
+        }
         internal const int Space4 = 4, Space8 = 8, Space12 = 12, Space16 = 16, Space20 = 20,
             Space24 = 24, Space32 = 32, Space40 = 40, Space48 = 48;
         internal const int HeaderHeight = 96, ButtonHeight = 40, CompactHeight = 32, Gap = Space16, SmallGap = Space8;
-        internal const float CardRadius = 12, ControlRadius = 8, NavigationRadius = 8;
+        internal const float Radius = 16;
+        internal const float CardRadius = Radius, ControlRadius = Radius, NavigationRadius = Radius;
         internal const int MotionTick = 40, SpinnerStep = 9; // Continuous motion is reserved for active operations; controls animate only on interaction.
         private const string Family = "Microsoft YaHei UI";
-        internal static readonly Font Body = new Font(Family, 10F);
-        internal static readonly Font BodyStrong = new Font(Family, 10F, FontStyle.Bold);
-        internal static readonly Font Caption = new Font(Family, 9F);
+        internal static readonly Font Body = new Font(Family, 11F);
+        internal static readonly Font BodyStrong = new Font(Family, 11F, FontStyle.Bold);
+        internal static readonly Font Caption = new Font(Family, 10F);
         internal static readonly Font Button = BodyStrong;
-        internal static readonly Font PageTitle = new Font(Family, 22F);
-        internal static readonly Font SectionTitle = new Font(Family, 11F, FontStyle.Bold);
-        internal static readonly Font HeroTitle = new Font(Family, 17F, FontStyle.Bold);
-        internal static readonly Font DiagramCaption = new Font(Family, 12F, FontStyle.Regular, GraphicsUnit.Pixel);
-        internal static readonly Font DiagramTitle = new Font(Family, 13.5F, FontStyle.Bold, GraphicsUnit.Pixel);
+        internal static readonly Font PageTitle = new Font(Family, 24F);
+        internal static readonly Font SectionTitle = new Font(Family, 12F, FontStyle.Bold);
+        internal static readonly Font HeroTitle = new Font(Family, 18F, FontStyle.Bold);
+        internal static readonly Font DiagramCaption = new Font(Family, 13.5F, FontStyle.Regular, GraphicsUnit.Pixel);
+        internal static readonly Font DiagramTitle = new Font(Family, 15.5F, FontStyle.Bold, GraphicsUnit.Pixel);
         internal static Padding PagePadding { get { return new Padding(Space24); } }
         internal static Padding CardPadding { get { return new Padding(Space20); } }
         internal static Padding DensePadding { get { return new Padding(Space16); } }
@@ -77,6 +85,7 @@ namespace SteamDirect
         private sealed class BufferedGrid : TableLayoutPanel
         {
             internal BufferedGrid() { DoubleBuffered = true; }
+            protected override void OnPaintBackground(PaintEventArgs args) { if (!Wallpaper.Paint(this, args.Graphics)) base.OnPaintBackground(args); }
             protected override void OnLayout(LayoutEventArgs args)
             {
                 var trace = NavigationTrace.Current;
@@ -85,17 +94,17 @@ namespace SteamDirect
             }
         }
 
-        internal static TableLayoutPanel Header(string title, string description)
+        internal static Control Header(string title, string description)
         {
             var header = Grid(1, 2);
             header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            header.RowStyles.Add(new RowStyle(SizeType.Absolute, Space32 + Space24));
-            header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            header.RowStyles.Add(new RowStyle(SizeType.Percent, string.IsNullOrEmpty(description)?100:70));
+            header.RowStyles.Add(new RowStyle(SizeType.Percent, string.IsNullOrEmpty(description)?0:30));
             header.Controls.Add(new Label { Text = title, Dock = DockStyle.Fill, Margin = Padding.Empty,
-                Font = PageTitle, ForeColor = AppTheme.Ink, AutoEllipsis = true }, 0, 0);
+                Font = PageTitle, ForeColor = AppTheme.Ink, AutoEllipsis = true, TextAlign=ContentAlignment.MiddleLeft }, 0, 0);
             header.Controls.Add(new Label { Text = description, Dock = DockStyle.Fill, Margin = Padding.Empty,
                 Font = Body, ForeColor = AppTheme.Muted, AutoEllipsis = true }, 0, 1);
-            return header;
+            var panel=Card(true);panel.Padding=new Padding(16,8,16,8);panel.Controls.Add(header);return panel;
         }
 
         internal static RoundedPanel Card(bool compact = false)

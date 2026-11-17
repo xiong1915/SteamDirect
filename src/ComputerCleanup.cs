@@ -256,7 +256,7 @@ namespace SteamDirect
             memory.Margin = files.Margin = Padding.Empty;
             memory.Font = files.Font = UiStyle.SectionTitle;
             layout.Controls.Add(memory, 0, 1); layout.Controls.Add(files, 1, 1);
-            note.Text = "仅扫描 SteamDirect 自身临时目录；清理前须确认，内存占用仅供参考。";
+            note.Text = "仅清理本软件的过期临时文件";
             note.Dock = DockStyle.Fill; note.Margin = Padding.Empty; note.AutoEllipsis = true; note.Font = UiStyle.Caption; note.ForeColor = AppTheme.Muted;
             layout.Controls.Add(note, 0, 2); layout.SetColumnSpan(note, 2);
             clean.Text = "扫描过期临时文件"; clean.Dock = DockStyle.Fill;

@@ -14,7 +14,15 @@ namespace SteamDirect
 
     internal sealed class PageHost : Panel
     {
+        internal Control ActivePage;
+        internal System.Drawing.Rectangle PageBounds { get { var r=DisplayRectangle;int width=Math.Min(r.Width,UiStyle.Scale(this,1160));return new System.Drawing.Rectangle(r.X+(r.Width-width)/2,r.Y,width,r.Height); } }
         internal PageHost() { Dock = DockStyle.Fill; DoubleBuffered = true; }
+        protected override void OnPaintBackground(PaintEventArgs args) { if (!Wallpaper.Paint(this, args.Graphics)) base.OnPaintBackground(args); }
+        protected override void OnLayout(LayoutEventArgs args)
+        {
+            base.OnLayout(args);
+            if (ActivePage != null && !ActivePage.IsDisposed && ActivePage.Bounds != PageBounds) ActivePage.Bounds = PageBounds;
+        }
     }
 
     internal sealed class RedrawBatch : IDisposable
@@ -35,7 +43,8 @@ namespace SteamDirect
             IntPtr saved = handle; handle = IntPtr.Zero;
             if (control.IsDisposed || !control.IsHandleCreated || control.Handle != saved) return;
             SendMessage(saved, 0x000B, new IntPtr(1), IntPtr.Zero);
-            RedrawWindow(saved, IntPtr.Zero, IntPtr.Zero, 0x0001 | 0x0004 | 0x0080 | 0x0100 | 0x0400);
+            // Queue one repaint; do not synchronously paint every child during navigation/resize.
+            RedrawWindow(saved, IntPtr.Zero, IntPtr.Zero, 0x0001 | 0x0004 | 0x0080 | 0x0400);
         }
     }
 
@@ -52,7 +61,13 @@ namespace SteamDirect
         internal Form ActivePage { get { return current as Form; } }
         internal int CachedCount { get { return pages.Count; } }
 
-        internal PageManager(Control host, Control overview) { this.host = host; this.overview = overview; current = overview; }
+        internal PageManager(Control host, Control overview)
+        {
+            this.host = host; this.overview = overview; current = overview;
+            var surface = host as PageHost;
+            if (surface != null) { overview.Dock = DockStyle.None; surface.ActivePage = overview; overview.Bounds = surface.PageBounds; }
+        }
+        private System.Drawing.Rectangle PageArea { get { var surface=host as PageHost;return surface==null?host.DisplayRectangle:surface.PageBounds; } }
         internal bool Navigate(string name, Func<Form> create)
         {
             if (disposed || switching || name == currentName) return false;
@@ -74,14 +89,14 @@ namespace SteamDirect
                         page = create(); next = page; fresh = true;
                         if (diagnostic) { construct = stage.Elapsed.TotalMilliseconds; stage.Restart(); }
                         page.TopLevel = false; page.FormBorderStyle = FormBorderStyle.None;
-                        page.MinimumSize = System.Drawing.Size.Empty; page.Dock = DockStyle.Fill; page.Tag = name;
+                        page.MinimumSize = System.Drawing.Size.Empty; page.Dock = DockStyle.None; page.Tag = name;
                         page.SuspendLayout(); host.SuspendLayout();
                         try
                         {
                             host.Controls.Add(page); host.Controls.SetChildIndex(page, host.Controls.Count - 1);
-                            page.Bounds = host.DisplayRectangle;
+                            page.Bounds = PageArea;
                             // Native handles are initialized once, without showing an empty page.
-                            EnsureHandles(page, ref createdHandles);
+                            if (!page.IsHandleCreated) { var handle = page.Handle; createdHandles++; }
                         }
                         finally { page.ResumeLayout(false); host.ResumeLayout(false); }
                         pages.Add(name, page);
@@ -89,6 +104,8 @@ namespace SteamDirect
                     }
                     next = page;
                 }
+                if (next.Bounds != PageArea) next.Bounds = PageArea;
+                if (!(host is PageHost)) next.Dock = DockStyle.Fill;
                 trace.Observe(next);
                 // Hidden cached pages still synchronize configuration/data before presentation.
                 var incoming = next as IManagedPage;
@@ -102,9 +119,10 @@ namespace SteamDirect
                 try
                 {
                     next.Show(); next.BringToFront();
+                    var surface = host as PageHost; if (surface != null) surface.ActivePage = next;
                     var outgoing = current as IManagedPage;
                     if (outgoing != null) outgoing.LeavePage();
-                    if (current != next) current.Hide();
+                    if (current != next) { current.Hide(); current.Dock = DockStyle.None; UiStyle.ReleaseHiddenRendering(current); }
                     current = next; currentName = name; committed = true;
                 }
                 finally { host.ResumeLayout(false); }
@@ -125,11 +143,6 @@ namespace SteamDirect
                 if (!committed && fresh && next != overview) { pages.Remove(name); next.Dispose(); }
                 switching = false;
             }
-        }
-        private static void EnsureHandles(Control root, ref int count)
-        {
-            if (!root.IsHandleCreated) { var handle = root.Handle; count++; }
-            foreach (Control child in root.Controls) EnsureHandles(child, ref count);
         }
         public void Dispose()
         {

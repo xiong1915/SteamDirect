@@ -9,6 +9,8 @@ namespace SteamDirect
     internal sealed class HistoryStore
     {
         private readonly string path;
+        private readonly object initialization = new object();
+        private bool initialized;
         private long revision;
         internal long Revision { get { return System.Threading.Interlocked.Read(ref revision); } }
 
@@ -19,6 +21,9 @@ namespace SteamDirect
 
         internal void Initialize()
         {
+            lock (initialization)
+            {
+            if (initialized && File.Exists(path)) return;
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             using (var db = new Connection(path, true))
             {
@@ -54,6 +59,8 @@ CREATE TABLE IF NOT EXISTS history_events (
     end_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS history_events_session_start ON history_events(session_id, start_ms);");
+            }
+            initialized = true;
             }
         }
 

@@ -30,11 +30,11 @@ namespace SteamDirect
         private readonly ComboBox modeFilter = new DarkComboBox();
         private readonly ComboBox recordScope = new DarkComboBox();
         private readonly HistoryNetworkChart networkChart = new HistoryNetworkChart();
-        private readonly RichTextBox comparisonText = new RichTextBox();
+        private readonly RichTextBox comparisonText = new GlassRichTextBox();
         private readonly Label overviewTitle = new Label();
         private readonly Label overviewNote = new Label();
         private readonly Label[] metricValues = { new Label(), new Label(), new Label() };
-        private readonly RichTextBox overviewText = new RichTextBox();
+        private readonly RichTextBox overviewText = new GlassRichTextBox();
         private readonly Label status = new Label();
         private readonly Label detailTitle = new Label();
         private readonly Label detailMeta = new Label();
@@ -51,7 +51,7 @@ namespace SteamDirect
         private int queryGeneration;
         private long loadedRevision = -1;
         private DateTime loadedDay;
-        private bool selectionPending;
+        private bool selectionPending, gameAtRequest;
         internal double LastDataLoadMilliseconds { get; private set; }
         internal double LastQueryMilliseconds { get; private set; }
         internal double LastAnalysisMilliseconds { get; private set; }
@@ -96,7 +96,7 @@ namespace SteamDirect
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
             Controls.Add(root);
 
-            root.Controls.Add(UiStyle.Header("游戏网络报告", "选一局，直接查看网络情况、问题位置和处理建议。"), 0, 0);
+            root.Controls.Add(UiStyle.Header("游戏记录", "选择对局查看报告"), 0, 0);
 
             var filterCard = UiStyle.Card(true);
             filterCard.Margin = new Padding(0, 0, 0, UiStyle.Gap);
@@ -368,7 +368,8 @@ namespace SteamDirect
             var background = args.Item.Selected
                 ? AppTheme.Background(AppTheme.Pill)
                 : view is HistoryRecordList && ((HistoryRecordList)view).HoveredIndex == args.ItemIndex ? AppTheme.Background(AppTheme.Page) : AppTheme.Background(AppTheme.Surface);
-            using (var brush = new SolidBrush(background)) args.Graphics.FillRectangle(brush, bounds);
+            var drawing=args.Graphics.Save();args.Graphics.SetClip(bounds);Wallpaper.PaintGlass(view,args.Graphics);args.Graphics.Restore(drawing);
+            using (var brush = new SolidBrush(Color.FromArgb(args.Item.Selected?95:25,background))) args.Graphics.FillRectangle(brush, bounds);
             if (args.Item.Selected && args.ColumnIndex == 0)
             {
                 int stripe = Math.Max(2, (int)Math.Round(args.Graphics.DpiX / 48f));
@@ -395,7 +396,7 @@ namespace SteamDirect
                     new Rectangle(area.X, area.Y + heights[0] + heights[1], area.Width, heights[2]), AppTheme.Text(Ink), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
                 var action = RecordActionBounds(args.Item);
                 using (var brush = new SolidBrush(AppTheme.Background(AppTheme.Pill)))
-                using (var path = UiStyle.RoundRect(action, UiStyle.ControlRadius)) args.Graphics.FillPath(brush, path);
+                using (var path = UiStyle.RoundRect(action, UiStyle.ControlRadius * UiStyle.Dpi(view) / 96F)) args.Graphics.FillPath(brush, path);
                 TextRenderer.DrawText(args.Graphics, "详细数据", view.Font, action, AppTheme.Text(Accent),
                     TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine);
                 return;
@@ -470,7 +471,7 @@ namespace SteamDirect
             if (session == null || Gaming || session.End == 0) { status.Text = "请在游戏结束后查看详细数据。"; return; }
             new HistoryDataWindow(store, session, isGaming).Show(TopLevelControl as Form ?? this);
         }
-        private bool Gaming { get { return isGaming != null && isGaming(); } }
+        private bool Gaming { get { return gameAtRequest || isGaming != null && isGaming(); } }
         private bool Available { get { return !shuttingDown && !IsDisposed && !Disposing; } }
 
         private void CheckAnalysis(CancellationToken token)
@@ -497,6 +498,7 @@ namespace SteamDirect
         private async Task RefreshAsync(int requestedPage = 0)
         {
             if (!Available) return;
+            gameAtRequest = SteamGameDiscovery.IsSteamGameActive();
             if (Gaming) { status.Text = "游戏运行中，请在退出游戏后刷新。"; return; }
             if (queryWork != null) queryWork.Cancel();
             if (selectionWork != null) selectionWork.Cancel();
@@ -521,6 +523,7 @@ namespace SteamDirect
                 var result = await Task.Run(() =>
                 {
                     CheckAnalysis(token);
+                    store.Initialize();
                     var queryClock = System.Diagnostics.Stopwatch.StartNew();
                     var loaded = store.ListSessions(RecordLimit + 1, requestedPage * RecordLimit, name, mode == "全部" ? null : mode, from, before);
                     queryMilliseconds = queryClock.Elapsed.TotalMilliseconds;
@@ -610,6 +613,7 @@ namespace SteamDirect
         private async Task LoadSelectionAsync()
         {
             selectionPending = true;
+            gameAtRequest = SteamGameDiscovery.IsSteamGameActive();
             if (selectionWork != null) selectionWork.Cancel();
             if (!Available) return;
             var selected = Selected();

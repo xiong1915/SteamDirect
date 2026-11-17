@@ -80,6 +80,7 @@ namespace SteamDirect
                         }
                     }
                     if (baseline) { Console.WriteLine("Baseline matched-size synthetic captures only; no business or performance pass implied."); return 0; }
+                    MainMatrix(monitor,output);
                     using(var main=new MainWindow(false,monitor)) {
                         main.ShowInTaskbar=false;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.Show();Pump(20);
                         int before; using(var process=Process.GetCurrentProcess()) before=GetGuiResources(process.Handle,0);
@@ -103,5 +104,32 @@ namespace SteamDirect
             finally {Motion.IsGaming=null;try{Directory.Delete(temporary,true);}catch(IOException){}}
         }
         private static IEnumerable<Control> Descendants(Control root){foreach(Control child in root.Controls){yield return child;foreach(Control nested in Descendants(child))yield return nested;}}
+        private static void MainMatrix(HistoryMonitor monitor,string output)
+        {
+            int[,] sizes={{1280,800,96},{1920,1080,96},{1920,1080,120},{1920,1080,144},{3840,2160,168},{3840,2160,192}};
+            foreach(int index in new[]{0,1,2,3,4,5}){
+                using(var main=new MainWindow(false,monitor,new UserPreferences{NightMode=true,ThemeColor="#3269C7",NetworkRecording=false})){
+                    main.ShowInTaskbar=false;main.FormBorderStyle=FormBorderStyle.None;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.Show();
+                    var navigate=typeof(MainWindow).GetMethod("NavigateTo",Private);var manager=Field(main,"pages");
+                    foreach(string page in new[]{"网络诊断","游戏记录","设置","概览"}){navigate.Invoke(main,new object[]{page});Pump(40);}
+                    var original=new Dictionary<Control,Font>();Collect(main,original);var owned=new List<Font>();
+                    try{
+                        int dpi=sizes[index,2];WindowEnvironment.LayoutDpi=dpi;float factor=dpi/(float)main.DeviceDpi;
+                        main.AutoScaleMode=AutoScaleMode.None;main.MinimumSize=Size.Empty;foreach(Control control in Descendants(main)){var form=control as Form;if(form!=null)form.AutoScaleMode=AutoScaleMode.None;}
+                        main.Scale(new SizeF(factor,factor));foreach(var entry in original){var font=new Font(entry.Value.FontFamily,entry.Value.Size*factor,entry.Value.Style);owned.Add(font);entry.Key.Font=font;}
+                        OffscreenGeometry.Resize(main,new Size(sizes[index,0]-80,sizes[index,1]-100));main.PerformLayout();
+                        Need(main.ClientSize==new Size(sizes[index,0]-80,sizes[index,1]-100),"Requested desktop simulation geometry was constrained");
+                        foreach(string page in new[]{"概览","网络诊断","游戏记录","设置"}){
+                            navigate.Invoke(main,new object[]{page});Pump(30);
+                            Capture(main,Path.Combine(output,"desktop-"+sizes[index,0]+"-"+dpi+"-"+page+".png"));
+                            var active=(Form)manager.GetType().GetProperty("ActivePage",Private).GetValue(manager,null);
+                            if(active!=null)Need(active.Width<=main.ClientSize.Width&&active.Height>0,"Desktop page exceeds window");
+                            if(page=="概览"){var run=(Button)Field(main,"runButton");var log=(TextBox)Field(main,"logBox");Need(run.Height>=UiStyle.Scale(run,32),"Main action collapsed");Need(log.Height>=UiStyle.Scale(log,60),"Overview log collapsed");}
+                        }
+                        Console.WriteLine("PASS desktop simulation "+sizes[index,0]+"x"+sizes[index,1]+" dpi="+dpi+" four pages / recording off");
+                    }finally{main.Dispose();WindowEnvironment.LayoutDpi=0;foreach(var font in owned)font.Dispose();}
+                }
+            }
+        }
     }
 }

@@ -6,7 +6,7 @@ if (-not (Test-Path -LiteralPath $compiler)) { throw 'Windows x64 and .NET Frame
 $output = Join-Path $root 'dist\SteamDirect.Tests.exe'
 New-Item -ItemType Directory -Path (Split-Path $output -Parent) -Force | Out-Null
 $sources = @(Get-ChildItem -LiteralPath $source, $PSScriptRoot -Filter '*.cs' -File | ForEach-Object FullName)
-& $compiler /nologo /target:exe /main:SteamDirect.CoreTests /platform:x64 /optimize+ /warnaserror+ "/out:$output" "/resource:$source\mascot.png,SteamDirect.Mascot" "/resource:$source\app.config,SteamDirect.HighDpiConfig" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.ServiceProcess.dll /r:System.Security.dll @sources
+& $compiler /nologo /target:exe /main:SteamDirect.CoreTests /platform:x64 /optimize+ /warnaserror+ "/out:$output" "/resource:$source\mascot.png,SteamDirect.Mascot" "/resource:$source\app.config,SteamDirect.HighDpiConfig" "/resource:$source\wallpaper.jpg,SteamDirect.Wallpaper" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.ServiceProcess.dll /r:System.Security.dll @sources
 if ($LASTEXITCODE -ne 0) { throw 'Test compilation failed.' }
 Copy-Item -LiteralPath (Join-Path $source 'app.config') -Destination ($output + '.config') -Force
 & $output

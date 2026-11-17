@@ -19,13 +19,38 @@ namespace SteamDirect
 
     internal class DesktopForm : Form
     {
+        protected override void OnPaintBackground(PaintEventArgs args) { if (!Wallpaper.Paint(this, args.Graphics)) base.OnPaintBackground(args); }
         protected override void OnLayout(LayoutEventArgs args)
         {
             var trace = NavigationTrace.Current;
             if (trace != null) trace.BeginLayout();
             try { base.OnLayout(args); } finally { if (trace != null) trace.EndLayout(); }
         }
-        private bool displayPending, fitting;
+        private bool displayPending, fitting, liveResize, resizePending;
+        internal bool LiveResize { get { return liveResize; } }
+        private Timer resizeTimer;
+        protected override void OnVisibleChanged(EventArgs args){base.OnVisibleChanged(args);if(!Visible){liveResize=false;resizePending=false;if(resizeTimer!=null)resizeTimer.Stop();}}
+        private void FlushResize()
+        {
+            if (!resizePending || IsDisposed) return;
+            resizePending = false; base.OnResize(EventArgs.Empty);
+        }
+        protected override void OnResizeBegin(EventArgs args)
+        {
+            liveResize = true;
+            if (resizeTimer == null) { resizeTimer = new Timer { Interval = 16 }; resizeTimer.Tick += (sender, eventArgs) => FlushResize(); }
+            resizeTimer.Start(); base.OnResizeBegin(args);
+        }
+        protected override void OnResizeEnd(EventArgs args)
+        {
+            liveResize = false; if (resizeTimer != null) resizeTimer.Stop(); FlushResize();
+            base.OnResizeEnd(args); Invalidate(true); QueueDisplayCheck();
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && resizeTimer != null) { resizeTimer.Dispose(); resizeTimer = null; }
+            base.Dispose(disposing);
+        }
         private FormWindowState previousState;
         protected override bool ShowWithoutActivation { get { return WindowEnvironment.OffscreenTests; } }
         protected override CreateParams CreateParams
@@ -63,6 +88,7 @@ namespace SteamDirect
         }
         protected override void OnResize(EventArgs e)
         {
+            if (liveResize) { resizePending = true; return; }
             base.OnResize(e);
             var state = WindowState;
             if (state == FormWindowState.Normal && previousState != FormWindowState.Normal && !fitting) QueueDisplayCheck();

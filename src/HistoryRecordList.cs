@@ -15,7 +15,9 @@ namespace SteamDirect {
   protected override CreateParams CreateParams {get{var p=base.CreateParams;p.Style|=0x40;return p;}}
   internal void SetRowHeight(int height){height=Math.Max(1,height);if(rowHeight==height&&images!=IntPtr.Zero)return;rowHeight=height;ApplyHeight();}
   private void ApplyHeight(){if(!IsHandleCreated)return;var next=ImageList_Create(1,rowHeight,0x20,0,1);if(next==IntPtr.Zero)throw new InvalidOperationException("无法创建历史记录行布局。");SendMessage(Handle,0x1003,new IntPtr(1),next);var old=images;images=next;if(old!=IntPtr.Zero)ImageList_Destroy(old);}
-  protected override void OnHandleCreated(EventArgs e){base.OnHandleCreated(e);ApplyHeight();}
+  private void RoundEdges(){if(Width<2||Height<2)return;var old=Region;using(var path=UiStyle.RoundRect(new System.Drawing.RectangleF(0,0,Width,Height),UiStyle.ControlRadius*UiStyle.Dpi(this)/96F))Region=new System.Drawing.Region(path);if(old!=null)old.Dispose();}
+  protected override void OnSizeChanged(EventArgs e){base.OnSizeChanged(e);RoundEdges();}
+  protected override void OnHandleCreated(EventArgs e){base.OnHandleCreated(e);ApplyHeight();RoundEdges();}
   protected override void OnHandleDestroyed(EventArgs e){base.OnHandleDestroyed(e);if(images!=IntPtr.Zero){ImageList_Destroy(images);images=IntPtr.Zero;}}
  }
 }

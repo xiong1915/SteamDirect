@@ -1,9 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
@@ -227,24 +225,6 @@ namespace SteamDirect
             if (created) File.Delete(path);
             completed = true;
         }
-        internal static void RestoreOriginal(string path, IProxyAccess access)
-        {
-            var snapshot = ProxySnapshot.Load(path); // Full validation before changing anything.
-            CheckLocalManualProxy(snapshot);
-            var previous = access.Capture(); previous.Validate();
-            try { RestoreVerified(access, snapshot); }
-            catch (Exception restoreError)
-            {
-                // A partial registry/environment write must not strand the user in a mixed state.
-                // The original recovery point survives both restoration and rollback failures.
-                try { RestoreVerified(access, previous); }
-                catch (Exception rollbackError)
-                { throw new AggregateException("代理恢复失败，回滚也未通过核验；原始备份已保留。", restoreError, rollbackError); }
-                throw;
-            }
-            File.Delete(path); // Delete only after restoration and verification succeed.
-        }
-
         private static void RestoreVerified(IProxyAccess access, ProxySnapshot snapshot)
         {
             access.Restore(snapshot);
@@ -252,49 +232,5 @@ namespace SteamDirect
                 throw new InvalidOperationException("恢复后核验未通过，备份已保留，请勿删除。");
         }
 
-        private static void CheckLocalManualProxy(ProxySnapshot snapshot)
-        {
-            if ((snapshot.Flags & ProxySnapshot.ManualProxy) == 0) return;
-
-            var checkedEndpoints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string entry in snapshot.Server.Split(new[] { ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                string value = entry.Substring(entry.IndexOf('=') + 1);
-                Uri server;
-                if (!Uri.TryCreate(value.IndexOf("://", StringComparison.Ordinal) >= 0 ? value : "http://" + value,
-                    UriKind.Absolute, out server) || server.Port <= 0) continue;
-
-                string host = server.DnsSafeHost;
-                IPAddress address = null;
-                bool localhost = string.Equals(host.TrimEnd('.'), "localhost", StringComparison.OrdinalIgnoreCase);
-                if (!localhost && (!IPAddress.TryParse(host, out address) || !IPAddress.IsLoopback(address))) continue;
-                if (!checkedEndpoints.Add(server.Authority)) continue;
-
-                bool ready = localhost
-                    ? CanConnect(IPAddress.Loopback, server.Port) || CanConnect(IPAddress.IPv6Loopback, server.Port)
-                    : CanConnect(address, server.Port);
-                if (!ready)
-                    throw new InvalidOperationException("本地代理端口 " + server.Authority +
-                        " 尚未就绪，未写回代理设置。请先打开原代理软件，等它就绪后再点击恢复。");
-            }
-        }
-
-        private static bool CanConnect(IPAddress address, int port)
-        {
-            try
-            {
-                using (var client = new TcpClient(address.AddressFamily))
-                {
-                    var pending = client.BeginConnect(address, port, null, null);
-                    using (var completed = pending.AsyncWaitHandle)
-                    {
-                        if (!completed.WaitOne(500)) return false;
-                        client.EndConnect(pending);
-                        return true;
-                    }
-                }
-            }
-            catch (SocketException) { return false; }
-        }
     }
 }

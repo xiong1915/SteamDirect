@@ -24,6 +24,17 @@ namespace SteamDirect
     // Steam tools installed as apps may therefore be recorded. Very short launches between polls can be missed.
     internal sealed class SteamGameDiscovery
     {
+        internal static bool IsSteamGameActive()
+        {
+            if (WindowEnvironment.OffscreenTests) return false;
+            try {
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))
+                {
+                    long app;
+                    return key != null && long.TryParse(Convert.ToString(key.GetValue("RunningAppID")), out app) && app > 0;
+                }
+            } catch (System.Security.SecurityException) { return false; } catch (UnauthorizedAccessException) { return false; }
+        }
         private const uint ProcessSnapshot = 0x00000002;
         private const uint QueryLimitedInformation = 0x1000;
         private const int NoMoreFiles = 18;

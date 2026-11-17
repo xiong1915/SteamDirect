@@ -22,7 +22,7 @@ namespace SteamDirect
         internal static readonly Color Error = Color.FromArgb(191, 72, 57);
         internal static readonly Color Info = Accent;
         internal static readonly Color Disabled = Color.FromArgb(145, 145, 145);
-        internal static Color ThemeColor = Accent;
+        internal static Color ThemeColor = Color.FromArgb(50, 105, 199);
         private static Color primary, accentText, tone, primaryText;
         private static Color canvas, surface, mutedText, inkText, successText, warningText, errorText;
         internal static Color AccentForeground { get { return primaryText; } }
@@ -69,10 +69,10 @@ namespace SteamDirect
         private static void UpdatePalette()
         {
             primary = ThemeColor;
-            canvas = IsDark ? Color.FromArgb(16, 17, 20) : Color.FromArgb(247, 248, 250);
-            surface = IsDark ? Color.FromArgb(25, 28, 34) : Color.White;
-            inkText = IsDark ? Color.FromArgb(234, 238, 245) : Color.FromArgb(29, 33, 41);
-            mutedText = IsDark ? Color.FromArgb(166, 176, 192) : Color.FromArgb(99, 108, 122);
+            canvas = IsDark ? Color.FromArgb(12, 19, 30) : Color.FromArgb(245, 248, 252);
+            surface = IsDark ? Color.FromArgb(24, 34, 49) : Color.FromArgb(252, 253, 255);
+            inkText = IsDark ? Color.FromArgb(235, 241, 250) : Color.FromArgb(28, 43, 63);
+            mutedText = IsDark ? Color.FromArgb(208, 223, 244) : Color.FromArgb(70, 86, 108);
             Color textSurface = IsDark ? surface : canvas;
             Color limit = IsDark ? Color.White : Color.Black;
             accentText = primary;
@@ -127,8 +127,8 @@ namespace SteamDirect
         internal static Color Background(Color light)
         {
             if (light.A == 0) return light;
-            if (light.ToArgb() == InputSurface.ToArgb()) return IsDark ? Color.FromArgb(23, 26, 32) : InputSurface;
-            if (light.ToArgb() == ElevatedSurface.ToArgb()) return IsDark ? Color.FromArgb(32, 36, 44) : ElevatedSurface;
+            if (light.ToArgb() == InputSurface.ToArgb()) return IsDark ? Color.FromArgb(17, 26, 40) : InputSurface;
+            if (light.ToArgb() == ElevatedSurface.ToArgb()) return IsDark ? Color.FromArgb(31, 46, 65) : ElevatedSurface;
             if (light.ToArgb() == Pill.ToArgb()) return tone;
             if (light.ToArgb() == Accent.ToArgb()) return primary;
             bool page = light.ToArgb() == Page.ToArgb();
@@ -182,7 +182,7 @@ namespace SteamDirect
             var menu = (ContextMenuStrip)sender;
             if (menu.Width < 2 || menu.Height < 2) return;
             var old = menu.Region;
-            using (var path = UiStyle.RoundRect(new RectangleF(0, 0, menu.Width, menu.Height), UiStyle.ControlRadius))
+            using (var path = UiStyle.RoundRect(new RectangleF(0, 0, menu.Width, menu.Height), UiStyle.ControlRadius * UiStyle.Dpi(menu) / 96F))
                 menu.Region = new Region(path);
             if (old != null) old.Dispose();
         }
@@ -193,14 +193,14 @@ namespace SteamDirect
             protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
             {
                 e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using (var path = UiStyle.RoundRect(new RectangleF(.5F, .5F, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1), UiStyle.ControlRadius))
+                using (var path = UiStyle.RoundRect(new RectangleF(.5F, .5F, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1), UiStyle.ControlRadius * UiStyle.Dpi(e.ToolStrip) / 96F))
                 using (var pen = new Pen(Edge)) e.Graphics.DrawPath(pen, path);
             }
             protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
             {
                 if (!e.Item.Selected) return;
                 e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using (var path = UiStyle.RoundRect(new RectangleF(1, 1, e.Item.Width - 2, e.Item.Height - 2), UiStyle.ControlRadius - 2))
+                using (var path = UiStyle.RoundRect(new RectangleF(1, 1, e.Item.Width - 2, e.Item.Height - 2), UiStyle.ControlRadius * UiStyle.Dpi(e.ToolStrip) / 96F))
                 using (var brush = new SolidBrush(Hover)) e.Graphics.FillPath(brush, path);
             }
         }
@@ -224,6 +224,7 @@ namespace SteamDirect
             var original = originals.GetValue(control, c => new Original(c));
             control.BackColor = Background(original.Back);
             control.ForeColor = Text(original.Fore);
+            if(control is Label||control is PictureBox||control is TableLayoutPanel||control is FlowLayoutPanel)control.BackColor=Color.Transparent;
             if (control is ListView || control is TextBoxBase || control is ComboBox || control is DataGridView || control is ScrollableControl)
             {
                 control.HandleCreated -= NativeThemeCreated;
@@ -314,10 +315,11 @@ namespace SteamDirect
         {
             Color color;
             if (!TryColor(colorCode, out color)) throw new ArgumentException("主题色格式应为 #RRGGBB。", "colorCode");
+            if (IsDark == dark && ThemeColor.ToArgb() == color.ToArgb()) return;
             ThemeColor = color;
             IsDark = dark;
             UpdatePalette();
-            foreach (Form window in Application.OpenForms) Apply(window);
+            foreach (Form window in Application.OpenForms) if (window.TopLevel) Apply(window);
         }
     }
 }

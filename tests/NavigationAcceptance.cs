@@ -37,8 +37,11 @@ namespace SteamDirect
                 using(var monitor=new HistoryMonitor(Path.Combine(temp,"history.sqlite3"),()=>new List<SteamGameProcess>())) {
                     monitor.Store.Initialize(); long now=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     monitor.Store.WriteBatch(new[]{new HistorySession{Id="nav",Game="Navigation fixture",Mode="直连",Target="192.0.2.1",Start=now-600000,End=now}},null,null);
-                    using(var main=new MainWindow(false,monitor)) {
-                        main.ShowInTaskbar=false;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.MinimumSize=Size.Empty;main.ClientSize=fourK?new Size(3760,2060):new Size(1840,980);main.Show();Pump(20);
+                    using(var main=new MainWindow(false,monitor,new UserPreferences{NightMode=true,ThemeColor="#3269C7",NetworkRecording=false})) {
+                        main.ShowInTaskbar=false;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.MinimumSize=Size.Empty;
+                        if(fourK)main.FormBorderStyle=FormBorderStyle.None; // Avoid host-monitor tracking limits in the synthetic 4K fixture.
+                        main.Show();OffscreenGeometry.Resize(main,fourK?new Size(3760,2060):new Size(1840,980));Pump(20);
+                        Need(main.ClientSize==(fourK?new Size(3760,2060):new Size(1840,980)),"Requested synthetic client geometry was constrained by host");
                         Console.WriteLine("ENV client="+main.ClientSize+" native_dpi="+main.DeviceDpi+" awareness="+HighDpi.Awareness+" reduced="+Motion.Reduced+" baseline="+baseline);
                         FontMetrics(main);
                         var nav=typeof(MainWindow).GetMethod("NavigateTo",Private);

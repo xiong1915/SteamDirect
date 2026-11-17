@@ -44,6 +44,7 @@ namespace SteamDirect
             LogStore.DirectoryPath = Path.Combine(temporary, "Logs");
             try
             {
+                if(arguments.Length>1&&arguments[1]=="performance")return MeasureRecording(temporary);
                 using (var monitor = new HistoryMonitor(Path.Combine(temporary, "history.sqlite3"), () => new List<SteamGameProcess>()))
                 {
                     monitor.Store.Initialize();
@@ -113,6 +114,29 @@ namespace SteamDirect
                 LogStore.DirectoryPath = originalLogs; Motion.IsGaming = null; Pump(150);
                 try { Directory.Delete(temporary, true); } catch (IOException) { }
             }
+        }
+        private static int MeasureRecording(string temporary)
+        {
+            int scans=0;var discovery=new SteamGameDiscovery();
+            using(var monitor=new HistoryMonitor(Path.Combine(temporary,"performance.sqlite3"),()=>{
+                discovery.Scan();Interlocked.Increment(ref scans);
+                // Measure real idle discovery, never probe or monitor an actual running game.
+                return new List<SteamGameProcess>();
+            }))using(var main=new MainWindow(false,monitor,new UserPreferences{NetworkRecording=false,NightMode=true,ThemeColor="#3269C7"})){
+                main.ShowInTaskbar=false;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.Show();Pump(100);main.Hide();Pump(50);
+                foreach(bool recording in new[]{false,true}){
+                    if(recording){monitor.Start();Pump(1500);}
+                    GC.Collect();GC.WaitForPendingFinalizers();
+                    using(var process=Process.GetCurrentProcess()){
+                        process.Refresh();TimeSpan start=process.TotalProcessorTime,previous=start;var watch=Stopwatch.StartNew();long last=0;double peak=0;
+                        for(int i=0;i<10;i++){Pump(1000);process.Refresh();long now=watch.ElapsedMilliseconds;double cpu=(process.TotalProcessorTime-previous).TotalMilliseconds/Math.Max(1,now-last)*100;peak=Math.Max(peak,cpu);previous=process.TotalProcessorTime;last=now;}
+                        process.Refresh();Console.WriteLine("IDLE recording="+recording+" samples=10x1s cpu_core_mean_percent="+((process.TotalProcessorTime-start).TotalMilliseconds/watch.ElapsedMilliseconds*100).ToString("F3")+" peak="+peak.ToString("F3")+" working_MB="+(process.WorkingSet64/1048576.0).ToString("F1")+" private_MB="+(process.PrivateMemorySize64/1048576.0).ToString("F1")+" scans="+scans+" ping="+monitor.PingCount+" dns="+monitor.DnsCount);
+                    }
+                }
+                if(monitor.PingCount!=0||monitor.DnsCount!=0)throw new Exception("Idle fixture generated network probes");
+                Console.WriteLine("Gameplay CPU/FPS and actual DWM/monitor crossing: BLOCKED (no isolated live game/desktop). Idle results only; no gameplay performance claim.");
+            }
+            return 0;
         }
     }
 }

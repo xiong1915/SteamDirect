@@ -50,7 +50,7 @@ namespace SteamDirect
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            e.Graphics.Clear(Parent == null ? AppTheme.Background(AppTheme.Page) : Parent.BackColor);
+            if(!Wallpaper.PaintGlass(this,e.Graphics))e.Graphics.Clear(AppTheme.Background(AppTheme.Surface));
             if (Width < 2 || Height < 2) return;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             float scale = UiStyle.Dpi(this) / 96F;
@@ -61,6 +61,8 @@ namespace SteamDirect
             float amount = interaction.Current;
             Color fill = !Enabled ? AppTheme.Background(AppTheme.Page) :
                 amount <= .55F ? Motion.Blend(BackColor, hover, amount / .55F) : Motion.Blend(hover, down, (amount - .55F) / .45F);
+            bool navigation=Icon==UiIcon.Home||Icon==UiIcon.Network||Icon==UiIcon.History||Icon==UiIcon.Settings;
+            fill=navigation?Color.FromArgb(selected?95:amount>0?45:0,AppTheme.ThemeColor):Color.FromArgb(185,fill);
             using (var path = UiStyle.RoundRect(box, radius))
             using (var brush = new SolidBrush(fill))
             {

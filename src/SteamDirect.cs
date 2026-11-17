@@ -99,7 +99,6 @@ namespace SteamDirect
     {
         private readonly Button runButton = new RoundedButton();
         private readonly Button logButton = new RoundedButton();
-        private readonly Button restoreButton = new RoundedButton();
         private readonly CleanupPanel cleanupPanel;
         private readonly Label statusLabel = new Label();
         private readonly TextBox logBox = new TextBox();
@@ -114,25 +113,27 @@ namespace SteamDirect
         private readonly Icon ownedMainIcon;
         private readonly NotifyIcon trayIcon = new NotifyIcon();
         private readonly ContextMenuStrip trayMenu = new ContextMenuStrip();
-        private readonly UserPreferences preferences = UserPreferences.Load(UserPreferences.DefaultPath);
+        private readonly UserPreferences preferences;
         private bool exitRequested;
         private bool restoring;
         private FormWindowState lastVisibleState = FormWindowState.Normal;
         private readonly WindowDiagnostics windowDiagnostics;
-        private readonly HistoryMonitor history;
+        private HistoryMonitor history;
+        private bool savingSettings;
         private readonly Panel pageHost = new PageHost();
         private readonly Dictionary<string, Button> navigation = new Dictionary<string, Button>();
         private PageManager pages;
 
-        internal MainWindow(bool background = false, HistoryMonitor historyOverride = null)
+        internal MainWindow(bool background = false, HistoryMonitor historyOverride = null, UserPreferences preferencesOverride = null)
         {
+            preferences = preferencesOverride ?? UserPreferences.Load(UserPreferences.DefaultPath);
             windowDiagnostics = new WindowDiagnostics(this) { Enabled = preferences.WindowDiagnostics };
             history = historyOverride ?? new HistoryMonitor(HistoryMonitor.DefaultPath);
             Motion.Reduced = preferences.ReduceMotion; Motion.IsGaming = () => history.IsPlaying;
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.4";
+            Text = "Steam 直连助手 v3.0.5";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -145,19 +146,20 @@ namespace SteamDirect
             DoubleBuffered = true;
 
             BuildNavigation();
-            var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = UiStyle.PagePadding, ColumnCount = 1, RowCount = 3 };
+            var root = UiStyle.Grid(1, 4); root.Padding = UiStyle.PagePadding;
             root.BackColor = AppTheme.Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 448));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 368));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var overview = new ContentViewport(root, 800) { BackColor = AppTheme.Page };
+            var overview = new ContentViewport(root, 700) { BackColor = AppTheme.Page };
             pageHost.Controls.Add(overview);
             pages = new PageManager(pageHost, overview);
-            var header = UiStyle.Header("概览", "准备好网络，再开始游戏。");
+            var header = UiStyle.Header("概览", "");
             root.Controls.Add(header, 0, 0);
 
-            var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
+            var body = UiStyle.Grid(2, 1);
             body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 238));
             body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -168,18 +170,17 @@ namespace SteamDirect
             left.Controls.Add(timeline);
             body.Controls.Add(left, 0, 0);
 
-            var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
+            var content = UiStyle.Grid(1, 2);
             content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 272));
+            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 192));
             content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             body.Controls.Add(content, 1, 0);
             var action = UiStyle.Card();
-            var actionLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
+            var actionLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
             actionLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32 + UiStyle.Space24));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
             elapsedLabel.Text = "●  等待执行";
             elapsedLabel.ForeColor = AppTheme.Muted;
@@ -193,7 +194,7 @@ namespace SteamDirect
             statusLabel.AutoEllipsis = true;
             statusLabel.Font = UiStyle.HeroTitle;
             actionLayout.Controls.Add(statusLabel, 0, 1);
-            actionLayout.Controls.Add(new Label { Text = "请先保存草稿并退出游戏。执行将强制结束已核实的应用后台，检查通过后重启 Steam。", Dock = DockStyle.Fill, ForeColor = AppTheme.Muted }, 0, 2);
+            actionLayout.Controls.Add(new Label { Text = "退出游戏后开始，自动结束代理与相关应用。", Dock = DockStyle.Fill, ForeColor = AppTheme.Muted }, 0, 2);
             runButton.Text = "严格直连并重启 Steam";
             runButton.Dock = DockStyle.Fill;
             runButton.Margin = Padding.Empty;
@@ -203,36 +204,29 @@ namespace SteamDirect
             runButton.TabIndex = 0;
             runButton.Click += async (sender, args) => await RunAsync();
             actionLayout.Controls.Add(runButton, 0, 3);
-            restoreButton.Text = "恢复原代理设置";
-            restoreButton.Dock = DockStyle.Fill;
-            restoreButton.Margin = new Padding(0, UiStyle.SmallGap, 0, 0);
-            AppTheme.ActionButton(restoreButton, false);
-            restoreButton.FlatAppearance.BorderSize = 0;
-            restoreButton.Enabled = File.Exists(ProxySession.BackupPath);
-            restoreButton.Click += async (sender, args) => await RestoreProxyAsync();
-            actionLayout.Controls.Add(restoreButton, 0, 4);
             action.Controls.Add(actionLayout);
             content.Controls.Add(action, 0, 0);
             cleanupPanel = new CleanupPanel(Log);
             content.Controls.Add(cleanupPanel, 0, 1);
 
-            var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 12, 0, 0) };
+            var footer = UiStyle.Grid(1, 2); footer.Margin = new Padding(0, 12, 0, 0);
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             footer.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48));
             footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.Controls.Add(footer, 0, 2);
-            var logHeader = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 0, 0, 6) };
+            var logHeader = UiStyle.Grid(2, 1); logHeader.Margin=Padding.Empty;
             logHeader.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108));
             logHeader.Controls.Add(new Label { Text = "操作记录", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.SectionTitle }, 0, 0);
             logButton.Text = "打开日志";
             logButton.Dock = DockStyle.Fill;
+            logButton.Margin = Padding.Empty;
             AppTheme.ActionButton(logButton, false);
             logButton.Cursor = Cursors.Hand;
             logButton.TabIndex = 1;
             logHeader.Controls.Add(logButton, 1, 0);
-            footer.Controls.Add(logHeader, 0, 0);
+            var logHeading=UiStyle.Card(true);logHeading.Padding=new Padding(12,0,8,0);logHeading.Margin=new Padding(0,0,0,8);logHeading.Controls.Add(logHeader);footer.Controls.Add(logHeading,0,0);
             logButton.Click += (s, e) =>
             {
                 try
@@ -271,10 +265,8 @@ namespace SteamDirect
             };
             trayMenu.Items.Add("打开主窗口", null, (sender, args) => ShowMainWindow());
             trayMenu.Items.Add("设置", null, (sender, args) => OpenSettings());
-            var restoreMenu = trayMenu.Items.Add("恢复原代理设置", null, async (sender, args) => { ShowMainWindow(); await RestoreProxyAsync(); });
             trayMenu.Opening += (sender, args) =>
             {
-                restoreMenu.Enabled = !running && File.Exists(ProxySession.BackupPath);
                 AppTheme.ApplyTray(trayMenu);
             };
             trayMenu.Items.Add(new ToolStripSeparator());
@@ -286,6 +278,7 @@ namespace SteamDirect
             trayIcon.Visible = preferences.TrayEnabled && !WindowEnvironment.OffscreenTests;
             FormClosing += (sender, args) =>
             {
+                if (savingSettings && args.CloseReason == CloseReason.UserClosing) { args.Cancel = true; exitRequested = false; return; }
                 if (args.CloseReason == CloseReason.UserClosing && !exitRequested && preferences.TrayEnabled)
                 {
                     args.Cancel = true;
@@ -301,19 +294,18 @@ namespace SteamDirect
             };
             Shown += (sender, args) => { if (background && preferences.TrayEnabled) Hide(); };
             Log("就绪，请先退出游戏。");
-            Shown += (sender, args) => history.Start();
+            Shown += (sender, args) => { if (preferences.NetworkRecording) history.Start(); };
             AppTheme.Apply(this);
             ResumeLayout(true);
         }
 
         private void BuildNavigation()
         {
-            var shell = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
+            var shell = UiStyle.Grid(2, 1);
             shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 172));
             shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var rail = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7,
-                Padding = new Padding(12, 24, 12, 16), Margin = Padding.Empty };
+            var rail = UiStyle.Grid(1, 7); rail.Padding = new Padding(12, 24, 12, 16);
             rail.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
             for (int i = 0; i < 4; i++) rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
@@ -350,9 +342,10 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.4 · 游戏网络助手", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.5 · 游戏网络助手", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
-            shell.Controls.Add(rail, 0, 0);
+            var navigationGlass=UiStyle.Card();navigationGlass.Padding=new Padding(8);navigationGlass.Margin=new Padding(8,8,0,8);navigationGlass.Controls.Add(rail);
+            rail.Padding=new Padding(0,8,0,0);shell.Controls.Add(navigationGlass, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);
             Controls.Add(shell);
             SelectNavigation("概览");
@@ -371,14 +364,15 @@ namespace SteamDirect
 
         private void NavigateTo(string page)
         {
+            if (savingSettings) return;
             if (page != "概览" && running)
             {
                 Status("请等待直连流程完成后再切换页面。");
                 return;
             }
-            if (page == "游戏记录" && history.IsPlaying)
+            if (page == "游戏记录" && (history.IsPlaying || SteamGameDiscovery.IsSteamGameActive()))
             {
-                NoticeDialog.Show(this, "游戏结束后可查看报告。", "游戏记录");
+                Status("游戏进行中，报告已暂停。");
                 return;
             }
             pages.DiagnosticsEnabled = preferences.WindowDiagnostics;
@@ -393,7 +387,7 @@ namespace SteamDirect
             if (page == "网络诊断") return new NetworkWindow(Log);
             if (page == "游戏记录") return new HistoryWindow(history.Store, () => history.IsPlaying);
             var settings = new SettingsWindow(preferences.TrayEnabled, StartupSettings.IsEnabled(),
-                preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor, preferences.LogDirectory, preferences.ReduceMotion, preferences.WindowDiagnostics);
+                preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor, preferences.LogDirectory, preferences.ReduceMotion, preferences.WindowDiagnostics, preferences.NetworkRecording);
             settings.Synchronize = () => settings.Reload(preferences, StartupSettings.IsEnabled());
             settings.SaveRequested += () => SaveSettings(settings);
             settings.CancelRequested += () => NavigateTo("概览");
@@ -441,7 +435,7 @@ namespace SteamDirect
             Close();
         }
 
-        protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); UpdateOperationAnimation(); }
+        protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); UpdateOperationAnimation(); if(!Visible)UiStyle.ReleaseHiddenRendering(this); }
         protected override void OnResize(EventArgs e) { base.OnResize(e); if (Visible && WindowState != FormWindowState.Minimized) lastVisibleState = WindowState; UpdateOperationAnimation(); }
         private void UpdateOperationAnimation()
         {
@@ -455,14 +449,25 @@ namespace SteamDirect
             NavigateTo("设置");
         }
 
-        private void SaveSettings(SettingsWindow dialog)
+        private async void SaveSettings(SettingsWindow dialog)
         {
+                if (savingSettings) return;
+                savingSettings = true; dialog.SetSaving(true);
                 try
                 {
                     if (!dialog.ValidateThemeColor()) return;
                     Directory.CreateDirectory(dialog.LogDirectory);
                     if (dialog.AutoStart != StartupSettings.IsEnabled()) StartupSettings.SetEnabled(dialog.AutoStart);
-                    UserPreferences.Save(UserPreferences.DefaultPath, dialog.TrayEnabled, dialog.RetentionDays, dialog.NightMode, dialog.ThemeColor, dialog.LogDirectory, dialog.ReduceMotion, dialog.DiagnosticsEnabled);
+                    UserPreferences.Save(UserPreferences.DefaultPath, dialog.TrayEnabled, dialog.RetentionDays, dialog.NightMode, dialog.ThemeColor, dialog.LogDirectory, dialog.ReduceMotion, dialog.DiagnosticsEnabled, dialog.RecordingEnabled);
+                    if (preferences.NetworkRecording != dialog.RecordingEnabled)
+                    {
+                        var previous = history;
+                        await System.Threading.Tasks.Task.Run(() => previous.Dispose());
+                        await previous.Completion;
+                        if (IsDisposed || Disposing) return;
+                        if (dialog.RecordingEnabled) { history = previous.CreateRestart(); history.Start(); }
+                        preferences.NetworkRecording = dialog.RecordingEnabled;
+                    }
                     preferences.LogDirectory = dialog.LogDirectory; LogStore.DirectoryPath = preferences.LogDirectory;
                     preferences.WindowDiagnostics = dialog.DiagnosticsEnabled; windowDiagnostics.Enabled = preferences.WindowDiagnostics;
                     preferences.ReduceMotion = dialog.ReduceMotion; Motion.Reduced = preferences.ReduceMotion;
@@ -477,6 +482,7 @@ namespace SteamDirect
                     dialog.ShowSaved();
                 }
                 catch (Exception ex) { NoticeDialog.Show(this, "设置未能全部保存：" + ex.Message, "设置", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+                finally { savingSettings = false; if (!dialog.IsDisposed) dialog.SetSaving(false); }
         }
 
         private void Log(string message)
@@ -530,34 +536,6 @@ namespace SteamDirect
             elapsedLabel.Text = (success ? "已完成" : "已停止") + "  ·  耗时 " + operationWatch.Elapsed.ToString(@"mm\:ss");
         }
 
-        private async Task RestoreProxyAsync()
-        {
-            if (running) return;
-            if (!File.Exists(ProxySession.BackupPath)) { NoticeDialog.Show(this, "当前没有待恢复的代理备份。", "恢复代理"); return; }
-            if (IsProcessRunning("cs2") || IsProcessRunning("csgo") || IsProcessRunning("GameOverlayUI"))
-            { NoticeDialog.Show(this, "请先退出游戏，再恢复代理设置。", "恢复代理"); return; }
-            running = true; runButton.Enabled = false; restoreButton.Enabled = false; cleanupPanel.AllowCleanup(false);
-            Status("正在检查代理并恢复设置…");
-            try
-            {
-                if (ProxySnapshot.IsLegacy(ProxySession.BackupPath))
-                {
-                    if (NoticeDialog.Show(this, "检测到旧版明文代理备份。程序无法证明旧文件是否被修改。请先核对原代理配置；只有确认内容可信时才迁移。迁移会保留原始 .legacy 文件，其中可能包含敏感代理信息。取消不会修改代理。", "确认旧版备份来源", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
-                    ProxySnapshot.MigrateLegacy(ProxySession.BackupPath);
-                }
-                await Task.Run(() => ProxySession.RestoreOriginal(ProxySession.BackupPath, new WindowsProxyAccess()));
-                Status("已恢复原代理设置");
-                Log("原代理设置已恢复并核验。");
-                NoticeDialog.Show(this, "原代理设置已恢复，并已核对写入结果。", "恢复完成");
-            }
-            catch (Exception ex)
-            {
-                Status("恢复未完成 · 备份已保留"); Log("恢复未完成：" + ex.Message);
-                NoticeDialog.Show(this, ex.Message + "\n恢复备份仍保留，可重试恢复。", "恢复未完成", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-            finally { running = false; runButton.Enabled = true; restoreButton.Enabled = File.Exists(ProxySession.BackupPath); cleanupPanel.AllowCleanup(true); }
-        }
-
         private async Task RunAsync()
         {
             if (running) return;
@@ -567,7 +545,6 @@ namespace SteamDirect
             operationWatch.Restart();
             UpdateOperationAnimation();
             runButton.Enabled = false;
-            restoreButton.Enabled = false;
             cleanupPanel.AllowCleanup(false);
             runButton.Text = "正在执行，请稍候…";
             Log("开始直连流程。");
@@ -588,7 +565,6 @@ namespace SteamDirect
             {
                 running = false;
                 runButton.Enabled = true;
-                restoreButton.Enabled = File.Exists(ProxySession.BackupPath);
                 cleanupPanel.AllowCleanup(true);
                 runButton.Text = "严格直连并重启 Steam  →";
             }
@@ -651,7 +627,7 @@ namespace SteamDirect
                 try { session.Rollback(); Log("已恢复到本次操作前的代理设置；如 FlClash 已退出，请重新打开。"); }
                 catch (Exception recovery)
                 {
-                    throw new InvalidOperationException("流程停止：" + failure.Message + "\n自动恢复未完成：" + recovery.Message + "\n恢复备份已保留，请使用恢复按钮重试。", new AggregateException(failure, recovery));
+                    throw new InvalidOperationException("流程停止：" + failure.Message + "\n自动回滚未完成：" + recovery.Message + "\n备份已保留，请查看日志并重新打开代理软件。", new AggregateException(failure, recovery));
                 }
                 throw;
             }
@@ -752,31 +728,50 @@ namespace SteamDirect
 
     internal class RoundedPanel : Panel
     {
+        private Bitmap backdrop;
+        private Rectangle backdropPlacement;
+        private Size backdropRoot;
+        private bool backdropDark;
+        private int backdropDpi;
+        private float backdropRadius;
         internal float CornerRadius = UiStyle.CardRadius;
         internal RoundedPanel() { DoubleBuffered = true; }
+        internal void ClearBackdrop(){if(backdrop!=null){backdrop.Dispose();backdrop=null;}}
+        protected override void OnVisibleChanged(EventArgs args){base.OnVisibleChanged(args);if(!Visible)ClearBackdrop();}
+        protected override void Dispose(bool disposing){if(disposing)ClearBackdrop();base.Dispose(disposing);}
         protected override void OnPaintBackground(PaintEventArgs e)
         {
             if (Width < 2 || Height < 2) return;
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            e.Graphics.Clear(Parent == null ? BackColor : Parent.BackColor);
-            float radius = Math.Min(CornerRadius * DeviceDpi / 96F, (Math.Min(Width, Height) - 1) / 2F);
-            var rect = new RectangleF(0, 0, Width - 1, Height - 1);
-            using (var path = UiStyle.RoundRect(rect, radius))
-            {
-                using (var brush = new SolidBrush(BackColor)) e.Graphics.FillPath(brush, path);
-                using (var border = new Pen(AppTheme.Edge, 1F))
-                    e.Graphics.DrawPath(border, path);
+            Control root=this;while(root.Parent!=null)root=root.Parent;
+            var form=root as DesktopForm;
+            if(backdrop!=null&&form!=null&&form.LiveResize){e.Graphics.DrawImage(backdrop,ClientRectangle);return;}
+            Size size;var position=Wallpaper.Placement(this,out size);int dpi=UiStyle.Dpi(this);
+            if(backdrop==null||backdrop.Size!=ClientSize||backdropPlacement!=position||backdropRoot!=size||backdropDark!=AppTheme.IsDark||backdropDpi!=dpi||backdropRadius!=CornerRadius){
+                ClearBackdrop();var bitmap=new Bitmap(Width,Height);
+                using(var g=Graphics.FromImage(bitmap)){
+                    g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    if(!Wallpaper.Paint(this,g,true))g.Clear(BackColor);
+                    float radius=Math.Min(CornerRadius*dpi/96F,(Math.Min(Width,Height)-1)/2F);
+                    using(var path=UiStyle.RoundRect(new RectangleF(.5F,.5F,Width-1,Height-1),radius)){
+                        using(var brush=Wallpaper.MaterialBrush(this))g.FillPath(brush,path);
+                        using(var highlight=new System.Drawing.Drawing2D.LinearGradientBrush(ClientRectangle,Color.FromArgb(AppTheme.IsDark?115:200,Color.White),Color.FromArgb(20,Color.White),90F))
+                        using(var pen=new Pen(highlight,1F))g.DrawPath(pen,path);
+                    }
+                }
+                backdrop=bitmap;backdropPlacement=position;backdropRoot=size;backdropDark=AppTheme.IsDark;backdropDpi=dpi;backdropRadius=CornerRadius;
             }
+            e.Graphics.DrawImageUnscaled(backdrop,0,0);
         }
     }
 
     internal sealed class StepTimeline : Control
     {
+        protected override void OnPaintBackground(PaintEventArgs args){if(!Wallpaper.PaintGlass(this,args.Graphics))base.OnPaintBackground(args);}
         internal int ActiveStep = -1;
         internal bool Failed;
         internal int Angle;
         private readonly string[] titles = { "准备检查", "关闭应用与代理", "核验本机代理", "退出 Steam", "复检并启动", "完成检查" };
-        private readonly string[] descriptions = { "安装路径与游戏状态", "关闭指定应用和 FlClash", "系统代理 / VPN / 内核", "等待客户端正常退出", "再次核验后提交启动", "清理需单独预览和确认" };
+        private readonly string[] descriptions = { "路径与游戏状态", "关闭应用和代理", "系统代理与内核", "等待正常退出", "再次核验后启动", "临时文件单独清理" };
         internal int StepCount { get { return titles.Length; } }
         internal StepTimeline() { DoubleBuffered = true; BackColor = Color.White; TabStop = false; AccessibleName = "直连执行步骤"; }
         protected override void OnPaint(PaintEventArgs e)
