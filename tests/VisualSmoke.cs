@@ -129,7 +129,10 @@ namespace SteamDirect
                     GC.Collect();GC.WaitForPendingFinalizers();
                     using(var process=Process.GetCurrentProcess()){
                         process.Refresh();TimeSpan start=process.TotalProcessorTime,previous=start;var watch=Stopwatch.StartNew();long last=0;double peak=0;
-                        for(int i=0;i<10;i++){Pump(1000);process.Refresh();long now=watch.ElapsedMilliseconds;double cpu=(process.TotalProcessorTime-previous).TotalMilliseconds/Math.Max(1,now-last)*100;peak=Math.Max(peak,cpu);previous=process.TotalProcessorTime;last=now;}
+                        using(var context=new ApplicationContext())using(var sampler=new System.Windows.Forms.Timer{Interval=1000}){
+                            int samples=0;sampler.Tick+=(sender,args)=>{process.Refresh();long now=watch.ElapsedMilliseconds;double cpu=(process.TotalProcessorTime-previous).TotalMilliseconds/Math.Max(1,now-last)*100;peak=Math.Max(peak,cpu);previous=process.TotalProcessorTime;last=now;if(++samples>=10)context.ExitThread();};
+                            sampler.Start();Application.Run(context);sampler.Stop();
+                        }
                         process.Refresh();Console.WriteLine("IDLE recording="+recording+" samples=10x1s cpu_core_mean_percent="+((process.TotalProcessorTime-start).TotalMilliseconds/watch.ElapsedMilliseconds*100).ToString("F3")+" peak="+peak.ToString("F3")+" working_MB="+(process.WorkingSet64/1048576.0).ToString("F1")+" private_MB="+(process.PrivateMemorySize64/1048576.0).ToString("F1")+" scans="+scans+" ping="+monitor.PingCount+" dns="+monitor.DnsCount);
                     }
                 }
