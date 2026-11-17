@@ -31,10 +31,20 @@ namespace SteamDirect
                 using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))
                 {
                     long app;
-                    return key != null && long.TryParse(Convert.ToString(key.GetValue("RunningAppID")), out app) && app > 0;
+                    if(key != null && long.TryParse(Convert.ToString(key.GetValue("RunningAppID")), out app) && app > 0)return true;
                 }
-            } catch (System.Security.SecurityException) { return false; } catch (UnauthorizedAccessException) { return false; }
+            } catch (System.Security.SecurityException) { return true; } catch (UnauthorizedAccessException) { return true; }
+            // Steam can report RunningAppID=0 while CS2 is still running. This snapshot
+            // is only requested before manual expensive work, never by an idle timer.
+            using(var snapshot=CreateToolhelp32Snapshot(ProcessSnapshot,0)){
+                if(snapshot.IsInvalid)return true;
+                var entry=new ProcessEntry{Size=(uint)Marshal.SizeOf(typeof(ProcessEntry))};
+                if(!Process32First(snapshot,ref entry))return true;
+                do{if(IsCounterStrike(entry.Executable))return true;}while(Process32Next(snapshot,ref entry));
+                return Marshal.GetLastWin32Error()!=NoMoreFiles;
+            }
         }
+        internal static bool IsCounterStrike(string executable){return string.Equals(executable,"cs2.exe",StringComparison.OrdinalIgnoreCase)||string.Equals(executable,"csgo.exe",StringComparison.OrdinalIgnoreCase);}
         private const uint ProcessSnapshot = 0x00000002;
         private const uint QueryLimitedInformation = 0x1000;
         private const int NoMoreFiles = 18;

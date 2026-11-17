@@ -11,7 +11,11 @@ namespace SteamDirect
         {
             if(!WindowEnvironment.OffscreenTests)throw new InvalidOperationException("Synthetic geometry is test-only");
             var observer=new OffscreenGeometry();observer.AssignHandle(form.Handle);
-            try{form.MaximumSize=new Size(12000,12000);form.ClientSize=size;}finally{observer.ReleaseHandle();}
+            try{
+                form.MaximumSize=new Size(12000,12000);
+                form.MinimumSize=new Size(size.Width+form.Width-form.ClientSize.Width,size.Height+form.Height-form.ClientSize.Height);
+                form.ClientSize=size;
+            }finally{observer.ReleaseHandle();}
         }
         protected override void WndProc(ref Message message)
         {

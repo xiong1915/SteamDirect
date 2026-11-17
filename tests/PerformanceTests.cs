@@ -32,6 +32,7 @@ namespace SteamDirect
                     view.SetSaving(false);Need(view.Enabled,"Settings did not recover after save");
                 }
                 Need(UiStyle.CardRadius==UiStyle.ControlRadius&&UiStyle.ControlRadius==UiStyle.NavigationRadius,"Inconsistent component radii");
+                Need(SteamGameDiscovery.IsCounterStrike("CS2.EXE")&&SteamGameDiscovery.IsCounterStrike("csgo.exe")&&!SteamGameDiscovery.IsCounterStrike("cs2-helper.exe"),"Counter-Strike guard must not rely only on Steam's registry flag");
                 using(var text=new GlassRichTextBox{Text="network history",ReadOnly=true}){
                     text.CreateControl();text.Select(2,4);Need(text.SelectedText=="twor","Glass report broke native selection");
                 }
@@ -67,7 +68,7 @@ namespace SteamDirect
                         Need(beforeEnd<10,"Live resize did not coalesce layout work");
                         Need(host.Bounds==form.ClientRectangle,"Resize end did not flush final layout");
                         var timer=(System.Windows.Forms.Timer)typeof(DesktopForm).GetField("resizeTimer",Private).GetValue(form);Need(!timer.Enabled,"Resize timer remained active after drag");
-                        OffscreenGeometry.Resize(form,new Size(3760,2060));Need(form.ClientSize==new Size(3760,2060),"4K fixture was constrained to the physical desktop");
+                        OffscreenGeometry.Resize(form,new Size(3760,2060));Application.DoEvents();Need(form.ClientSize==new Size(3760,2060),"4K fixture was constrained to the physical desktop: "+form.ClientSize);
                     }
                 }
                 return count;

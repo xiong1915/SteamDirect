@@ -41,7 +41,7 @@ namespace SteamDirect
                         main.ShowInTaskbar=false;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.MinimumSize=Size.Empty;
                         if(fourK)main.FormBorderStyle=FormBorderStyle.None; // Avoid host-monitor tracking limits in the synthetic 4K fixture.
                         main.Show();OffscreenGeometry.Resize(main,fourK?new Size(3760,2060):new Size(1840,980));Pump(20);
-                        Need(main.ClientSize==(fourK?new Size(3760,2060):new Size(1840,980)),"Requested synthetic client geometry was constrained by host");
+                        Need(main.ClientSize==(fourK?new Size(3760,2060):new Size(1840,980)),"Requested synthetic client geometry was constrained by host: "+main.ClientSize);
                         Console.WriteLine("ENV client="+main.ClientSize+" native_dpi="+main.DeviceDpi+" awareness="+HighDpi.Awareness+" reduced="+Motion.Reduced+" baseline="+baseline);
                         FontMetrics(main);
                         var nav=typeof(MainWindow).GetMethod("NavigateTo",Private);
