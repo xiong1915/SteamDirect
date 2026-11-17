@@ -67,6 +67,7 @@ namespace SteamDirect
                         Need(beforeEnd<10,"Live resize did not coalesce layout work");
                         Need(host.Bounds==form.ClientRectangle,"Resize end did not flush final layout");
                         var timer=(System.Windows.Forms.Timer)typeof(DesktopForm).GetField("resizeTimer",Private).GetValue(form);Need(!timer.Enabled,"Resize timer remained active after drag");
+                        OffscreenGeometry.Resize(form,new Size(3760,2060));Need(form.ClientSize==new Size(3760,2060),"4K fixture was constrained to the physical desktop");
                     }
                 }
                 return count;
