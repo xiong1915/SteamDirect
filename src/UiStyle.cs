@@ -10,7 +10,6 @@ namespace SteamDirect
     // Explicit content bounds avoid AutoScroll/Dock feedback and preserve readable minimum heights.
     internal sealed class ContentViewport : Panel
     {
-        protected override void OnPaintBackground(PaintEventArgs args) { Control owner=Parent;while(owner!=null&&!(owner is RoundedPanel))owner=owner.Parent;if(owner!=null){if(!Wallpaper.PaintGlass(this,args.Graphics))base.OnPaintBackground(args);}else if(!Wallpaper.Paint(this,args.Graphics))base.OnPaintBackground(args); }
         private readonly Control content;
         private readonly int minimumHeight;
         private readonly DarkScrollBar scroll = new DarkScrollBar();
@@ -47,15 +46,9 @@ namespace SteamDirect
 
     internal static class UiStyle
     {
-        internal static void ReleaseHiddenRendering(Control root)
-        {
-            var panel=root as RoundedPanel;if(panel!=null)panel.ClearBackdrop();
-            var scroll=root as NativeScrollFrame;if(scroll!=null)scroll.ReleaseGlass();
-            foreach(Control child in root.Controls)ReleaseHiddenRendering(child);
-        }
         internal const int Space4 = 4, Space8 = 8, Space12 = 12, Space16 = 16, Space20 = 20,
             Space24 = 24, Space32 = 32, Space40 = 40, Space48 = 48;
-        internal const int HeaderHeight = 96, ButtonHeight = 40, CompactHeight = 32, Gap = Space16, SmallGap = Space8;
+        internal const int HeaderHeight = 80, ButtonHeight = 40, CompactHeight = 32, Gap = Space16, SmallGap = Space8;
         internal const float Radius = 16;
         internal const float CardRadius = Radius, ControlRadius = Radius, NavigationRadius = Radius;
         internal const int MotionTick = 40, SpinnerStep = 9; // Continuous motion is reserved for active operations; controls animate only on interaction.
@@ -75,6 +68,13 @@ namespace SteamDirect
 
         private static int NativeDpi(Control control) { Control root = control; while (root.Parent != null) root = root.Parent; return root.DeviceDpi; }
         internal static int Dpi(Control control) { return WindowEnvironment.OffscreenTests && WindowEnvironment.LayoutDpi > 0 ? WindowEnvironment.LayoutDpi : NativeDpi(control); }
+        internal static Color ParentSurface(Control control)
+        {
+            for (Control parent = control.Parent; parent != null; parent = parent.Parent)
+                if (parent.BackColor.A == 255) return parent.BackColor;
+            return AppTheme.Background(AppTheme.Page);
+        }
+
         internal static int Scale(Control control, int value) { return (int)Math.Round(value * Dpi(control) / 96F); }
         internal static int TextHeight(Control control) { return (int)Math.Ceiling(control.Font.GetHeight(NativeDpi(control))); }
         internal static TableLayoutPanel Grid(int columns, int rows)
@@ -85,7 +85,6 @@ namespace SteamDirect
         private sealed class BufferedGrid : TableLayoutPanel
         {
             internal BufferedGrid() { DoubleBuffered = true; }
-            protected override void OnPaintBackground(PaintEventArgs args) { if (!Wallpaper.Paint(this, args.Graphics)) base.OnPaintBackground(args); }
             protected override void OnLayout(LayoutEventArgs args)
             {
                 var trace = NavigationTrace.Current;
@@ -98,13 +97,14 @@ namespace SteamDirect
         {
             var header = Grid(1, 2);
             header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            header.RowStyles.Add(new RowStyle(SizeType.Percent, string.IsNullOrEmpty(description)?100:70));
-            header.RowStyles.Add(new RowStyle(SizeType.Percent, string.IsNullOrEmpty(description)?0:30));
+            header.RowStyles.Add(new RowStyle(SizeType.Percent, string.IsNullOrEmpty(description)?100:64));
+            header.RowStyles.Add(new RowStyle(SizeType.Percent, string.IsNullOrEmpty(description)?0:36));
             header.Controls.Add(new Label { Text = title, Dock = DockStyle.Fill, Margin = Padding.Empty,
                 Font = PageTitle, ForeColor = AppTheme.Ink, AutoEllipsis = true, TextAlign=ContentAlignment.MiddleLeft }, 0, 0);
             header.Controls.Add(new Label { Text = description, Dock = DockStyle.Fill, Margin = Padding.Empty,
                 Font = Body, ForeColor = AppTheme.Muted, AutoEllipsis = true }, 0, 1);
-            var panel=Card(true);panel.Padding=new Padding(16,8,16,8);panel.Controls.Add(header);return panel;
+            header.Margin = new Padding(0, 0, 0, Space12);
+            return header;
         }
 
         internal static RoundedPanel Card(bool compact = false)

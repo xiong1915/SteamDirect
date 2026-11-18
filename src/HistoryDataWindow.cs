@@ -10,7 +10,6 @@ namespace SteamDirect
 {
     internal sealed class HistorySections : UserControl
     {
-        protected override void OnPaintBackground(PaintEventArgs args){if(!Wallpaper.PaintGlass(this,args.Graphics))base.OnPaintBackground(args);}
         private readonly FlowLayoutPanel navigation = new FlowLayoutPanel { Dock = DockStyle.Top, Height = UiStyle.ButtonHeight + UiStyle.SmallGap, WrapContents = true, Margin = Padding.Empty };
         private readonly Panel content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, UiStyle.SmallGap, 0, 0) };
         private readonly List<Control> pages = new List<Control>();

@@ -5,7 +5,6 @@ namespace SteamDirect
 {
     internal sealed class ReportFilters : Panel
     {
-        protected override void OnPaintBackground(PaintEventArgs args){if(!Wallpaper.PaintGlass(this,args.Graphics))base.OnPaintBackground(args);}
         private readonly Control[] inputs;
         private readonly Label[] labels;
         private readonly Button query, export;

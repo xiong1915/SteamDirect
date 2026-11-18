@@ -133,7 +133,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.5";
+            Text = "Steam 直连助手 v3.0.6";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -149,33 +149,46 @@ namespace SteamDirect
             var root = UiStyle.Grid(1, 4); root.Padding = UiStyle.PagePadding;
             root.BackColor = AppTheme.Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 368));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var overview = new ContentViewport(root, 700) { BackColor = AppTheme.Page };
+            var overview = new ContentViewport(root, 720) { BackColor = AppTheme.Page };
             pageHost.Controls.Add(overview);
             pages = new PageManager(pageHost, overview);
-            var header = UiStyle.Header("概览", "");
+            var header = UiStyle.Card();
+            header.ShowArtwork = true;
+            header.Margin = new Padding(0, 0, 0, UiStyle.Space16);
+            var heading = new Label
+            {
+                Text = "Steam 直连",
+                Dock = DockStyle.Left,
+                Width = 300,
+                Font = UiStyle.PageTitle,
+                ForeColor = AppTheme.Ink,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            header.Controls.Add(heading);
             root.Controls.Add(header, 0, 0);
 
             var body = UiStyle.Grid(2, 1);
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 238));
             body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 252));
             body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.Controls.Add(body, 0, 1);
             var left = UiStyle.Card();
-            left.Margin = new Padding(0, 0, UiStyle.Gap, 0);
+            left.Margin = new Padding(UiStyle.Gap, 0, 0, 0);
             timeline.Dock = DockStyle.Fill;
             left.Controls.Add(timeline);
-            body.Controls.Add(left, 0, 0);
+            body.Controls.Add(left, 1, 0);
 
             var content = UiStyle.Grid(1, 2);
             content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 192));
             content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            body.Controls.Add(content, 1, 0);
+            body.Controls.Add(content, 0, 0);
             var action = UiStyle.Card();
+            action.Margin = new Padding(0, 0, 0, UiStyle.Space12);
             var actionLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
             actionLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
@@ -206,7 +219,7 @@ namespace SteamDirect
             actionLayout.Controls.Add(runButton, 0, 3);
             action.Controls.Add(actionLayout);
             content.Controls.Add(action, 0, 0);
-            cleanupPanel = new CleanupPanel(Log);
+            cleanupPanel = new CleanupPanel(Log) { Margin = Padding.Empty };
             content.Controls.Add(cleanupPanel, 0, 1);
 
             var footer = UiStyle.Grid(1, 2); footer.Margin = new Padding(0, 12, 0, 0);
@@ -226,7 +239,8 @@ namespace SteamDirect
             logButton.Cursor = Cursors.Hand;
             logButton.TabIndex = 1;
             logHeader.Controls.Add(logButton, 1, 0);
-            var logHeading=UiStyle.Card(true);logHeading.Padding=new Padding(12,0,8,0);logHeading.Margin=new Padding(0,0,0,8);logHeading.Controls.Add(logHeader);footer.Controls.Add(logHeading,0,0);
+            logHeader.Margin = new Padding(0, 0, 0, UiStyle.Space8);
+            footer.Controls.Add(logHeader, 0, 0);
             logButton.Click += (s, e) =>
             {
                 try
@@ -342,10 +356,14 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.5 · 游戏网络助手", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.6", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
-            var navigationGlass=UiStyle.Card();navigationGlass.Padding=new Padding(8);navigationGlass.Margin=new Padding(8,8,0,8);navigationGlass.Controls.Add(rail);
-            rail.Padding=new Padding(0,8,0,0);shell.Controls.Add(navigationGlass, 0, 0);
+            var sidebar = UiStyle.Card();
+            sidebar.Padding = new Padding(8);
+            sidebar.Margin = new Padding(12, 12, 0, 12);
+            sidebar.Controls.Add(rail);
+            rail.Padding = new Padding(0, 8, 0, 0);
+            shell.Controls.Add(sidebar, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);
             Controls.Add(shell);
             SelectNavigation("概览");
@@ -435,7 +453,7 @@ namespace SteamDirect
             Close();
         }
 
-        protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); UpdateOperationAnimation(); if(!Visible)UiStyle.ReleaseHiddenRendering(this); }
+        protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); UpdateOperationAnimation(); }
         protected override void OnResize(EventArgs e) { base.OnResize(e); if (Visible && WindowState != FormWindowState.Minimized) lastVisibleState = WindowState; UpdateOperationAnimation(); }
         private void UpdateOperationAnimation()
         {
@@ -728,45 +746,31 @@ namespace SteamDirect
 
     internal class RoundedPanel : Panel
     {
-        private Bitmap backdrop;
-        private Rectangle backdropPlacement;
-        private Size backdropRoot;
-        private bool backdropDark;
-        private int backdropDpi;
-        private float backdropRadius;
         internal float CornerRadius = UiStyle.CardRadius;
-        internal RoundedPanel() { DoubleBuffered = true; }
-        internal void ClearBackdrop(){if(backdrop!=null){backdrop.Dispose();backdrop=null;}}
-        protected override void OnVisibleChanged(EventArgs args){base.OnVisibleChanged(args);if(!Visible)ClearBackdrop();}
-        protected override void Dispose(bool disposing){if(disposing)ClearBackdrop();base.Dispose(disposing);}
+        internal bool ShowArtwork;
+        internal RoundedPanel()
+        {
+            DoubleBuffered = true;
+            ResizeRedraw = true;
+        }
+
         protected override void OnPaintBackground(PaintEventArgs e)
         {
+            e.Graphics.Clear(UiStyle.ParentSurface(this));
             if (Width < 2 || Height < 2) return;
-            Control root=this;while(root.Parent!=null)root=root.Parent;
-            var form=root as DesktopForm;
-            if(backdrop!=null&&form!=null&&form.LiveResize){e.Graphics.DrawImage(backdrop,ClientRectangle);return;}
-            Size size;var position=Wallpaper.Placement(this,out size);int dpi=UiStyle.Dpi(this);
-            if(backdrop==null||backdrop.Size!=ClientSize||backdropPlacement!=position||backdropRoot!=size||backdropDark!=AppTheme.IsDark||backdropDpi!=dpi||backdropRadius!=CornerRadius){
-                ClearBackdrop();var bitmap=new Bitmap(Width,Height);
-                using(var g=Graphics.FromImage(bitmap)){
-                    g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                    if(!Wallpaper.Paint(this,g,true))g.Clear(BackColor);
-                    float radius=Math.Min(CornerRadius*dpi/96F,(Math.Min(Width,Height)-1)/2F);
-                    using(var path=UiStyle.RoundRect(new RectangleF(.5F,.5F,Width-1,Height-1),radius)){
-                        using(var brush=Wallpaper.MaterialBrush(this))g.FillPath(brush,path);
-                        using(var highlight=new System.Drawing.Drawing2D.LinearGradientBrush(ClientRectangle,Color.FromArgb(AppTheme.IsDark?115:200,Color.White),Color.FromArgb(20,Color.White),90F))
-                        using(var pen=new Pen(highlight,1F))g.DrawPath(pen,path);
-                    }
-                }
-                backdrop=bitmap;backdropPlacement=position;backdropRoot=size;backdropDark=AppTheme.IsDark;backdropDpi=dpi;backdropRadius=CornerRadius;
+
+            using (var outline = UiStyle.RoundRect(new RectangleF(.5F, .5F, Width - 1, Height - 1), CornerRadius * UiStyle.Dpi(this) / 96F))
+            {
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using (var fill = new SolidBrush(BackColor)) e.Graphics.FillPath(fill, outline);
+                if (ShowArtwork) Wallpaper.PaintBanner(e.Graphics, ClientRectangle, outline, BackColor);
+                using (var border = new Pen(AppTheme.Edge)) e.Graphics.DrawPath(border, outline);
             }
-            e.Graphics.DrawImageUnscaled(backdrop,0,0);
         }
     }
 
     internal sealed class StepTimeline : Control
     {
-        protected override void OnPaintBackground(PaintEventArgs args){if(!Wallpaper.PaintGlass(this,args.Graphics))base.OnPaintBackground(args);}
         internal int ActiveStep = -1;
         internal bool Failed;
         internal int Angle;
@@ -789,10 +793,9 @@ namespace SteamDirect
             using (var ink = new SolidBrush(AppTheme.Text(AppTheme.Ink)))
             {
                 g.DrawString("直连流程", normal, ink, 4, 4);
-                g.DrawString("共 " + StepCount + " 步", small, muted, 4, 23);
                 for (int i = 0; i < titles.Length; i++)
                 {
-                    float y = 56 + i * gap;
+                    float y = 49 + i * gap;
                     bool done = ActiveStep > i;
                     bool active = ActiveStep == i;
                     Color accent = active && Failed ? AppTheme.Error : done ? AppTheme.Success : AppTheme.Accent;
@@ -816,7 +819,7 @@ namespace SteamDirect
                     }
                     using (var titleBrush = new SolidBrush(AppTheme.Text(active || done ? accent : AppTheme.Ink)))
                         g.DrawString(titles[i], normal, titleBrush, 42, y - 15);
-                    g.DrawString(active ? (Failed ? "已停止 · 查看右侧原因" : "正在处理…") : done ? (i == titles.Length - 1 ? "已结束，结果见日志" : "已完成") : descriptions[i], small, muted, 42, y + 7);
+                    g.DrawString(active ? (Failed ? "已停止 · 查看原因" : "正在处理…") : done ? (i == titles.Length - 1 ? "已结束，结果见日志" : "已完成") : descriptions[i], small, muted, 42, y + 7);
                 }
             }
         }

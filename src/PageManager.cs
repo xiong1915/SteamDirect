@@ -17,7 +17,6 @@ namespace SteamDirect
         internal Control ActivePage;
         internal System.Drawing.Rectangle PageBounds { get { var r=DisplayRectangle;int width=Math.Min(r.Width,UiStyle.Scale(this,1160));return new System.Drawing.Rectangle(r.X+(r.Width-width)/2,r.Y,width,r.Height); } }
         internal PageHost() { Dock = DockStyle.Fill; DoubleBuffered = true; }
-        protected override void OnPaintBackground(PaintEventArgs args) { if (!Wallpaper.Paint(this, args.Graphics)) base.OnPaintBackground(args); }
         protected override void OnLayout(LayoutEventArgs args)
         {
             base.OnLayout(args);
@@ -122,7 +121,7 @@ namespace SteamDirect
                     var surface = host as PageHost; if (surface != null) surface.ActivePage = next;
                     var outgoing = current as IManagedPage;
                     if (outgoing != null) outgoing.LeavePage();
-                    if (current != next) { current.Hide(); current.Dock = DockStyle.None; UiStyle.ReleaseHiddenRendering(current); }
+                    if (current != next) { current.Hide(); current.Dock = DockStyle.None; }
                     current = next; currentName = name; committed = true;
                 }
                 finally { host.ResumeLayout(false); }

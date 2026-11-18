@@ -19,7 +19,6 @@ namespace SteamDirect
 
     internal class DesktopForm : Form
     {
-        protected override void OnPaintBackground(PaintEventArgs args) { if (!Wallpaper.Paint(this, args.Graphics)) base.OnPaintBackground(args); }
         protected override void OnLayout(LayoutEventArgs args)
         {
             var trace = NavigationTrace.Current;
@@ -27,7 +26,6 @@ namespace SteamDirect
             try { base.OnLayout(args); } finally { if (trace != null) trace.EndLayout(); }
         }
         private bool displayPending, fitting, liveResize, resizePending;
-        internal bool LiveResize { get { return liveResize; } }
         private Timer resizeTimer;
         protected override void OnVisibleChanged(EventArgs args){base.OnVisibleChanged(args);if(!Visible){liveResize=false;resizePending=false;if(resizeTimer!=null)resizeTimer.Stop();}}
         private void FlushResize()

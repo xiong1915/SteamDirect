@@ -50,7 +50,8 @@ namespace SteamDirect
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            if(!Wallpaper.PaintGlass(this,e.Graphics))e.Graphics.Clear(AppTheme.Background(AppTheme.Surface));
+            Color background = UiStyle.ParentSurface(this);
+            e.Graphics.Clear(background);
             if (Width < 2 || Height < 2) return;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             float scale = UiStyle.Dpi(this) / 96F;
@@ -62,14 +63,16 @@ namespace SteamDirect
             Color fill = !Enabled ? AppTheme.Background(AppTheme.Page) :
                 amount <= .55F ? Motion.Blend(BackColor, hover, amount / .55F) : Motion.Blend(hover, down, (amount - .55F) / .45F);
             bool navigation=Icon==UiIcon.Home||Icon==UiIcon.Network||Icon==UiIcon.History||Icon==UiIcon.Settings;
-            fill=navigation?Color.FromArgb(selected?95:amount>0?45:0,AppTheme.ThemeColor):Color.FromArgb(185,fill);
+            if (navigation)
+                fill = Motion.Blend(background, AppTheme.ThemeColor, selected ? .22F : .12F * amount);
             using (var path = UiStyle.RoundRect(box, radius))
             using (var brush = new SolidBrush(fill))
             {
                 e.Graphics.FillPath(brush, path);
             }
             var bounds = Rectangle.Inflate(ClientRectangle, -(int)(UiStyle.Space12 * scale), -2);
-            Color textColor = Enabled ? ForeColor : AppTheme.Text(AppTheme.Disabled);
+            Color textColor = Enabled && navigation && selected ? AppTheme.Text(AppTheme.Ink) :
+                Enabled ? ForeColor : AppTheme.Text(AppTheme.Disabled);
             var alignment = TextFormatFlags.HorizontalCenter;
             if (Icon != UiIcon.None)
             {
@@ -81,7 +84,7 @@ namespace SteamDirect
             }
             TextRenderer.DrawText(e.Graphics, Text, Font, bounds, textColor,
                 alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
-            if (selection.Current > 0 && Width > 8 && Height > 8)
+            if (selected && selection.Current > 0 && Width > 8 && Height > 8)
             {
                 using (var marker = new SolidBrush(AppTheme.Background(AppTheme.Accent)))
                 {

@@ -125,6 +125,13 @@ namespace SteamDirect
                             var active=(Form)manager.GetType().GetProperty("ActivePage",Private).GetValue(manager,null);
                             if(active!=null)Need(active.Width<=main.ClientSize.Width&&active.Height>0,"Desktop page exceeds window");
                             if(page=="概览"){var run=(Button)Field(main,"runButton");var log=(TextBox)Field(main,"logBox");Need(run.Height>=UiStyle.Scale(run,32),"Main action collapsed");Need(log.Height>=UiStyle.Scale(log,60),"Overview log collapsed");}
+                            if (page == "网络诊断")
+                            {
+                                var conclusion = (TextBox)Field(active, "conclusion");
+                                var details = (TextBox)Field(active, "details");
+                                Need(conclusion.Height >= UiStyle.Scale(conclusion, 40), "Diagnostic conclusion collapsed");
+                                Need(details.Height >= UiStyle.Scale(details, 32), "Diagnostic details collapsed");
+                            }
                         }
                         Console.WriteLine("PASS desktop simulation "+sizes[index,0]+"x"+sizes[index,1]+" dpi="+dpi+" four pages / recording off");
                     }finally{main.Dispose();WindowEnvironment.LayoutDpi=0;foreach(var font in owned)font.Dispose();}

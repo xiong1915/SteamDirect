@@ -30,11 +30,11 @@ namespace SteamDirect
         private readonly ComboBox modeFilter = new DarkComboBox();
         private readonly ComboBox recordScope = new DarkComboBox();
         private readonly HistoryNetworkChart networkChart = new HistoryNetworkChart();
-        private readonly RichTextBox comparisonText = new GlassRichTextBox();
+        private readonly RichTextBox comparisonText = new RichTextBox();
         private readonly Label overviewTitle = new Label();
         private readonly Label overviewNote = new Label();
         private readonly Label[] metricValues = { new Label(), new Label(), new Label() };
-        private readonly RichTextBox overviewText = new GlassRichTextBox();
+        private readonly RichTextBox overviewText = new RichTextBox();
         private readonly Label status = new Label();
         private readonly Label detailTitle = new Label();
         private readonly Label detailMeta = new Label();
@@ -368,8 +368,7 @@ namespace SteamDirect
             var background = args.Item.Selected
                 ? AppTheme.Background(AppTheme.Pill)
                 : view is HistoryRecordList && ((HistoryRecordList)view).HoveredIndex == args.ItemIndex ? AppTheme.Background(AppTheme.Page) : AppTheme.Background(AppTheme.Surface);
-            var drawing=args.Graphics.Save();args.Graphics.SetClip(bounds);Wallpaper.PaintGlass(view,args.Graphics);args.Graphics.Restore(drawing);
-            using (var brush = new SolidBrush(Color.FromArgb(args.Item.Selected?95:25,background))) args.Graphics.FillRectangle(brush, bounds);
+            using (var brush = new SolidBrush(background)) args.Graphics.FillRectangle(brush, bounds);
             if (args.Item.Selected && args.ColumnIndex == 0)
             {
                 int stripe = Math.Max(2, (int)Math.Round(args.Graphics.DpiX / 48f));

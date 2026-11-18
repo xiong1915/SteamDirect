@@ -33,9 +33,6 @@ namespace SteamDirect
                 }
                 Need(UiStyle.CardRadius==UiStyle.ControlRadius&&UiStyle.ControlRadius==UiStyle.NavigationRadius,"Inconsistent component radii");
                 Need(SteamGameDiscovery.IsCounterStrike("CS2.EXE")&&SteamGameDiscovery.IsCounterStrike("csgo.exe")&&!SteamGameDiscovery.IsCounterStrike("cs2-helper.exe"),"Counter-Strike guard must not rely only on Steam's registry flag");
-                using(var text=new GlassRichTextBox{Text="network history",ReadOnly=true}){
-                    text.CreateControl();text.Select(2,4);Need(text.SelectedText=="twor","Glass report broke native selection");
-                }
                 int scans=0;string path=Path.Combine(folder,"history.sqlite3");
                 using(var disabled=new HistoryMonitor(path,()=>{Interlocked.Increment(ref scans);return new List<SteamGameProcess>();})){
                     Need(scans==0&&!File.Exists(path),"Disabled startup created worker or database");disabled.Dispose();

@@ -5,15 +5,6 @@ using System.Windows.Forms;
 
 namespace SteamDirect
 {
-    internal sealed class GlassRichTextBox:RichTextBox
-    {
-        protected override CreateParams CreateParams { get {var value=base.CreateParams;value.ExStyle|=0x20;return value;} }
-        protected override void WndProc(ref Message message)
-        {
-            if((message.Msg==0x14||message.Msg==0x318)&&message.WParam!=IntPtr.Zero){using(var graphics=Graphics.FromHdc(message.WParam))Wallpaper.PaintGlass(this,graphics);if(message.Msg==0x14){message.Result=new IntPtr(1);return;}}
-            base.WndProc(ref message);
-        }
-    }
     // Retain the native combo's keyboard, IME, selection and accessibility implementation.
     internal sealed class DarkComboBox : ComboBox
     {
@@ -42,14 +33,21 @@ namespace SteamDirect
         private void DrawFace(Graphics graphics)
         {
             var rect = ClientRectangle;
-            if(!Wallpaper.PaintGlass(this,graphics))graphics.Clear(AppTheme.Background(AppTheme.InputSurface));
+            if (Width < 2 || Height < 2) return;
+            graphics.Clear(UiStyle.ParentSurface(this));
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using (var outline = UiStyle.RoundRect(new RectangleF(.5F, .5F, Width - 1, Height - 1), UiStyle.ControlRadius * UiStyle.Dpi(this) / 96F))
+            {
+                using (var fill = new SolidBrush(BackColor)) graphics.FillPath(fill, outline);
+                using (var edge = new Pen(Focused ? AppTheme.Text(AppTheme.Accent) : AppTheme.Edge))
+                    graphics.DrawPath(edge, outline);
+            }
             int arrow = UiStyle.Scale(this, 24), pad = UiStyle.Scale(this, 8);
             TextRenderer.DrawText(graphics, Text, Font, new Rectangle(pad, 0, Math.Max(1, Width - arrow - pad), Height),
                 AppTheme.Text(Enabled ? AppTheme.Ink : AppTheme.Muted), TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
             int x = rect.Right - arrow / 2, y = rect.Height / 2, d = UiStyle.Scale(this, 4);
             using (var pen = new Pen(AppTheme.Text(AppTheme.Muted), Math.Max(1, UiStyle.Dpi(this) / 96F)))
                 graphics.DrawLines(pen, new[] { new Point(x - d, y - d / 2), new Point(x, y + d / 2), new Point(x + d, y - d / 2) });
-            if (Focused && !DroppedDown) ControlPaint.DrawFocusRectangle(graphics, Rectangle.Inflate(rect, -3, -3), AppTheme.Text(AppTheme.Accent), AppTheme.Background(AppTheme.Surface));
         }
     }
 
@@ -77,7 +75,7 @@ namespace SteamDirect
         }
         protected override void OnPaint(PaintEventArgs e)
         {
-            if(!Wallpaper.PaintGlass(this,e.Graphics))e.Graphics.Clear(AppTheme.Background(AppTheme.Surface));
+            e.Graphics.Clear(UiStyle.ParentSurface(this));
             if (maximum == 0) return;
             e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             using (var path = UiStyle.RoundRect(Thumb, Width / 2F))
@@ -105,7 +103,6 @@ namespace SteamDirect
         private readonly DarkScrollBar bar = new DarkScrollBar();
         private readonly Control content;
         private readonly Observer observer;
-        internal void ReleaseGlass(){((GlassTextHost)viewport).Release();}
         private bool synchronizing;
         [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
         internal NativeScrollFrame(Control content)
@@ -114,7 +111,7 @@ namespace SteamDirect
             var text = content as TextBox; if (text != null) text.ScrollBars = ScrollBars.None;
             var rich = content as RichTextBox; if (rich != null) rich.ScrollBars = RichTextBoxScrollBars.None;
             this.content = content; Dock = DockStyle.Fill; Margin = Padding.Empty;
-            viewport=new GlassTextHost(content){Margin=Padding.Empty};
+            viewport = new Panel { Margin = Padding.Empty };
             if (content is ListView) bar.Visible = false;
             Controls.Add(viewport); Controls.Add(bar); viewport.Controls.Add(content); content.Dock = DockStyle.None;
             bar.Width = UiStyle.Scale(this, 14); bar.ScrollTo += ScrollContent;
@@ -160,29 +157,6 @@ namespace SteamDirect
             private readonly NativeScrollFrame owner;
             internal Observer(NativeScrollFrame owner) { this.owner = owner; }
             protected override void WndProc(ref Message message) { base.WndProc(ref message); if (message.Msg == 0xF || message.Msg == 0x115 || message.Msg == 0x20A || message.Msg == 5 || message.Msg == 0x100 || message.Msg == 0xC) owner.Synchronize(); }
-        }
-        private sealed class GlassTextHost:Panel
-        {
-            [StructLayout(LayoutKind.Sequential)]private struct PointNative{internal int X,Y;}
-            [DllImport("gdi32.dll")]private static extern bool LPtoDP(IntPtr dc,ref PointNative points,int count);
-            [DllImport("gdi32.dll")]private static extern bool SetBrushOrgEx(IntPtr dc,int x,int y,IntPtr previous);
-            private readonly Control content;private IntPtr brush;private Rectangle placement;private Size rootSize;private bool dark;
-            [DllImport("gdi32.dll")]private static extern int SetBkMode(IntPtr dc,int mode);
-            [DllImport("gdi32.dll")]private static extern uint SetTextColor(IntPtr dc,int color);
-            internal GlassTextHost(Control content){this.content=content;DoubleBuffered=true;}
-            protected override void OnPaintBackground(PaintEventArgs args){if(!Wallpaper.PaintGlass(this,args.Graphics))base.OnPaintBackground(args);}
-            internal void Release(){if(brush!=IntPtr.Zero){Wallpaper.DeleteObject(brush);brush=IntPtr.Zero;}}
-            protected override void OnVisibleChanged(EventArgs args){base.OnVisibleChanged(args);if(!Visible)Release();}
-            protected override void Dispose(bool disposing){if(disposing)Release();base.Dispose(disposing);}
-            protected override void WndProc(ref Message message)
-            {
-                if((message.Msg==0x133||message.Msg==0x138)&&content is TextBox&&content.IsHandleCreated&&message.LParam==content.Handle&&Visible){
-                    Size root;var current=Wallpaper.Placement(content,out root);
-                    if(brush==IntPtr.Zero||placement!=current||rootSize!=root||dark!=AppTheme.IsDark){Release();brush=Wallpaper.GlassBrush(content);placement=current;rootSize=root;dark=AppTheme.IsDark;}
-                    if(brush!=IntPtr.Zero){var origin=new PointNative();LPtoDP(message.WParam,ref origin,1);SetBrushOrgEx(message.WParam,origin.X,origin.Y,IntPtr.Zero);SetBkMode(message.WParam,1);SetTextColor(message.WParam,ColorTranslator.ToWin32(content.ForeColor));message.Result=brush;return;}
-                }
-                base.WndProc(ref message);
-            }
         }
     }
 }

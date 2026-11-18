@@ -387,6 +387,7 @@ namespace SteamDirect
 
             var root = UiStyle.Grid(1, 5);
             root.Padding = UiStyle.PagePadding;
+            root.BackColor = AppTheme.Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
             int actionHeight = UiStyle.DensePadding.Vertical + UiStyle.Space32 + UiStyle.ButtonHeight +
@@ -394,18 +395,18 @@ namespace SteamDirect
             int statusHeight = 2 * (UiStyle.DensePadding.Vertical + UiStyle.CompactHeight + UiStyle.ButtonHeight) + UiStyle.SmallGap + UiStyle.Gap;
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, actionHeight));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, statusHeight));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
             root.Controls.Add(UiStyle.Header("网络诊断", "Steam · CS2"), 0, 0);
 
             root.Controls.Add(BuildControls(), 0, 1);
             root.Controls.Add(BuildStatusCards(), 0, 2);
 
-            conclusion.Text = "开始检测后，这里会显示网络诊断结果和处理建议。";
+            conclusion.Text = "等待检测。";
             root.Controls.Add(BuildReadout("诊断结论与建议", conclusion, AppTheme.Ink, new Padding(0, 0, 0, UiStyle.SmallGap)), 0, 3);
             root.Controls.Add(BuildReadout("检测明细", details, AppTheme.Muted, Padding.Empty), 0, 4);
 
-            Controls.Add(root);
+            Controls.Add(new ContentViewport(root, UiStyle.HeaderHeight + actionHeight + statusHeight + root.Padding.Vertical + 248));
             Shown += (sender, args) =>
             {
                 conclusion.Select(0, 0);
