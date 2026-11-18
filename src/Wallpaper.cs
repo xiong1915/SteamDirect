@@ -20,9 +20,9 @@ namespace SteamDirect
             }
         }
 
-        internal static void PaintBanner(Graphics graphics, Rectangle bounds, GraphicsPath outline, Color surface)
+        internal static void PaintBanner(Graphics graphics, Rectangle bounds, GraphicsPath outline, Color surface, int dpi)
         {
-            int width = bounds.Width / 2;
+            int width = Math.Min(bounds.Width / 3, (int)(220 * dpi / 96F));
             if (width < 2 || bounds.Height < 2) return;
             var banner = new Rectangle(bounds.Right - width, bounds.Top, width, bounds.Height);
             var image = artwork.Value;
@@ -40,14 +40,15 @@ namespace SteamDirect
                 graphics.SetClip(outline, CombineMode.Intersect);
                 graphics.InterpolationMode = InterpolationMode.Bilinear;
                 graphics.DrawImage(image, banner, source, GraphicsUnit.Pixel);
-                using (var veil = new LinearGradientBrush(banner, surface, Color.FromArgb(25, surface), 0F))
+                var veilBounds = Rectangle.Inflate(banner, 2, 0);
+                using (var veil = new LinearGradientBrush(veilBounds, surface, Color.FromArgb(116, surface), 0F))
                 {
                     veil.Blend = new Blend
                     {
                         Positions = new[] { 0F, .18F, .72F, 1F },
                         Factors = new[] { 0F, 0F, .93F, 1F }
                     };
-                    graphics.FillRectangle(veil, Rectangle.Inflate(banner, 1, 0));
+                    graphics.FillRectangle(veil, veilBounds);
                 }
             }
             finally { graphics.Restore(state); }

@@ -134,7 +134,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.14";
+            Text = "Steam 直连助手 v3.0.15";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -147,42 +147,46 @@ namespace SteamDirect
             DoubleBuffered = true;
 
             BuildNavigation();
-            const int overviewHeight = 440;
+            const int overviewHeight = 392;
             var root = UiStyle.Grid(1, 8);
             root.Padding = UiStyle.PagePadding;
             root.BackColor = AppTheme.Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 64, 160, 80, 44, 0, 44, 0 })
+            foreach (int height in new[] { 60, 140, 68, 38, 0, 38, 0 })
                 root.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var overview = new ContentViewport(root, overviewHeight);
+            var overview = new ContentViewport(root, overviewHeight, 800);
             pageHost.Controls.Add(overview);
             pages = new PageManager(pageHost, overview);
-            root.Controls.Add(UiStyle.Header("Steam 直连", ""), 0, 0);
+            root.Controls.Add(new Label
+            {
+                Text = "Steam 直连", Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.HeroTitle,
+                ForeColor = AppTheme.Ink, TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 0);
 
-            var action = UiStyle.Card();
+            var action = UiStyle.Card(true);
             action.ShowArtwork = true;
-            action.Margin = new Padding(0, 0, 0, UiStyle.Space16);
+            action.Margin = new Padding(0, 0, 0, UiStyle.Space12);
             var actionLayout = UiStyle.Grid(1, 3);
-            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48));
-            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32));
+            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
+            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             runButton.Text = "严格直连并重启 Steam";
             runButton.Dock = DockStyle.Left;
-            runButton.Width = 280;
-            runButton.Margin = new Padding(0, 0, 0, UiStyle.Space8);
+            runButton.Width = 244;
+            runButton.Margin = Padding.Empty;
             AppTheme.ActionButton(runButton, true);
-            runButton.Font = UiStyle.SectionTitle;
+            runButton.Font = UiStyle.Button;
             runButton.Click += async (sender, args) => await RunAsync();
             actionLayout.Controls.Add(runButton, 0, 0);
 
             statusLabel.Text = "退出游戏后开始";
             statusLabel.Dock = DockStyle.Fill;
-            statusLabel.Margin = Padding.Empty;
+            statusLabel.Margin = new Padding(0, UiStyle.Space4, 0, 0);
             statusLabel.AutoEllipsis = true;
-            statusLabel.Font = UiStyle.SectionTitle;
+            statusLabel.Font = UiStyle.Caption;
             actionLayout.Controls.Add(statusLabel, 0, 1);
-            elapsedLabel.Text = "就绪";
+            elapsedLabel.Text = "";
             elapsedLabel.ForeColor = AppTheme.Muted;
             elapsedLabel.Font = UiStyle.Caption;
             elapsedLabel.Dock = DockStyle.Fill;
@@ -310,6 +314,8 @@ namespace SteamDirect
             toggle = new RoundedButton { Text = "+  " + title, Dock = DockStyle.Fill, Margin = Padding.Empty,
                 CaptionInset = 0, TextOnly = true, AccessibleName = title, AccessibleDescription = "已收起" };
             AppTheme.ActionButton(toggle, false);
+            toggle.ForeColor = AppTheme.Ink;
+            toggle.Font = UiStyle.Body;
             header.Controls.Add(toggle);
             return header;
         }
@@ -357,7 +363,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.14", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.15", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Page };
             sidebar.Padding = new Padding(8);
@@ -767,7 +773,7 @@ namespace SteamDirect
             {
                 e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 using (var fill = new SolidBrush(BackColor)) e.Graphics.FillPath(fill, outline);
-                if (ShowArtwork) Wallpaper.PaintBanner(e.Graphics, ClientRectangle, outline, BackColor);
+                if (ShowArtwork) Wallpaper.PaintBanner(e.Graphics, ClientRectangle, outline, BackColor, UiStyle.Dpi(this));
                 using (var border = new Pen(AppTheme.Edge)) e.Graphics.DrawPath(border, outline);
             }
         }

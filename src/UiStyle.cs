@@ -12,11 +12,13 @@ namespace SteamDirect
     {
         private readonly Control content;
         private int minimumHeight;
+        private readonly int maximumWidth;
         private readonly DarkScrollBar scroll = new DarkScrollBar();
         private bool arranging;
-        internal ContentViewport(Control content, int minimumHeight)
+        internal ContentViewport(Control content, int minimumHeight, int maximumWidth = 0)
         {
             this.content = content; this.minimumHeight = minimumHeight;
+            this.maximumWidth = maximumWidth;
             Dock = DockStyle.Fill; Margin = Padding.Empty; BackColor = content.BackColor; DoubleBuffered = true;
             content.Dock = DockStyle.None; Controls.Add(content); Controls.Add(scroll);
             scroll.ScrollTo += ScrollTo;
@@ -49,7 +51,9 @@ namespace SteamDirect
                 int width = height > Height ? UiStyle.Scale(this, 14) : 0;
                 scroll.SetRange(Math.Max(0, height - Height), Math.Max(1, Height), scroll.Value);
                 scroll.Bounds = new Rectangle(Math.Max(0, Width - width), 0, width, Height);
-                content.Bounds = new Rectangle(0, -scroll.Value, Math.Max(1, Width - width), height);
+                int availableWidth = Math.Max(1, Width - width);
+                if (maximumWidth > 0) availableWidth = Math.Min(availableWidth, UiStyle.Scale(this, maximumWidth));
+                content.Bounds = new Rectangle(0, -scroll.Value, availableWidth, height);
             } finally { arranging = false; }
         }
         protected override void OnMouseWheel(MouseEventArgs args)
