@@ -13,6 +13,7 @@ namespace SteamDirect
         private bool initialized;
         private long revision;
         internal long Revision { get { return System.Threading.Interlocked.Read(ref revision); } }
+        internal bool Exists { get { return File.Exists(path); } }
 
         internal HistoryStore(string path)
         {

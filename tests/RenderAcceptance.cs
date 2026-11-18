@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -107,6 +108,25 @@ namespace SteamDirect
         private static IEnumerable<Control> Descendants(Control root){foreach(Control child in root.Controls){yield return child;foreach(Control nested in Descendants(child))yield return nested;}}
         private static void MainMatrix(HistoryMonitor monitor,string output)
         {
+            // Keep the real WinForms synchronization context alive while the fixture pumps messages.
+            using (var context = new ApplicationContext())
+            using (var dispatcher = new Control())
+            {
+                var handle = dispatcher.Handle;
+                Exception failure = null;
+                dispatcher.BeginInvoke((Action)(() =>
+                {
+                    try { RunMainMatrix(monitor, output); }
+                    catch (Exception error) { failure = error; }
+                    finally { context.ExitThread(); }
+                }));
+                Application.Run(context);
+                if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+            }
+        }
+
+        private static void RunMainMatrix(HistoryMonitor monitor, string output)
+        {
             int[,] sizes={{1280,800,96},{1920,1080,96},{1920,1080,120},{1920,1080,144},{1920,1080,168},{1920,1080,192},{3840,2160,168},{3840,2160,192}};
             for (int index = 0; index < sizes.GetLength(0); index++) {
                 using(var main=new MainWindow(false,monitor,new UserPreferences{NightMode=true,ThemeColor="#3269C7",NetworkRecording=false})){
@@ -122,6 +142,27 @@ namespace SteamDirect
                         Need(main.ClientSize==new Size(sizes[index,0]-80,sizes[index,1]-100),"Requested desktop simulation geometry was constrained");
                         foreach(string page in new[]{"概览","网络诊断","游戏记录","设置"}){
                             navigate.Invoke(main,new object[]{page});Pump(30);
+                            if (page == "概览")
+                            {
+                                var recent = (OverviewHistory)Field(main, "recentHistory");
+                                var deadline = Stopwatch.StartNew();
+                                while (recent.RecordCount != 5 && deadline.ElapsedMilliseconds < 3000) Pump(20);
+                                Need(recent.RecordCount == 5, "Overview did not load its five latest records");
+                                Need(Descendants(recent).OfType<Label>().Any(label => label.Visible && label.Text.Contains("有异常")),
+                                    "Overview did not mark the session with an incident");
+                                if (index == 0)
+                                {
+                                    var open = typeof(MainWindow).GetMethod("OpenOverviewHistoryAsync", Private);
+                                    Await((Task)open.Invoke(main, new object[] { "fixture-2" }));
+                                    var history = (HistoryWindow)manager.GetType().GetProperty("ActivePage", Private).GetValue(manager, null);
+                                    var list = (ListView)Field(history, "records");
+                                    Need(list.SelectedItems.Count == 1 && ((HistorySession)list.SelectedItems[0].Tag).Id == "fixture-2",
+                                        "Opening an overview record did not select the requested session: " +
+                                        ((Label)Field(history, "status")).Text + " items=" + list.Items.Count +
+                                        " selected=" + string.Join(",", list.SelectedItems.Cast<ListViewItem>().Select(item => ((HistorySession)item.Tag).Id)));
+                                    navigate.Invoke(main, new object[] { "概览" });
+                                }
+                            }
                             foreach (var control in Descendants(main))
                             {
                                 var button = control as RoundedButton;

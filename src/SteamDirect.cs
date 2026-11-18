@@ -124,6 +124,7 @@ namespace SteamDirect
         private readonly Panel pageHost = new PageHost();
         private readonly Dictionary<string, Button> navigation = new Dictionary<string, Button>();
         private PageManager pages;
+        private readonly OverviewHistory recentHistory;
 
         internal MainWindow(bool background = false, HistoryMonitor historyOverride = null, UserPreferences preferencesOverride = null)
         {
@@ -134,7 +135,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.15";
+            Text = "Steam 直连助手 v3.0.16";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -148,14 +149,15 @@ namespace SteamDirect
 
             BuildNavigation();
             const int overviewHeight = 392;
-            var root = UiStyle.Grid(1, 8);
+            recentHistory = new OverviewHistory(OpenOverviewHistoryAsync);
+            var root = UiStyle.Grid(1, 9);
             root.Padding = UiStyle.PagePadding;
             root.BackColor = AppTheme.Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 60, 140, 68, 38, 0, 38, 0 })
+            foreach (int height in new[] { 60, 140, 68, recentHistory.NaturalHeight + UiStyle.Space12, 38, 0, 38, 0 })
                 root.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var overview = new ContentViewport(root, overviewHeight, 800);
+            var overview = new ContentViewport(root, overviewHeight + recentHistory.NaturalHeight + UiStyle.Space12, 800);
             pageHost.Controls.Add(overview);
             pages = new PageManager(pageHost, overview);
             root.Controls.Add(new Label
@@ -200,18 +202,18 @@ namespace SteamDirect
 
             var flowHeader = CreateDisclosure("直连流程", out flowToggle);
             var logHeader = CreateDisclosure("操作日志", out logToggle);
-            root.Controls.Add(flowHeader, 0, 3);
-            root.Controls.Add(logHeader, 0, 5);
+            root.Controls.Add(flowHeader, 0, 4);
+            root.Controls.Add(logHeader, 0, 6);
             timeline.Dock = DockStyle.Fill;
             timeline.BackColor = AppTheme.Page;
             timeline.Visible = false;
-            root.Controls.Add(timeline, 0, 4);
+            root.Controls.Add(timeline, 0, 5);
 
             var logArea = UiStyle.Grid(1, 2);
             logArea.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space40));
             logArea.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             logArea.Visible = false;
-            root.Controls.Add(logArea, 0, 6);
+            root.Controls.Add(logArea, 0, 7);
             logButton.Text = "打开日志文件";
             logButton.Dock = DockStyle.Left;
             logButton.Width = 132;
@@ -219,6 +221,19 @@ namespace SteamDirect
             AppTheme.ActionButton(logButton, false);
             ((RoundedButton)logButton).TextOnly = true;
             logArea.Controls.Add(logButton, 0, 0);
+            root.Controls.Add(recentHistory, 0, 3);
+            Action updateOverviewHeight = () => overview.SetMinimumHeight(overviewHeight + recentHistory.NaturalHeight +
+                UiStyle.Space12 + (root.RowStyles[5].Height > 0 ? 300 : 0) + (root.RowStyles[7].Height > 0 ? 192 : 0));
+            recentHistory.HeightChanged += () =>
+            {
+                root.SuspendLayout();
+                try
+                {
+                    root.RowStyles[3].Height = UiStyle.Scale(root, recentHistory.NaturalHeight + UiStyle.Space12);
+                    updateOverviewHeight();
+                }
+                finally { root.ResumeLayout(true); }
+            };
 
             Action<string, Button, Control, int, int> toggleSection = (title, button, section, row, height) =>
             {
@@ -230,13 +245,13 @@ namespace SteamDirect
                     root.RowStyles[row].Height = expand ? UiStyle.Scale(root, height) : 0;
                     button.Text = (expand ? "−  " : "+  ") + title;
                     button.AccessibleDescription = expand ? "已展开" : "已收起";
-                    overview.SetMinimumHeight(overviewHeight + (timeline.Visible ? 300 : 0) + (logArea.Visible ? 192 : 0));
+                    updateOverviewHeight();
                 }
                 finally { root.ResumeLayout(true); }
                 if (expand) overview.RevealTop(section, UiStyle.Scale(root, 125));
             };
-            flowToggle.Click += (sender, args) => toggleSection("直连流程", flowToggle, timeline, 4, 300);
-            logToggle.Click += (sender, args) => toggleSection("操作日志", logToggle, logArea, 6, 192);
+            flowToggle.Click += (sender, args) => toggleSection("直连流程", flowToggle, timeline, 5, 300);
+            logToggle.Click += (sender, args) => toggleSection("操作日志", logToggle, logArea, 7, 192);
 
             logButton.Click += (s, e) =>
             {
@@ -304,6 +319,7 @@ namespace SteamDirect
             Shown += (sender, args) => { if (background && preferences.TrayEnabled) Hide(); };
             Log("就绪，请先退出游戏。");
             Shown += (sender, args) => { if (preferences.NetworkRecording) history.Start(); };
+            Shown += (sender, args) => recentHistory.RequestRefresh(history, preferences.NetworkRecording);
             AppTheme.Apply(this);
             ResumeLayout(true);
         }
@@ -363,7 +379,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.15", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.16", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Page };
             sidebar.Padding = new Padding(8);
@@ -387,6 +403,13 @@ namespace SteamDirect
             }
         }
 
+        private async Task OpenOverviewHistoryAsync(string id)
+        {
+            NavigateTo("游戏记录");
+            var view = pages.ActivePage as HistoryWindow;
+            if (view != null) await view.OpenOverviewSessionAsync(id);
+        }
+
         private void NavigateTo(string page)
         {
             if (savingSettings) return;
@@ -404,6 +427,7 @@ namespace SteamDirect
             if (pages.Navigate(page, () => CreatePage(page)))
             {
                 SelectNavigation(page);
+                if (page == "概览") recentHistory.RequestRefresh(history, preferences.NetworkRecording);
             }
         }
 
@@ -454,6 +478,7 @@ namespace SteamDirect
                 windowDiagnostics.Displayed();
                 if (!WindowEnvironment.OffscreenTests) Activate();
             } finally { restoring = false; }
+            recentHistory.RequestRefresh(history, preferences.NetworkRecording);
         }
 
         internal void RequestExit()

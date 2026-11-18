@@ -511,7 +511,12 @@ namespace SteamDirect
             return QueryAsync(requestedPage, false);
         }
 
-        private async Task QueryAsync(int requestedPage, bool showLatestIfTodayEmpty)
+        internal Task OpenOverviewSessionAsync(string id)
+        {
+            return QueryAsync(0, false, id, true);
+        }
+
+        private async Task QueryAsync(int requestedPage, bool showLatestIfTodayEmpty, string preferredId = null, bool fromOverview = false)
         {
             if (!Available) return;
             gameAtRequest = SteamGameDiscovery.IsSteamGameActive();
@@ -525,6 +530,12 @@ namespace SteamDirect
             long revision = store.Revision;
             var dataClock = System.Diagnostics.Stopwatch.StartNew();
             loadingRecords = true;
+            if (fromOverview)
+            {
+                gameFilter.Clear();
+                modeFilter.SelectedIndex = 0;
+                recordScope.SelectedIndex = 1;
+            }
             refresh.Enabled = gameFilter.Enabled = modeFilter.Enabled = recordScope.Enabled = previousPage.Enabled = nextPage.Enabled = false;
             string name = gameFilter.Text.Trim();
             string mode = modeFilter.SelectedItem as string;
@@ -565,7 +576,7 @@ namespace SteamDirect
                     if (hasNext) result.RemoveAt(RecordLimit);
                     sessions = result;
                     pageLabel.Text = "第 " + (page + 1) + " 页 · " + sessions.Count + " 条";
-                    await ShowSessionsAsync();
+                    await ShowSessionsAsync(preferredId);
                     if (!token.IsCancellationRequested && generation == queryGeneration)
                     {
                         loadedRevision = revision; loadedDay = today;
@@ -603,10 +614,11 @@ namespace SteamDirect
             return records.SelectedItems.Count == 0 ? null : records.SelectedItems[0].Tag as HistorySession;
         }
 
-        private async Task ShowSessionsAsync()
+        private async Task ShowSessionsAsync(string preferredId)
         {
             if (!Available) return;
             var previous = Selected();
+            string selectedId = preferredId ?? (previous == null ? null : previous.Id);
             ListViewItem preferred = null;
             fillingRecords = true;
             records.BeginUpdate();
@@ -623,9 +635,9 @@ namespace SteamDirect
                     row.SubItems.Add("详细数据");
                     row.Tag = session;
                     records.Items.Add(row);
-                    if (previous != null && session.Id == previous.Id) preferred = row;
+                    if (session.Id == selectedId) preferred = row;
                 }
-                if (records.Items.Count > 0)
+                if (records.Items.Count > 0 && (preferredId == null || preferred != null))
                 {
                     var row = preferred ?? records.Items[0];
                     row.Selected = true;
@@ -635,6 +647,8 @@ namespace SteamDirect
             finally { records.EndUpdate(); fillingRecords = false; }
             FitRecordRows(true);
             await LoadSelectionAsync();
+            if (Available && preferredId != null && preferred == null)
+                status.Text = "这条记录已不在近期列表中，可在游戏记录中查询。";
         }
 
         private async Task LoadSelectionAsync()
@@ -1109,7 +1123,7 @@ namespace SteamDirect
             writer.WriteLine();
         }
 
-        private static string LocalTime(long at, string format)
+        internal static string LocalTime(long at, string format)
         {
             return at <= 0 ? "—" : at > 253402300799999L ? "时间无效" : Epoch.AddMilliseconds(at).ToLocalTime().ToString(format, CultureInfo.InvariantCulture);
         }
@@ -1128,7 +1142,7 @@ namespace SteamDirect
                 " · " + (session.End == 0 ? "已玩 " : "共玩 ") + SpanText(end - session.Start) +
                 (session.Interrupted ? "（记录曾中断）" : "");
         }
-        private static string SpanText(long milliseconds)
+        internal static string SpanText(long milliseconds)
         {
             if (milliseconds < 0 || milliseconds > 315537897599999L) return "时长无效";
             var elapsed = TimeSpan.FromMilliseconds(milliseconds);

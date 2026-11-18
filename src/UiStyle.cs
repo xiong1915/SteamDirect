@@ -62,7 +62,7 @@ namespace SteamDirect
         }
     }
 
-    internal sealed class SectionRule : Panel
+    internal class SectionRule : Panel
     {
         protected override void OnPaint(PaintEventArgs e)
         {
