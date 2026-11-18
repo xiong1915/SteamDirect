@@ -129,7 +129,8 @@ namespace SteamDirect
         {
             int[,] sizes={{1280,800,96},{1920,1080,96},{1920,1080,120},{1920,1080,144},{1920,1080,168},{1920,1080,192},{3840,2160,168},{3840,2160,192}};
             for (int index = 0; index < sizes.GetLength(0); index++) {
-                using(var main=new MainWindow(false,monitor,new UserPreferences{NightMode=true,ThemeColor="#3269C7",NetworkRecording=false})){
+                bool lightOverview = sizes[index,0] == 1920 && sizes[index,2] == 168;
+                using(var main=new MainWindow(false,monitor,new UserPreferences{NightMode=!lightOverview,ThemeColor=lightOverview?"#6750A4":"#3269C7",NetworkRecording=false})){
                     main.ShowInTaskbar=false;main.FormBorderStyle=FormBorderStyle.None;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.Show();
                     var navigate=typeof(MainWindow).GetMethod("NavigateTo",Private);var manager=Field(main,"pages");
                     foreach(string page in new[]{"网络诊断","游戏记录","设置","概览"}){navigate.Invoke(main,new object[]{page});Pump(40);}
@@ -145,6 +146,11 @@ namespace SteamDirect
                             if (page == "概览")
                             {
                                 var recent = (OverviewHistory)Field(main, "recentHistory");
+                                var viewport = (ContentViewport)recent.Parent.Parent;
+                                int inset = recent.Parent.Padding.Right;
+                                int rightGap = viewport.ClientSize.Width - recent.Right;
+                                Need(rightGap >= inset && rightGap <= inset + UiStyle.Scale(viewport, 14),
+                                    "Overview did not fill the available width: right=" + rightGap + ", inset=" + inset);
                                 var deadline = Stopwatch.StartNew();
                                 while (recent.RecordCount != 5 && deadline.ElapsedMilliseconds < 3000) Pump(20);
                                 Need(recent.RecordCount == 5, "Overview did not load its five latest records");

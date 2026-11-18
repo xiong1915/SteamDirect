@@ -135,7 +135,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.16";
+            Text = "Steam 直连助手 v3.0.17";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -157,7 +157,7 @@ namespace SteamDirect
             foreach (int height in new[] { 60, 140, 68, recentHistory.NaturalHeight + UiStyle.Space12, 38, 0, 38, 0 })
                 root.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var overview = new ContentViewport(root, overviewHeight + recentHistory.NaturalHeight + UiStyle.Space12, 800);
+            var overview = new ContentViewport(root, overviewHeight + recentHistory.NaturalHeight + UiStyle.Space12);
             pageHost.Controls.Add(overview);
             pages = new PageManager(pageHost, overview);
             root.Controls.Add(new Label
@@ -379,7 +379,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.16", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.17", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Page };
             sidebar.Padding = new Padding(8);
