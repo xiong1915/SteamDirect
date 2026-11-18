@@ -25,6 +25,14 @@ namespace SteamDirect
         {
             scroll.SetRange(Math.Max(0, content.Height - Height), Math.Max(1, Height), value); PerformLayout();
         }
+        internal void RevealTop(Control target, int height)
+        {
+            int visibleHeight = Math.Min(ClientSize.Height, Math.Min(target.Height, height));
+            if (visibleHeight <= 0) return;
+            int top = PointToClient(target.PointToScreen(Point.Empty)).Y;
+            int shift = top < 0 ? top : Math.Max(0, top + visibleHeight - ClientSize.Height);
+            if (shift != 0) ScrollTo(scroll.Value + shift);
+        }
         protected override void OnLayout(LayoutEventArgs args)
         {
             if (arranging || content == null) return;

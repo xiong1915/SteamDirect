@@ -30,7 +30,17 @@ namespace SteamDirect
             var button = new RoundedButton { HorizontalIndicator = true, Text = title, AutoSize = false, Width = 116, Height = UiStyle.ButtonHeight, MinimumSize = new Size(116, UiStyle.ButtonHeight), Margin = new Padding(0, 0, 8, 0) };
             AppTheme.ActionButton(button, false);
             button.Font = UiStyle.Button;
-            button.Click += (sender, args) => SelectPage(index);
+            button.Click += (sender, args) =>
+            {
+                SelectPage(index);
+                for (Control parent = Parent; parent != null; parent = parent.Parent)
+                {
+                    var viewport = parent as ContentViewport;
+                    if (viewport == null) continue;
+                    viewport.RevealTop(content, UiStyle.Scale(this, 220));
+                    break;
+                }
+            };
             navigation.Controls.Add(button);
             buttons.Add(button);
             page.Dock = DockStyle.Fill;
@@ -67,17 +77,18 @@ namespace SteamDirect
             if (index < 0 || index >= pages.Count) throw new ArgumentOutOfRangeException("index");
             SelectedIndex = index;
             content.SuspendLayout();
-            try {
-            pages[index].Visible = true;
-            pages[index].BringToFront();
-            for (int i = 0; i < pages.Count; i++)
+            try
             {
-                pages[i].Visible = i == index;
-                ((RoundedButton)buttons[i]).SelectedNavigation = i == index;
-                AppTheme.SetBackground(buttons[i], i == index ? AppTheme.Pill : AppTheme.Surface);
-                AppTheme.SetForeground(buttons[i], i == index ? AppTheme.Accent : AppTheme.Muted);
+                pages[index].BringToFront();
+                for (int i = 0; i < pages.Count; i++)
+                {
+                    pages[i].Visible = i == index;
+                    ((RoundedButton)buttons[i]).SelectedNavigation = i == index;
+                    AppTheme.SetBackground(buttons[i], i == index ? AppTheme.Pill : AppTheme.Surface);
+                    AppTheme.SetForeground(buttons[i], i == index ? AppTheme.Accent : AppTheme.Muted);
+                }
             }
-            } finally { content.ResumeLayout(false); }
+            finally { content.ResumeLayout(true); }
         }
     }
 

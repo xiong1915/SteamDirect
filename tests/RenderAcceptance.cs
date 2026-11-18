@@ -151,11 +151,33 @@ namespace SteamDirect
                                 var report = (RichTextBox)Field(active, "overviewText");
                                 Need(records.Height >= UiStyle.Scale(records, 100), "History list collapsed");
                                 Need(report.Height >= UiStyle.Scale(report, 80), "History report collapsed");
+                                if (sizes[index,0] == 1920 && dpi >= 168)
+                                    CaptureHistoryTabs(main, (HistoryWindow)active, output, dpi);
                             }
                         }
                         Console.WriteLine("PASS desktop simulation "+sizes[index,0]+"x"+sizes[index,1]+" dpi="+dpi+" four pages / recording off");
                     }finally{main.Dispose();WindowEnvironment.LayoutDpi=0;foreach(var font in owned)font.Dispose();}
                 }
+            }
+        }
+        private static void CaptureHistoryTabs(MainWindow main, HistoryWindow history, string output, int dpi)
+        {
+            Await(Refresh(history));
+            var targets = new[] { (Control)Field(history, "networkChart"), (Control)Field(history, "incidentSummary"),
+                (Control)Field(history, "comparisonText") };
+            Control section = targets[2];
+            while (!(section is HistorySections)) section = section.Parent;
+            var buttons = (FlowLayoutPanel)Field(section, "navigation");
+            for (int index = 1; index <= targets.Length; index++)
+            {
+                ((Button)buttons.Controls[index]).PerformClick();
+                Pump(25);
+                var target = targets[index - 1];
+                var visible = target.RectangleToScreen(target.ClientRectangle);
+                for (Control parent = target.Parent; parent != null; parent = parent.Parent)
+                    visible.Intersect(parent.RectangleToScreen(parent.ClientRectangle));
+                Need(visible.Height >= UiStyle.Scale(main, 32) && visible.Width > 0, "History tab content was clipped: " + index + " dpi=" + dpi);
+                Capture(main, Path.Combine(output, "history-click-" + dpi + "-" + index + ".png"));
             }
         }
         private static void CheckCaption(Control control, string text, Rectangle bounds, string page, int dpi)

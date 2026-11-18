@@ -94,6 +94,25 @@ namespace SteamDirect
                     Need(((ListView)Field(history, "incidents")).Items.Count == 1, "Timeline loaded");
                     string comparison = ((RichTextBox)Field(history, "comparisonText")).Text;
                     Need(comparison.Contains("直连 ·") && comparison.Contains("代理 ·") && comparison.Contains("样本不足"), "History shows both modes and insufficient-data status");
+                    history.MinimumSize = Size.Empty;
+                    history.ClientSize = new Size(UiStyle.Scale(history, 860), UiStyle.Scale(history, 430));
+                    history.PerformLayout();
+                    Control section = (Control)Field(history, "comparisonText");
+                    while (!(section is HistorySections)) section = section.Parent;
+                    var navigation = (FlowLayoutPanel)Field(section, "navigation");
+                    var content = (Panel)Field(section, "content");
+                    var targets = new[] { (Control)Field(history, "networkChart"), (Control)Field(history, "incidentSummary"), (Control)Field(history, "comparisonText") };
+                    for (int index = 1; index < 4; index++)
+                    {
+                        ((Button)navigation.Controls[index]).PerformClick();
+                        var target = targets[index - 1];
+                        Rectangle visible = target.RectangleToScreen(target.ClientRectangle);
+                        for (Control parent = target.Parent; parent != null; parent = parent.Parent)
+                            visible.Intersect(parent.RectangleToScreen(parent.ClientRectangle));
+                        Need(target.Visible && visible.Width > 0 && visible.Height >= UiStyle.Scale(history, 32),
+                            "Clicked history tab must expose its content immediately: " + index + " page=" + content.Controls[0].Bounds +
+                            " host=" + content.ClientRectangle + " visible=" + visible);
+                    }
                     scope.SelectedIndex = 0;
                     Wait(() => rows.Items.Count == 0 && !(bool)Field(history, "loadingRecords"));
                     Need(scope.SelectedIndex == 0 && ((Label)Field(history, "incidentSummary")).Text.Contains("今天") &&
