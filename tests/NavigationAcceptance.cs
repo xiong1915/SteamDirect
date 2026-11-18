@@ -64,7 +64,22 @@ namespace SteamDirect
                             Pump(i<8?60:2);
                             if(i==7){GC.Collect();GC.WaitForPendingFinalizers();gdiWarm=GetGuiResources(Process.GetCurrentProcess().Handle,0);memoryWarm=Process.GetCurrentProcess().PrivateMemorySize64;}
                             if(i==1&&!baseline){Console.WriteLine("DATA pipeline_elapsed_ms="+typeof(HistoryWindow).GetProperty("LastDataLoadMilliseconds",Private).GetValue(current,null)+" sqlite_worker_ms="+typeof(HistoryWindow).GetProperty("LastQueryMilliseconds",Private).GetValue(current,null)+" report_worker_ms="+typeof(HistoryWindow).GetProperty("LastAnalysisMilliseconds",Private).GetValue(current,null));CaptureCurrent(main,args[0],"history-loaded.png");Need(((Control)Field(current,"overviewText")).Height>=UiStyle.Scale(current,80),"Report body collapsed at constrained height");}
-                            if(i==3&&!baseline){var log=(TextBox)Field(main,"logBox");Need(log.Height>=UiStyle.Scale(log,80),"Overview log collapsed at constrained height");var viewport=Field(Field(main,"pages"),"current") as ContentViewport;if(viewport!=null){viewport.ScrollTo(int.MaxValue);CaptureCurrent(main,args[0],"overview-log.png");viewport.ScrollTo(0);}}
+                            if(i==3&&!baseline)
+                            {
+                                var log = (TextBox)Field(main, "logBox");
+                                var timeline = (Control)Field(main, "timeline");
+                                var logToggle = (Button)Field(main, "logToggle");
+                                var flowToggle = (Button)Field(main, "flowToggle");
+                                Need(!log.Visible && !timeline.Visible, "Overview secondary sections must start collapsed");
+                                flowToggle.PerformClick();
+                                Need(timeline.Visible && timeline.Height >= UiStyle.Scale(timeline, 280), "Flow disclosure did not show its content");
+                                flowToggle.PerformClick();
+                                logToggle.PerformClick();
+                                Need(log.Visible && log.Height >= UiStyle.Scale(log, 80) && log.TextLength > 0, "Log disclosure did not show its content");
+                                CaptureCurrent(main,args[0],"overview-log.png");
+                                logToggle.PerformClick();
+                                Need(!log.Visible && !timeline.Visible, "Overview sections did not collapse");
+                            }
                             if(i>=8&&(i-7)%25==0){GC.Collect();GC.WaitForPendingFinalizers();Console.WriteLine("CHECKPOINT switches="+(i-7)+" GDI="+GetGuiResources(Process.GetCurrentProcess().Handle,0)+" private_MB="+(Process.GetCurrentProcess().PrivateMemorySize64/1048576.0).ToString("F1"));}
                         }
                         foreach(var item in warm){item.Value.Sort();double sum=0;foreach(double value in item.Value)sum+=value;Console.WriteLine("WARM100 page="+item.Key+" n="+item.Value.Count+" mean_ms="+(sum/item.Value.Count).ToString("F3")+" p95_ms="+item.Value[(int)Math.Ceiling(item.Value.Count*0.95)-1].ToString("F3"));}

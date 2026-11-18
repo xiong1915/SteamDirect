@@ -20,6 +20,7 @@ namespace SteamDirect
         internal UiIcon Icon = UiIcon.None;
         internal float CornerRadius = UiStyle.ControlRadius;
         internal int CaptionInset = UiStyle.Space12;
+        internal bool TextOnly;
         internal const TextFormatFlags CaptionFlags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
 
         internal Rectangle CaptionBounds
@@ -77,15 +78,15 @@ namespace SteamDirect
             bool navigation=Icon==UiIcon.Home||Icon==UiIcon.Network||Icon==UiIcon.History||Icon==UiIcon.Settings;
             if (navigation)
                 fill = Motion.Blend(background, AppTheme.ThemeColor, selected ? .22F : .12F * amount);
-            using (var path = UiStyle.RoundRect(box, radius))
-            using (var brush = new SolidBrush(fill))
+            if (!TextOnly)
             {
-                e.Graphics.FillPath(brush, path);
+                using (var path = UiStyle.RoundRect(box, radius))
+                using (var brush = new SolidBrush(fill)) e.Graphics.FillPath(brush, path);
             }
             var bounds = CaptionBounds;
             Color textColor = Enabled && navigation && selected ? AppTheme.Text(AppTheme.Ink) :
                 Enabled ? ForeColor : AppTheme.Text(AppTheme.Disabled);
-            var alignment = TextFormatFlags.HorizontalCenter;
+            var alignment = TextOnly ? TextFormatFlags.Left : TextFormatFlags.HorizontalCenter;
             if (Icon != UiIcon.None)
             {
                 float size = UiStyle.Space20 * scale;

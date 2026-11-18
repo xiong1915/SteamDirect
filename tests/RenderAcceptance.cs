@@ -137,7 +137,18 @@ namespace SteamDirect
                             Capture(main,Path.Combine(output,"desktop-"+sizes[index,0]+"-"+dpi+"-"+page+".png"));
                             var active=(Form)manager.GetType().GetProperty("ActivePage",Private).GetValue(manager,null);
                             if(active!=null)Need(active.Width<=main.ClientSize.Width&&active.Height>0,"Desktop page exceeds window");
-                            if(page=="概览"){var run=(Button)Field(main,"runButton");var log=(TextBox)Field(main,"logBox");Need(run.Height>=UiStyle.Scale(run,32),"Main action collapsed");Need(log.Height>=UiStyle.Scale(log,60),"Overview log collapsed");}
+                            if (page == "概览")
+                            {
+                                var run = (Button)Field(main, "runButton");
+                                Need(run.Height >= UiStyle.Scale(run, 32), "Main action collapsed");
+                                var log = (TextBox)Field(main, "logBox");
+                                var timeline = (Control)Field(main, "timeline");
+                                Need(!log.Visible && !timeline.Visible, "Secondary overview sections should start hidden");
+                                var toggle = (Button)Field(main, "logToggle");
+                                toggle.PerformClick();
+                                Need(log.Visible && log.Height >= UiStyle.Scale(log, 80), "Expanded overview log collapsed");
+                                toggle.PerformClick();
+                            }
                             if (page == "网络诊断")
                             {
                                 var conclusion = (TextBox)Field(active, "conclusion");

@@ -11,7 +11,7 @@ namespace SteamDirect
     internal sealed class ContentViewport : Panel
     {
         private readonly Control content;
-        private readonly int minimumHeight;
+        private int minimumHeight;
         private readonly DarkScrollBar scroll = new DarkScrollBar();
         private bool arranging;
         internal ContentViewport(Control content, int minimumHeight)
@@ -24,6 +24,12 @@ namespace SteamDirect
         internal void ScrollTo(int value)
         {
             scroll.SetRange(Math.Max(0, content.Height - Height), Math.Max(1, Height), value); PerformLayout();
+        }
+        internal void SetMinimumHeight(int height)
+        {
+            if (minimumHeight == height) return;
+            minimumHeight = height;
+            PerformLayout();
         }
         internal void RevealTop(Control target, int height)
         {
@@ -49,6 +55,16 @@ namespace SteamDirect
         protected override void OnMouseWheel(MouseEventArgs args)
         {
             base.OnMouseWheel(args); ScrollTo(scroll.Value - Math.Sign(args.Delta) * UiStyle.Scale(this, 40));
+        }
+    }
+
+    internal sealed class SectionRule : Panel
+    {
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            using (var pen = new Pen(AppTheme.Edge))
+                e.Graphics.DrawLine(pen, 0, 0, Width, 0);
         }
     }
 

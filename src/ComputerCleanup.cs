@@ -262,28 +262,28 @@ namespace SteamDirect
         internal CleanupPanel(Action<string> saveLog)
         {
             log = saveLog; Dock = DockStyle.Fill; Margin = new Padding(0, UiStyle.Gap, 0, 0);
-            var frame = UiStyle.Card(true);
-            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4 };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
+            var layout = UiStyle.Grid(3, 2);
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 132));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 176));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
-            var title = new Label { Text = "系统资源", Dock = DockStyle.Fill, Margin = Padding.Empty, ForeColor = AppTheme.Ink, Font = UiStyle.SectionTitle };
-            layout.Controls.Add(title, 0, 0); layout.SetColumnSpan(title, 2);
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             memory.Text = "内存占用：读取中"; files.Text = "临时文件：未扫描";
             memory.Dock = files.Dock = DockStyle.Fill;
             memory.Margin = files.Margin = Padding.Empty;
-            memory.Font = files.Font = UiStyle.SectionTitle;
-            layout.Controls.Add(memory, 0, 1); layout.Controls.Add(files, 1, 1);
+            memory.Font = files.Font = UiStyle.Caption;
+            memory.TextAlign = files.TextAlign = ContentAlignment.MiddleLeft;
+            layout.Controls.Add(memory, 0, 0); layout.Controls.Add(files, 1, 0);
             note.Text = "扫描当前用户的临时目录 · 保留最近 7 天文件";
             note.Dock = DockStyle.Fill; note.Margin = Padding.Empty; note.AutoEllipsis = true; note.Font = UiStyle.Caption; note.ForeColor = AppTheme.Muted;
-            layout.Controls.Add(note, 0, 2); layout.SetColumnSpan(note, 2);
+            layout.Controls.Add(note, 0, 1); layout.SetColumnSpan(note, 3);
             clean.Text = "扫描过期临时文件"; clean.Dock = DockStyle.Fill;
             clean.Margin = Padding.Empty;
             AppTheme.ActionButton(clean, false);
-            clean.Click += async (sender, args) => await CleanAsync(); layout.Controls.Add(clean, 0, 3); layout.SetColumnSpan(clean, 2);
-            frame.Controls.Add(layout); Controls.Add(frame);
+            ((RoundedButton)clean).TextOnly = true;
+            clean.Click += async (sender, args) => await CleanAsync();
+            layout.Controls.Add(clean, 2, 0);
+            Controls.Add(layout);
             Load += (sender, args) => UpdateMemory();
             timer.Interval = 5000; timer.Tick += (sender, args) => { if (!Visible) { timer.Stop(); return; } if (Motion.IsGaming != null && Motion.IsGaming()) return; UpdateMemory(); }; if (Visible) timer.Start();
         }

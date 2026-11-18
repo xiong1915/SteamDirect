@@ -99,6 +99,7 @@ namespace SteamDirect
     {
         private readonly Button runButton = new RoundedButton();
         private readonly Button logButton = new RoundedButton();
+        private readonly Button flowToggle, logToggle;
         private readonly CleanupPanel cleanupPanel;
         private readonly Label statusLabel = new Label();
         private readonly TextBox logBox = new TextBox();
@@ -133,7 +134,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.13";
+            Text = "Steam 直连助手 v3.0.14";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -146,101 +147,93 @@ namespace SteamDirect
             DoubleBuffered = true;
 
             BuildNavigation();
-            var root = UiStyle.Grid(1, 4); root.Padding = UiStyle.PagePadding;
+            const int overviewHeight = 440;
+            var root = UiStyle.Grid(1, 8);
+            root.Padding = UiStyle.PagePadding;
             root.BackColor = AppTheme.Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 368));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
+            foreach (int height in new[] { 64, 160, 80, 44, 0, 44, 0 })
+                root.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var overview = new ContentViewport(root, 700) { BackColor = AppTheme.Page };
+            var overview = new ContentViewport(root, overviewHeight);
             pageHost.Controls.Add(overview);
             pages = new PageManager(pageHost, overview);
-            var header = UiStyle.Card();
-            header.ShowArtwork = true;
-            header.Margin = new Padding(0, 0, 0, UiStyle.Space16);
-            var heading = new Label
-            {
-                Text = "Steam 直连",
-                Dock = DockStyle.Left,
-                Width = 300,
-                Font = UiStyle.PageTitle,
-                ForeColor = AppTheme.Ink,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-            header.Controls.Add(heading);
-            root.Controls.Add(header, 0, 0);
+            root.Controls.Add(UiStyle.Header("Steam 直连", ""), 0, 0);
 
-            var body = UiStyle.Grid(2, 1);
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 252));
-            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.Controls.Add(body, 0, 1);
-            var left = UiStyle.Card();
-            left.Margin = new Padding(UiStyle.Gap, 0, 0, 0);
-            timeline.Dock = DockStyle.Fill;
-            left.Controls.Add(timeline);
-            body.Controls.Add(left, 1, 0);
-
-            var content = UiStyle.Grid(1, 2);
-            content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 192));
-            content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            body.Controls.Add(content, 0, 0);
             var action = UiStyle.Card();
-            action.Margin = new Padding(0, 0, 0, UiStyle.Space12);
-            var actionLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
-            actionLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
-            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32 + UiStyle.Space24));
+            action.ShowArtwork = true;
+            action.Margin = new Padding(0, 0, 0, UiStyle.Space16);
+            var actionLayout = UiStyle.Grid(1, 3);
+            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48));
+            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
-            elapsedLabel.Text = "●  等待执行";
+            runButton.Text = "严格直连并重启 Steam";
+            runButton.Dock = DockStyle.Left;
+            runButton.Width = 280;
+            runButton.Margin = new Padding(0, 0, 0, UiStyle.Space8);
+            AppTheme.ActionButton(runButton, true);
+            runButton.Font = UiStyle.SectionTitle;
+            runButton.Click += async (sender, args) => await RunAsync();
+            actionLayout.Controls.Add(runButton, 0, 0);
+
+            statusLabel.Text = "退出游戏后开始";
+            statusLabel.Dock = DockStyle.Fill;
+            statusLabel.Margin = Padding.Empty;
+            statusLabel.AutoEllipsis = true;
+            statusLabel.Font = UiStyle.SectionTitle;
+            actionLayout.Controls.Add(statusLabel, 0, 1);
+            elapsedLabel.Text = "就绪";
             elapsedLabel.ForeColor = AppTheme.Muted;
             elapsedLabel.Font = UiStyle.Caption;
             elapsedLabel.Dock = DockStyle.Fill;
             elapsedLabel.Margin = Padding.Empty;
-            actionLayout.Controls.Add(elapsedLabel, 0, 0);
-            statusLabel.Text = "准备开始直连";
-            statusLabel.Dock = DockStyle.Fill;
-            statusLabel.Margin = Padding.Empty;
-            statusLabel.AutoEllipsis = true;
-            statusLabel.Font = UiStyle.HeroTitle;
-            actionLayout.Controls.Add(statusLabel, 0, 1);
-            actionLayout.Controls.Add(new Label { Text = "退出游戏后开始，自动结束代理与相关应用。", Dock = DockStyle.Fill, ForeColor = AppTheme.Muted }, 0, 2);
-            runButton.Text = "严格直连并重启 Steam";
-            runButton.Dock = DockStyle.Fill;
-            runButton.Margin = Padding.Empty;
-            AppTheme.ActionButton(runButton, true);
-            runButton.Font = UiStyle.SectionTitle;
-            runButton.Cursor = Cursors.Hand;
-            runButton.TabIndex = 0;
-            runButton.Click += async (sender, args) => await RunAsync();
-            actionLayout.Controls.Add(runButton, 0, 3);
+            actionLayout.Controls.Add(elapsedLabel, 0, 2);
             action.Controls.Add(actionLayout);
-            content.Controls.Add(action, 0, 0);
-            cleanupPanel = new CleanupPanel(Log) { Margin = Padding.Empty };
-            content.Controls.Add(cleanupPanel, 0, 1);
+            root.Controls.Add(action, 0, 1);
 
-            var footer = UiStyle.Grid(1, 2); footer.Margin = new Padding(0, 12, 0, 0);
-            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            footer.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48));
-            footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.Controls.Add(footer, 0, 2);
-            var logHeader = UiStyle.Grid(2, 1); logHeader.Margin=Padding.Empty;
-            logHeader.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108));
-            logHeader.Controls.Add(new Label { Text = "操作记录", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.SectionTitle }, 0, 0);
-            logButton.Text = "打开日志";
-            logButton.Dock = DockStyle.Fill;
+            cleanupPanel = new CleanupPanel(Log) { Margin = Padding.Empty };
+            root.Controls.Add(cleanupPanel, 0, 2);
+
+            var flowHeader = CreateDisclosure("直连流程", out flowToggle);
+            var logHeader = CreateDisclosure("操作日志", out logToggle);
+            root.Controls.Add(flowHeader, 0, 3);
+            root.Controls.Add(logHeader, 0, 5);
+            timeline.Dock = DockStyle.Fill;
+            timeline.BackColor = AppTheme.Page;
+            timeline.Visible = false;
+            root.Controls.Add(timeline, 0, 4);
+
+            var logArea = UiStyle.Grid(1, 2);
+            logArea.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space40));
+            logArea.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            logArea.Visible = false;
+            root.Controls.Add(logArea, 0, 6);
+            logButton.Text = "打开日志文件";
+            logButton.Dock = DockStyle.Left;
+            logButton.Width = 132;
             logButton.Margin = Padding.Empty;
             AppTheme.ActionButton(logButton, false);
-            logButton.Cursor = Cursors.Hand;
-            logButton.TabIndex = 1;
-            logHeader.Controls.Add(logButton, 1, 0);
-            logHeader.Margin = new Padding(0, 0, 0, UiStyle.Space8);
-            footer.Controls.Add(logHeader, 0, 0);
+            ((RoundedButton)logButton).TextOnly = true;
+            logArea.Controls.Add(logButton, 0, 0);
+
+            Action<string, Button, Control, int, int> toggleSection = (title, button, section, row, height) =>
+            {
+                bool expand = !section.Visible;
+                root.SuspendLayout();
+                try
+                {
+                    section.Visible = expand;
+                    root.RowStyles[row].Height = expand ? UiStyle.Scale(root, height) : 0;
+                    button.Text = (expand ? "−  " : "+  ") + title;
+                    button.AccessibleDescription = expand ? "已展开" : "已收起";
+                    overview.SetMinimumHeight(overviewHeight + (timeline.Visible ? 300 : 0) + (logArea.Visible ? 192 : 0));
+                }
+                finally { root.ResumeLayout(true); }
+                if (expand) overview.RevealTop(section, UiStyle.Scale(root, 125));
+            };
+            flowToggle.Click += (sender, args) => toggleSection("直连流程", flowToggle, timeline, 4, 300);
+            logToggle.Click += (sender, args) => toggleSection("操作日志", logToggle, logArea, 6, 192);
+
             logButton.Click += (s, e) =>
             {
                 try
@@ -256,24 +249,22 @@ namespace SteamDirect
                 }
             };
 
-            var logFrame = UiStyle.Card(true);
             logBox.Dock = DockStyle.Fill;
             logBox.Multiline = true;
             logBox.ReadOnly = true;
             logBox.ScrollBars = ScrollBars.Vertical;
-            logBox.BackColor = Color.White;
+            logBox.BackColor = AppTheme.Page;
             logBox.ForeColor = AppTheme.Muted;
             logBox.Font = UiStyle.Body;
             logBox.BorderStyle = BorderStyle.None;
             logBox.AccessibleName = "操作记录";
-            logFrame.Controls.Add(new NativeScrollFrame(logBox));
-            footer.Controls.Add(logFrame, 0, 1);
+            logArea.Controls.Add(new NativeScrollFrame(logBox) { BackColor = AppTheme.Page }, 0, 1);
             animationTimer.Interval = UiStyle.MotionTick;
             animationTimer.Tick += (sender, args) =>
             {
                 if (!Visible || WindowState == FormWindowState.Minimized || !Motion.Allowed) { animationTimer.Stop(); return; }
                 timeline.Angle = (timeline.Angle + UiStyle.SpinnerStep) % 360;
-                timeline.Invalidate();
+                if (timeline.Visible) timeline.Invalidate();
                 if (timeline.ActiveStep >= 0 && timeline.ActiveStep < timeline.StepCount)
                     elapsedLabel.Text = "第 " + (timeline.ActiveStep + 1) + " / " + timeline.StepCount + " 步  ·  " + operationWatch.Elapsed.ToString(@"mm\:ss");
             };
@@ -311,6 +302,16 @@ namespace SteamDirect
             Shown += (sender, args) => { if (preferences.NetworkRecording) history.Start(); };
             AppTheme.Apply(this);
             ResumeLayout(true);
+        }
+
+        private static Control CreateDisclosure(string title, out Button toggle)
+        {
+            var header = new SectionRule { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = new Padding(0, 1, 0, 0) };
+            toggle = new RoundedButton { Text = "+  " + title, Dock = DockStyle.Fill, Margin = Padding.Empty,
+                CaptionInset = 0, TextOnly = true, AccessibleName = title, AccessibleDescription = "已收起" };
+            AppTheme.ActionButton(toggle, false);
+            header.Controls.Add(toggle);
+            return header;
         }
 
         private void BuildNavigation()
@@ -356,9 +357,9 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.13", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.14", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
-            var sidebar = UiStyle.Card();
+            var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Page };
             sidebar.Padding = new Padding(8);
             sidebar.Margin = new Padding(12, 12, 0, 12);
             sidebar.Controls.Add(rail);
@@ -541,7 +542,8 @@ namespace SteamDirect
             timeline.ActiveStep = index;
             timeline.Failed = false;
             timeline.AccessibleDescription = "第 " + (index + 1) + " 步，" + message;
-            timeline.Invalidate();
+            if (timeline.Visible) timeline.Invalidate();
+            elapsedLabel.Text = "第 " + (index + 1) + " / " + timeline.StepCount + " 步";
             Status(message);
         }
 
@@ -779,7 +781,7 @@ namespace SteamDirect
         private readonly string[] titles = { "准备检查", "关闭应用与代理", "核验本机代理", "退出 Steam", "复检并启动", "完成检查" };
         private readonly string[] descriptions = { "路径与游戏状态", "关闭应用和代理", "系统代理与内核", "等待正常退出", "再次核验后启动", "临时文件单独清理" };
         internal int StepCount { get { return titles.Length; } }
-        internal StepTimeline() { DoubleBuffered = true; BackColor = Color.White; TabStop = false; AccessibleName = "直连执行步骤"; }
+        internal StepTimeline() { DoubleBuffered = true; BackColor = AppTheme.Page; TabStop = false; AccessibleName = "直连执行步骤"; }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
@@ -788,16 +790,14 @@ namespace SteamDirect
             g.ScaleTransform(scale, scale);
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-            float gap = Math.Min(76, (Height / scale - 60) / titles.Length);
+            float gap = Math.Min(76, (Height / scale - 16) / titles.Length);
             var small = UiStyle.DiagramCaption;
             var normal = UiStyle.DiagramTitle;
             using (var muted = new SolidBrush(AppTheme.Text(AppTheme.Muted)))
-            using (var ink = new SolidBrush(AppTheme.Text(AppTheme.Ink)))
             {
-                g.DrawString("直连流程", normal, ink, 4, 4);
                 for (int i = 0; i < titles.Length; i++)
                 {
-                    float y = 49 + i * gap;
+                    float y = 18 + i * gap;
                     bool done = ActiveStep > i;
                     bool active = ActiveStep == i;
                     Color accent = active && Failed ? AppTheme.Error : done ? AppTheme.Success : AppTheme.Accent;
