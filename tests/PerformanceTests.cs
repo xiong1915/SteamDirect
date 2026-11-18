@@ -73,12 +73,15 @@ namespace SteamDirect
                         Need(a.Bounds==old&&hiddenLayouts==0,"Resizing laid out hidden cached page");
                         Need(b.Bounds==host.DisplayRectangle,"Active page failed to follow host bounds");
                         int layouts=0;form.Layout+=(s,e)=>layouts++;form.BeginDrag();
-                        for(int i=0;i<50;i++)form.ClientSize=new Size(900+i,620+i);
+                        for(int i=0;i<50;i++)
+                        {
+                            form.ClientSize=new Size(900+i,620+i);
+                            if (i % 5 == 0) { Thread.Sleep(45); Application.DoEvents(); }
+                        }
                         int beforeEnd=layouts;form.EndDrag();
                         Console.WriteLine("RESIZE burst=50 layouts_during="+beforeEnd+" total="+layouts);
-                        Need(beforeEnd<10,"Live resize did not coalesce layout work");
+                        Need(beforeEnd==0 && layouts==1,"A corner drag must defer full layout until release");
                         Need(host.Bounds==form.ClientRectangle,"Resize end did not flush final layout");
-                        var timer=(System.Windows.Forms.Timer)typeof(DesktopForm).GetField("resizeTimer",Private).GetValue(form);Need(!timer.Enabled,"Resize timer remained active after drag");
                         OffscreenGeometry.Resize(form,new Size(3760,2060));Application.DoEvents();Need(form.ClientSize==new Size(3760,2060),"4K fixture was constrained to the physical desktop: "+form.ClientSize);
                     }
                 }

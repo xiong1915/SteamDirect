@@ -25,33 +25,50 @@ namespace SteamDirect
             if (trace != null) trace.BeginLayout();
             try { base.OnLayout(args); } finally { if (trace != null) trace.EndLayout(); }
         }
-        private bool displayPending, fitting, liveResize, resizePending, resizedDuringDrag;
-        private const int LiveLayoutInterval = 33;
+        private bool displayPending, fitting, liveResize, resizePending, displayChangedDuringDrag;
+        private string dragScreen;
         internal bool IsLiveResizing { get { return liveResize; } }
-        private Timer resizeTimer;
-        protected override void OnVisibleChanged(EventArgs args){base.OnVisibleChanged(args);if(!Visible){liveResize=false;resizePending=false;if(resizeTimer!=null)resizeTimer.Stop();}}
-        private void FlushResize()
+
+        protected override void OnVisibleChanged(EventArgs args)
         {
-            if (!resizePending || IsDisposed) return;
-            resizePending = false; base.OnResize(EventArgs.Empty);
+            base.OnVisibleChanged(args);
+            if (!Visible && liveResize) FinishDrag(false);
         }
         protected override void OnResizeBegin(EventArgs args)
         {
-            liveResize = true;
-            resizedDuringDrag = false;
+            if (!liveResize)
+            {
+                dragScreen = WindowEnvironment.OffscreenTests ? null : Screen.FromHandle(Handle).DeviceName;
+                liveResize = true;
+                resizePending = displayChangedDuringDrag = false;
+                SuspendLayout();
+            }
             base.OnResizeBegin(args);
         }
         protected override void OnResizeEnd(EventArgs args)
         {
-            liveResize = false; if (resizeTimer != null) resizeTimer.Stop(); FlushResize();
+            if (liveResize) FinishDrag(true);
             base.OnResizeEnd(args);
-            if (resizedDuringDrag) Invalidate(true);
-            QueueDisplayCheck();
         }
-        protected override void Dispose(bool disposing)
+
+        private void FinishDrag(bool fitMonitor)
         {
-            if (disposing && resizeTimer != null) { resizeTimer.Dispose(); resizeTimer = null; }
-            base.Dispose(disposing);
+            bool repaint = false;
+            try
+            {
+                if (fitMonitor && !WindowEnvironment.OffscreenTests &&
+                    (displayChangedDuringDrag || dragScreen != Screen.FromHandle(Handle).DeviceName))
+                    CheckWorkArea();
+                repaint = resizePending || displayChangedDuringDrag;
+                if (resizePending && !IsDisposed) base.OnResize(EventArgs.Empty);
+            }
+            finally
+            {
+                liveResize = resizePending = displayChangedDuringDrag = false;
+                dragScreen = null;
+                ResumeLayout(repaint);
+            }
+            if (repaint && Visible) Invalidate(true);
         }
         private FormWindowState previousState;
         protected override bool ShowWithoutActivation { get { return WindowEnvironment.OffscreenTests; } }
@@ -79,8 +96,11 @@ namespace SteamDirect
             // WinForms owns WM_DPICHANGED and its suggested rectangle. Never scale it a second time.
             int kind = message.Msg;
             base.WndProc(ref message);
-            if (liveResize && kind == 0x02E0) resizedDuringDrag = true;
-            if (!liveResize && (kind == 0x007E || kind == 0x02E0 || kind == 0x001A)) QueueDisplayCheck();
+            if (kind == 0x007E || kind == 0x02E0 || kind == 0x001A)
+            {
+                if (liveResize) displayChangedDuringDrag = true;
+                else QueueDisplayCheck();
+            }
         }
         private void QueueDisplayCheck()
         {
@@ -92,21 +112,7 @@ namespace SteamDirect
         }
         protected override void OnResize(EventArgs e)
         {
-            if (liveResize)
-            {
-                resizePending = resizedDuringDrag = true;
-                if (resizeTimer == null)
-                {
-                    resizeTimer = new Timer { Interval = LiveLayoutInterval };
-                    resizeTimer.Tick += (sender, args) =>
-                    {
-                        resizeTimer.Stop();
-                        FlushResize();
-                    };
-                }
-                if (!resizeTimer.Enabled) resizeTimer.Start();
-                return;
-            }
+            if (liveResize) { resizePending = true; return; }
             base.OnResize(e);
             var state = WindowState;
             if (state == FormWindowState.Normal && previousState != FormWindowState.Normal && !fitting) QueueDisplayCheck();
