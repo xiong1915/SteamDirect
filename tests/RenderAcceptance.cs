@@ -48,6 +48,7 @@ namespace SteamDirect
                     }
                     sessions.Add(new HistorySession { Id = "yesterday", Game = "昨日记录", Mode = "直连", Target = "192.0.2.1", Start = stamp - 86400000, End = stamp - 86000000 });
                     store.WriteBatch(sessions, samples, incidents);
+                    if (args.Length > 1 && args[1] == "desktop") { MainMatrix(monitor, output); return 0; }
                     int[,] matrix = { {1920,1080,96}, {1920,1080,120}, {2560,1440,96}, {2560,1440,144}, {3840,2160,144}, {3840,2160,168}, {3840,2160,192} };
                     foreach (string theme in new[] { "dark", "light", "red" }) {
                         AppTheme.SetTheme(theme != "light", theme == "red" ? "#FF0000" : "#6750A4");
@@ -106,8 +107,8 @@ namespace SteamDirect
         private static IEnumerable<Control> Descendants(Control root){foreach(Control child in root.Controls){yield return child;foreach(Control nested in Descendants(child))yield return nested;}}
         private static void MainMatrix(HistoryMonitor monitor,string output)
         {
-            int[,] sizes={{1280,800,96},{1920,1080,96},{1920,1080,120},{1920,1080,144},{3840,2160,168},{3840,2160,192}};
-            foreach(int index in new[]{0,1,2,3,4,5}){
+            int[,] sizes={{1280,800,96},{1920,1080,96},{1920,1080,120},{1920,1080,144},{1920,1080,168},{1920,1080,192},{3840,2160,168},{3840,2160,192}};
+            for (int index = 0; index < sizes.GetLength(0); index++) {
                 using(var main=new MainWindow(false,monitor,new UserPreferences{NightMode=true,ThemeColor="#3269C7",NetworkRecording=false})){
                     main.ShowInTaskbar=false;main.FormBorderStyle=FormBorderStyle.None;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.Show();
                     var navigate=typeof(MainWindow).GetMethod("NavigateTo",Private);var manager=Field(main,"pages");
@@ -121,6 +122,18 @@ namespace SteamDirect
                         Need(main.ClientSize==new Size(sizes[index,0]-80,sizes[index,1]-100),"Requested desktop simulation geometry was constrained");
                         foreach(string page in new[]{"概览","网络诊断","游戏记录","设置"}){
                             navigate.Invoke(main,new object[]{page});Pump(30);
+                            foreach (var control in Descendants(main))
+                            {
+                                var button = control as RoundedButton;
+                                if (button != null && button.Visible && !string.IsNullOrWhiteSpace(button.Text))
+                                {
+                                    CheckCaption(button, button.Text, button.CaptionBounds, page, dpi);
+                                }
+                                var combo = control as DarkComboBox;
+                                if (combo != null && combo.Visible)
+                                    foreach (var option in combo.Items)
+                                        CheckCaption(combo, combo.GetItemText(option), combo.CaptionBounds, page, dpi);
+                            }
                             Capture(main,Path.Combine(output,"desktop-"+sizes[index,0]+"-"+dpi+"-"+page+".png"));
                             var active=(Form)manager.GetType().GetProperty("ActivePage",Private).GetValue(manager,null);
                             if(active!=null)Need(active.Width<=main.ClientSize.Width&&active.Height>0,"Desktop page exceeds window");
@@ -132,11 +145,24 @@ namespace SteamDirect
                                 Need(conclusion.Height >= UiStyle.Scale(conclusion, 40), "Diagnostic conclusion collapsed");
                                 Need(details.Height >= UiStyle.Scale(details, 32), "Diagnostic details collapsed");
                             }
+                            if (page == "游戏记录")
+                            {
+                                var records = (ListView)Field(active, "records");
+                                var report = (RichTextBox)Field(active, "overviewText");
+                                Need(records.Height >= UiStyle.Scale(records, 100), "History list collapsed");
+                                Need(report.Height >= UiStyle.Scale(report, 80), "History report collapsed");
+                            }
                         }
                         Console.WriteLine("PASS desktop simulation "+sizes[index,0]+"x"+sizes[index,1]+" dpi="+dpi+" four pages / recording off");
                     }finally{main.Dispose();WindowEnvironment.LayoutDpi=0;foreach(var font in owned)font.Dispose();}
                 }
             }
+        }
+        private static void CheckCaption(Control control, string text, Rectangle bounds, string page, int dpi)
+        {
+            Size caption = TextRenderer.MeasureText(text, control.Font, Size.Empty, RoundedButton.CaptionFlags);
+            Need(caption.Width <= bounds.Width && caption.Height <= bounds.Height,
+                page + " clipped caption: " + text + " " + caption + " available=" + bounds.Size + " dpi=" + dpi);
         }
     }
 }

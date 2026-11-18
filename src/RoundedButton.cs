@@ -19,6 +19,17 @@ namespace SteamDirect
         internal bool HorizontalIndicator;
         internal UiIcon Icon = UiIcon.None;
         internal float CornerRadius = UiStyle.ControlRadius;
+        internal const TextFormatFlags CaptionFlags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
+
+        internal Rectangle CaptionBounds
+        {
+            get
+            {
+                int right = UiStyle.Scale(this, UiStyle.Space12);
+                int left = UiStyle.Scale(this, Icon == UiIcon.None ? UiStyle.Space12 : UiStyle.Space40);
+                return new Rectangle(left, 2, Math.Max(0, Width - left - right), Math.Max(0, Height - 4));
+            }
+        }
 
         internal RoundedButton()
         {
@@ -70,20 +81,18 @@ namespace SteamDirect
             {
                 e.Graphics.FillPath(brush, path);
             }
-            var bounds = Rectangle.Inflate(ClientRectangle, -(int)(UiStyle.Space12 * scale), -2);
+            var bounds = CaptionBounds;
             Color textColor = Enabled && navigation && selected ? AppTheme.Text(AppTheme.Ink) :
                 Enabled ? ForeColor : AppTheme.Text(AppTheme.Disabled);
             var alignment = TextFormatFlags.HorizontalCenter;
             if (Icon != UiIcon.None)
             {
                 float size = UiStyle.Space20 * scale;
-                UiStyle.DrawIcon(e.Graphics, Icon, new RectangleF(UiStyle.Space16 * scale, (Height - size) / 2, size, size), textColor);
-                bounds.X = (int)((UiStyle.Space16 + UiStyle.Space20 + UiStyle.Space12) * scale);
-                bounds.Width = Math.Max(1, Width - bounds.X - (int)(UiStyle.Space12 * scale));
+                UiStyle.DrawIcon(e.Graphics, Icon, new RectangleF(UiStyle.Space12 * scale, (Height - size) / 2, size, size), textColor);
                 alignment = TextFormatFlags.Left;
             }
             TextRenderer.DrawText(e.Graphics, Text, Font, bounds, textColor,
-                alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+                alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | CaptionFlags);
             if (selected && selection.Current > 0 && Width > 8 && Height > 8)
             {
                 using (var marker = new SolidBrush(AppTheme.Background(AppTheme.Accent)))

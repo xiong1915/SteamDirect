@@ -8,6 +8,14 @@ namespace SteamDirect
     // Retain the native combo's keyboard, IME, selection and accessibility implementation.
     internal sealed class DarkComboBox : ComboBox
     {
+        internal Rectangle CaptionBounds
+        {
+            get
+            {
+                int pad = UiStyle.Scale(this, 8);
+                return new Rectangle(pad, 0, Math.Max(0, Width - UiStyle.Scale(this, 24) - pad), Height);
+            }
+        }
         [StructLayout(LayoutKind.Sequential)] private struct ComboInfo { internal int size; internal Rectangle item, button; internal uint state; internal IntPtr combo, edit, list; }
         [DllImport("user32.dll")] private static extern bool GetComboBoxInfo(IntPtr window, ref ComboInfo info);
         [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] private static extern int SetWindowTheme(IntPtr window, string app, string id);
@@ -42,8 +50,8 @@ namespace SteamDirect
                 using (var edge = new Pen(Focused ? AppTheme.Text(AppTheme.Accent) : AppTheme.Edge))
                     graphics.DrawPath(edge, outline);
             }
-            int arrow = UiStyle.Scale(this, 24), pad = UiStyle.Scale(this, 8);
-            TextRenderer.DrawText(graphics, Text, Font, new Rectangle(pad, 0, Math.Max(1, Width - arrow - pad), Height),
+            int arrow = UiStyle.Scale(this, 24);
+            TextRenderer.DrawText(graphics, Text, Font, CaptionBounds,
                 AppTheme.Text(Enabled ? AppTheme.Ink : AppTheme.Muted), TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
             int x = rect.Right - arrow / 2, y = rect.Height / 2, d = UiStyle.Scale(this, 4);
             using (var pen = new Pen(AppTheme.Text(AppTheme.Muted), Math.Max(1, UiStyle.Dpi(this) / 96F)))

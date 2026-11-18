@@ -89,12 +89,13 @@ namespace SteamDirect
 
             var root = Grid(1, 4);
             root.Padding = UiStyle.PagePadding;
+            root.BackColor = Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-            Controls.Add(root);
+            Controls.Add(new ContentViewport(root, 690));
 
             root.Controls.Add(UiStyle.Header("游戏记录", "选择对局查看报告"), 0, 0);
 
@@ -102,7 +103,7 @@ namespace SteamDirect
             filterCard.Margin = new Padding(0, 0, 0, UiStyle.Gap);
             modeFilter.DropDownStyle = recordScope.DropDownStyle = ComboBoxStyle.DropDownList;
             modeFilter.Items.AddRange(new object[] { "全部", "直连", "代理", "未知", "混合" });
-            recordScope.Items.AddRange(new object[] { "今天的对局", "查看历史对局" });
+            recordScope.Items.AddRange(new object[] { "今天的对局", "历史对局" });
             modeFilter.SelectedIndex = recordScope.SelectedIndex = 0;
             UiStyle.ConfigureChoice(modeFilter); UiStyle.ConfigureChoice(recordScope);
             recordScope.SelectedIndexChanged += async (sender, args) => { if (IsHandleCreated && !loadingRecords) await RefreshAsync(); };
@@ -129,7 +130,7 @@ namespace SteamDirect
             listHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             listHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 122));
             listHeader.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            listHeader.Controls.Add(new Label { Text = "选择一局", Font = UiStyle.SectionTitle,
+            listHeader.Controls.Add(new Label { Text = "对局", Font = UiStyle.SectionTitle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
             pageLabel.Text = "第 1 页";
             pageLabel.Dock = DockStyle.Fill;
@@ -193,7 +194,7 @@ namespace SteamDirect
             var detail = Grid(1, 3);
             detail.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             detail.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-            detail.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+            detail.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
             detail.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             detailTitle.Text = "会话详情";
             detailTitle.Font = UiStyle.SectionTitle;
@@ -629,7 +630,10 @@ namespace SteamDirect
                 return;
             }
             detailTitle.Text = selected.Game ?? "未知游戏";
-            detailMeta.Text = (selected.Mode ?? "未知") + " · " + (selected.End == 0 ? "已玩 " : "共玩 ") + SpanText((selected.End == 0 ? (long)(DateTimeOffset.UtcNow - Epoch).TotalMilliseconds : selected.End) - selected.Start) + Environment.NewLine + LocalTime(selected.Start, "yyyy-MM-dd HH:mm:ss") + " → " + (selected.End == 0 ? "记录中" : LocalTime(selected.End, "yyyy-MM-dd HH:mm:ss"));
+            detailMeta.Text = (selected.Mode ?? "未知") + " · " + (selected.End == 0 ? "已玩 " : "共玩 ") +
+                SpanText((selected.End == 0 ? (long)(DateTimeOffset.UtcNow - Epoch).TotalMilliseconds : selected.End) - selected.Start) +
+                Environment.NewLine + "开始  " + LocalTime(selected.Start, "yyyy-MM-dd HH:mm:ss") +
+                Environment.NewLine + (selected.End == 0 ? "记录中" : "结束  " + LocalTime(selected.End, "yyyy-MM-dd HH:mm:ss"));
             if (selected.End == 0 || Gaming)
             {
                 overviewTitle.Text = "本局尚未生成报告";

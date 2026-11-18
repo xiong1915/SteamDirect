@@ -392,7 +392,7 @@ namespace SteamDirect
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
             int actionHeight = UiStyle.DensePadding.Vertical + UiStyle.Space32 + UiStyle.ButtonHeight +
                 UiStyle.Space32 + UiStyle.Space4 + UiStyle.Gap;
-            int statusHeight = 2 * (UiStyle.DensePadding.Vertical + UiStyle.CompactHeight + UiStyle.ButtonHeight) + UiStyle.SmallGap + UiStyle.Gap;
+            int statusHeight = 2 * (UiStyle.DensePadding.Vertical + UiStyle.Space24 + UiStyle.CompactHeight + UiStyle.Space32) + UiStyle.SmallGap + UiStyle.Gap;
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, actionHeight));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, statusHeight));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
@@ -493,18 +493,17 @@ namespace SteamDirect
             {
                 var card = UiStyle.Card(true);
                 card.Margin = new Padding(0, 0, i % 3 == 2 ? 0 : UiStyle.Gap, i < 3 ? UiStyle.SmallGap : 0);
-                var inner = UiStyle.Grid(2, 2);
-                inner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
-                inner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
+                var inner = UiStyle.Grid(1, 3);
+                inner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+                inner.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
                 inner.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.CompactHeight));
                 inner.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
                 inner.Controls.Add(new Label { Text = titles[i], Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.Body, ForeColor = AppTheme.Ink, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
-                states[i] = new Label { Text = "待检测", Dock = DockStyle.Fill, Margin = Padding.Empty, ForeColor = AppTheme.Ink, Font = UiStyle.SectionTitle, TextAlign = ContentAlignment.MiddleRight };
+                states[i] = new Label { Text = "待检测", Dock = DockStyle.Fill, Margin = Padding.Empty, ForeColor = AppTheme.Ink, Font = UiStyle.SectionTitle, TextAlign = ContentAlignment.MiddleLeft };
                 states[i].AccessibleName = titles[i] + "状态";
                 notes[i] = new Label { Text = i == 5 ? "选填服务器地址。官方匹配可能使用中继。" : "等待检测", Dock = DockStyle.Fill, Margin = Padding.Empty, AutoEllipsis = true, Font = UiStyle.Caption, ForeColor = AppTheme.Muted };
-                inner.Controls.Add(states[i], 1, 0);
-                inner.Controls.Add(notes[i], 0, 1);
-                inner.SetColumnSpan(notes[i], 2);
+                inner.Controls.Add(states[i], 0, 1);
+                inner.Controls.Add(notes[i], 0, 2);
                 card.Controls.Add(inner);
                 cards.Controls.Add(card, i % 3, i / 3);
             }

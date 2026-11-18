@@ -133,7 +133,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.7";
+            Text = "Steam 直连助手 v3.0.8";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -316,7 +316,7 @@ namespace SteamDirect
         private void BuildNavigation()
         {
             var shell = UiStyle.Grid(2, 1);
-            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 152));
+            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168));
             shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             var rail = UiStyle.Grid(1, 7); rail.Padding = new Padding(12, 24, 12, 16);
@@ -356,7 +356,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.7", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.8", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             var sidebar = UiStyle.Card();
             sidebar.Padding = new Padding(8);

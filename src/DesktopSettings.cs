@@ -270,7 +270,7 @@ namespace SteamDirect
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
             about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.7", Dock = DockStyle.Fill,
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.8", Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true, Font = UiStyle.Caption }, 0, 0);
             const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
             var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill,
@@ -312,8 +312,8 @@ namespace SteamDirect
             var row = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Margin = Padding.Empty };
             row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 36));
             row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
             row.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             var swatch = new Panel { Dock = DockStyle.Fill, Margin = new Padding(2, 8, 8, 8),
                 AccessibleName = "主题色预览" };
