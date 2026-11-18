@@ -44,6 +44,14 @@ namespace SteamDirect
                 { File.SetCreationTimeUtc(file, old); File.SetLastWriteTimeUtc(file, old); File.SetLastAccessTimeUtc(file, old); }
                 var scan = TempCleaner.Scan(new[] { root }, false, DateTime.UtcNow, System.Threading.CancellationToken.None);
                 Assert(scan.Items.Count == 1 && scan.Items[0].Path == stale, "Only stale allowed extensions appear in preview.");
+                var nested = Directory.CreateDirectory(Path.Combine(root, "app-cache"));
+                var nestedFile = Path.Combine(nested.FullName, "nested.tmp");
+                File.WriteAllText(nestedFile, "retain");
+                File.SetCreationTimeUtc(nestedFile, old);
+                File.SetLastWriteTimeUtc(nestedFile, old);
+                File.SetLastAccessTimeUtc(nestedFile, old);
+                var scoped = TempCleaner.Scan(new[] { root }, false, DateTime.UtcNow, System.Threading.CancellationToken.None, topLevelOnly: true);
+                Assert(scoped.Items.Count == 1 && scoped.Items[0].Path == stale && scoped.Recent == 1, "Top-level scan must skip app folders and preserve recent files.");
                 bool refused = false;
                 try { TempCleaner.Scan(new[] { root }, true, DateTime.UtcNow, System.Threading.CancellationToken.None); }
                 catch (InvalidOperationException) { refused = true; }
@@ -52,7 +60,7 @@ namespace SteamDirect
                 Assert(deleted.Files == 0 && File.Exists(stale) && File.Exists(document), "Even confirmed candidates outside owned roots cannot be deleted.");
             }
             finally { Directory.Delete(root, true); }
-            return 16;
+            return 17;
         }
         private static void Assert(bool value, string message) { if (!value) throw new Exception(message); }
         private static int Main() { try { Console.WriteLine("Safety tests: " + Run() + " passed"); return 0; } catch (Exception ex) { Console.Error.WriteLine(ex); return 1; } }
