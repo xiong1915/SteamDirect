@@ -133,7 +133,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.6";
+            Text = "Steam 直连助手 v3.0.7";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -149,11 +149,11 @@ namespace SteamDirect
             var root = UiStyle.Grid(1, 4); root.Padding = UiStyle.PagePadding;
             root.BackColor = AppTheme.Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 368));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var overview = new ContentViewport(root, 720) { BackColor = AppTheme.Page };
+            var overview = new ContentViewport(root, 700) { BackColor = AppTheme.Page };
             pageHost.Controls.Add(overview);
             pages = new PageManager(pageHost, overview);
             var header = UiStyle.Card();
@@ -316,21 +316,21 @@ namespace SteamDirect
         private void BuildNavigation()
         {
             var shell = UiStyle.Grid(2, 1);
-            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 172));
+            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 152));
             shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             var rail = UiStyle.Grid(1, 7); rail.Padding = new Padding(12, 24, 12, 16);
             rail.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
-            for (int i = 0; i < 4; i++) rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
+            rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+            for (int i = 0; i < 4; i++) rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
             rail.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
             var brand = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
             brand.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            brand.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+            brand.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
             brand.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             var mascot = new PictureBox { Image = Icon.ToBitmap(), Dock = DockStyle.Fill,
-                SizeMode = PictureBoxSizeMode.Zoom, TabStop = false, Margin = new Padding(40, 0, 40, 0) };
+                SizeMode = PictureBoxSizeMode.Zoom, TabStop = false, Margin = new Padding(32, 0, 32, 0) };
             using (var stream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("SteamDirect.Mascot"))
                 if (stream != null)
                     using (var source = Image.FromStream(stream))
@@ -356,7 +356,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.6", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.7", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             var sidebar = UiStyle.Card();
             sidebar.Padding = new Padding(8);

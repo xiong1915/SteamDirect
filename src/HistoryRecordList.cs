@@ -1,4 +1,6 @@
 using System;
+using System.Drawing;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 namespace SteamDirect {
@@ -6,6 +8,38 @@ namespace SteamDirect {
  internal sealed class HistoryRecordList : ListView {
   internal HistoryRecordList(){DoubleBuffered=true;}
   private IntPtr images;private int rowHeight=120;
+  private ConditionalWeakTable<ListViewItem, int[]> heights = new ConditionalWeakTable<ListViewItem, int[]>();
+  private int measuredWidth, fittedWidth, fittedCount = -1, fittedDpi;
+  private Font measuredFont, fittedFont;
+
+  internal int[] MeasureRow(ListViewItem item, int width, Func<ListViewItem, int, int[]> measure)
+  {
+      if (measuredWidth != width || !ReferenceEquals(measuredFont, Font))
+      {
+          measuredWidth = width;
+          measuredFont = Font;
+          heights = new ConditionalWeakTable<ListViewItem, int[]>();
+      }
+      int[] result;
+      if (!heights.TryGetValue(item, out result))
+      {
+          result = measure(item, width);
+          heights.Add(item, result);
+      }
+      return result;
+  }
+
+  internal bool RowLayoutChanged(int width, bool force = false)
+  {
+      int dpi = UiStyle.Dpi(this);
+      if (!force && width == fittedWidth && fittedCount == Items.Count && fittedDpi == dpi && ReferenceEquals(fittedFont, Font))
+          return false;
+      fittedWidth = width;
+      fittedCount = Items.Count;
+      fittedDpi = dpi;
+      fittedFont = Font;
+      return true;
+  }
   private int hoveredIndex = -1; internal int HoveredIndex { get { return hoveredIndex; } private set { hoveredIndex = value; } }
   protected override void OnMouseMove(MouseEventArgs e){base.OnMouseMove(e);var item=GetItemAt(e.X,e.Y);int next=item==null?-1:item.Index;if(next==HoveredIndex)return;int previous=HoveredIndex;HoveredIndex=next;if(previous>=0&&previous<Items.Count)Invalidate(Items[previous].Bounds);if(next>=0&&next<Items.Count)Invalidate(Items[next].Bounds);}
   protected override void OnMouseLeave(EventArgs e){base.OnMouseLeave(e);int previous=HoveredIndex;HoveredIndex=-1;if(previous>=0&&previous<Items.Count)Invalidate(Items[previous].Bounds);}

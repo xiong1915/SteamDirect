@@ -32,6 +32,20 @@ namespace SteamDirect
                     view.SetSaving(false);Need(view.Enabled,"Settings did not recover after save");
                 }
                 Need(UiStyle.CardRadius==UiStyle.ControlRadius&&UiStyle.ControlRadius==UiStyle.NavigationRadius,"Inconsistent component radii");
+                using (var list = new HistoryRecordList())
+                {
+                    var item = list.Items.Add("Synthetic");
+                    int measurements = 0;
+                    Func<ListViewItem, int, int[]> measure = (row, width) => { measurements++; return new[] { width }; };
+                    Need(list.RowLayoutChanged(300), "Initial row layout must run");
+                    list.MeasureRow(item, 300, measure);
+                    list.Height += 40;
+                    Need(!list.RowLayoutChanged(300), "Height-only resize repeated history row layout");
+                    list.MeasureRow(item, 300, measure);
+                    Need(measurements == 1, "Repaint remeasured the same history row");
+                    Need(list.RowLayoutChanged(250) && list.MeasureRow(item, 250, measure)[0] == 250 && measurements == 2,
+                        "Width change did not reflow history text");
+                }
                 Need(SteamGameDiscovery.IsCounterStrike("CS2.EXE")&&SteamGameDiscovery.IsCounterStrike("csgo.exe")&&!SteamGameDiscovery.IsCounterStrike("cs2-helper.exe"),"Counter-Strike guard must not rely only on Steam's registry flag");
                 int scans=0;string path=Path.Combine(folder,"history.sqlite3");
                 using(var disabled=new HistoryMonitor(path,()=>{Interlocked.Increment(ref scans);return new List<SteamGameProcess>();})){

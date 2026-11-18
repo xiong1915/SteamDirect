@@ -12,7 +12,7 @@ namespace SteamDirect
 {
     internal sealed class HistoryWindow : DesktopForm, IManagedPage
     {
-        private const int RecordLimit = 200;
+        private const int RecordLimit = 30;
         private const int ComparisonLimit = 20;
         private const int MinimumAttempts = 12;
         private static readonly Color Ink = AppTheme.Ink;
@@ -382,7 +382,7 @@ namespace SteamDirect
             {
                 var area = Rectangle.Inflate(bounds, -8, -6);
                 var session = (HistorySession)args.Item.Tag;
-                int[] heights = RecordTextHeights(args.Item, area.Width);
+                int[] heights = ((HistoryRecordList)view).MeasureRow(args.Item, area.Width, RecordTextHeights);
                 string title = (session.HasAnomalies ? "● 异常 · " : "") + args.Item.Text;
                 using (var font = new Font(view.Font, FontStyle.Bold))
                     TextRenderer.DrawText(args.Graphics, title, font,
@@ -442,18 +442,20 @@ namespace SteamDirect
                 TextRenderer.MeasureText(item.SubItems[2].Text + " · " + item.SubItems[3].Text, font, size, flags).Height + 6 };
         }
 
-        private void FitRecordRows()
+        private void FitRecordRows(bool force = false)
         {
             if (fillingRecords || shuttingDown || records.IsDisposed || records.ClientSize.Width < 1) return;
-            int width = Math.Max(80, records.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 20);
+            var list = (HistoryRecordList)records;
+            int width = Math.Max(1, records.Columns[0].Width - 16);
+            if (!list.RowLayoutChanged(width, force)) return;
             int height = (UiStyle.TextHeight(records) + UiStyle.Scale(records, 6)) * 4 + UiStyle.Scale(records, 24);
             foreach (ListViewItem row in records.Items)
             {
                 if (row == null || row.ListView != records || !(row.Tag is HistorySession) || row.SubItems.Count < 4) continue;
-                int[] blocks = RecordTextHeights(row, width);
+                int[] blocks = list.MeasureRow(row, width, RecordTextHeights);
                 height = Math.Max(height, blocks[0] + blocks[1] + blocks[2] + UiStyle.TextHeight(records) + UiStyle.Scale(records, 28));
             }
-            ((HistoryRecordList)records).SetRowHeight(height);
+            list.SetRowHeight(height);
             records.Invalidate();
         }
 
@@ -605,7 +607,7 @@ namespace SteamDirect
                 }
             }
             finally { records.EndUpdate(); fillingRecords = false; }
-            FitRecordRows();
+            FitRecordRows(true);
             await LoadSelectionAsync();
         }
 
