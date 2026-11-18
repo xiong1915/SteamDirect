@@ -14,10 +14,12 @@ namespace SteamDirect
         private readonly Panel content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, UiStyle.SmallGap, 0, 0) };
         private readonly List<Control> pages = new List<Control>();
         private readonly List<Button> buttons = new List<Button>();
+        private int fittedWidth = -1, fittedDpi;
         internal int SelectedIndex { get; private set; }
         internal int PageCount { get { return pages.Count; } }
         internal HistorySections()
         {
+            SelectedIndex = -1;
             DoubleBuffered = true;
             Dock = DockStyle.Fill;
             BackColor = AppTheme.Surface;
@@ -44,11 +46,12 @@ namespace SteamDirect
             navigation.Controls.Add(button);
             buttons.Add(button);
             page.Dock = DockStyle.Fill;
+            page.Visible = false;
             content.Controls.Add(page);
             pages.Add(page);
-            button.FontChanged += (sender, args) => FitNavigation();
-            FitNavigation();
-            SelectPage(0);
+            button.FontChanged += (sender, args) => RefitNavigation();
+            RefitNavigation();
+            if (SelectedIndex < 0) SelectPage(0);
         }
         protected override void OnSizeChanged(EventArgs e)
         {
@@ -58,6 +61,10 @@ namespace SteamDirect
         private void FitNavigation()
         {
             if (buttons == null || buttons.Count == 0 || Width <= 0) return;
+            int dpi = UiStyle.Dpi(this);
+            if (fittedWidth == Width && fittedDpi == dpi) return;
+            fittedWidth = Width;
+            fittedDpi = dpi;
             int required = UiStyle.Scale(this, 116), height = UiStyle.Scale(this, UiStyle.ButtonHeight);
             int margin = 0;
             foreach (var button in buttons) {
@@ -72,23 +79,34 @@ namespace SteamDirect
             if (navigation.Height != total) navigation.Height = total;
         }
 
+        private void RefitNavigation()
+        {
+            fittedWidth = -1;
+            FitNavigation();
+        }
+
         internal void SelectPage(int index)
         {
             if (index < 0 || index >= pages.Count) throw new ArgumentOutOfRangeException("index");
+            if (SelectedIndex == index) return;
+            int previous = SelectedIndex;
             SelectedIndex = index;
             content.SuspendLayout();
             try
             {
+                if (previous >= 0) SetPageSelected(previous, false);
                 pages[index].BringToFront();
-                for (int i = 0; i < pages.Count; i++)
-                {
-                    pages[i].Visible = i == index;
-                    ((RoundedButton)buttons[i]).SelectedNavigation = i == index;
-                    AppTheme.SetBackground(buttons[i], i == index ? AppTheme.Pill : AppTheme.Surface);
-                    AppTheme.SetForeground(buttons[i], i == index ? AppTheme.Accent : AppTheme.Muted);
-                }
+                SetPageSelected(index, true);
             }
             finally { content.ResumeLayout(true); }
+        }
+
+        private void SetPageSelected(int index, bool selected)
+        {
+            pages[index].Visible = selected;
+            ((RoundedButton)buttons[index]).SelectedNavigation = selected;
+            AppTheme.SetBackground(buttons[index], selected ? AppTheme.Pill : AppTheme.Surface);
+            AppTheme.SetForeground(buttons[index], selected ? AppTheme.Accent : AppTheme.Muted);
         }
     }
 

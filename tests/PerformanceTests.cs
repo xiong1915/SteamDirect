@@ -82,6 +82,46 @@ namespace SteamDirect
                         OffscreenGeometry.Resize(form,new Size(3760,2060));Application.DoEvents();Need(form.ClientSize==new Size(3760,2060),"4K fixture was constrained to the physical desktop: "+form.ClientSize);
                     }
                 }
+                using (var form = new ResizeForm { StartPosition = FormStartPosition.Manual, Location = new Point(-24000, -24000), ShowInTaskbar = false })
+                using (var chart = new HistoryNetworkChart { Dock = DockStyle.None, Size = new Size(400, 320) })
+                using (var image = new Bitmap(560, 420))
+                {
+                    form.Controls.Add(chart);
+                    form.Show();
+                    var samples = new List<HistorySample>();
+                    for (int index = 0; index < 1800; index++)
+                        samples.Add(new HistorySample { At = 1000 + index * 5000L, ExternalMs = 30 + index % 15, GatewayMs = 2, Mode = "直连" });
+                    chart.SetData(new HistorySession { Start = 1000, End = 9001000 }, samples, null);
+                    chart.DrawToBitmap(image, chart.ClientRectangle);
+                    var cache = typeof(HistoryNetworkChart).GetField("imageCache", Private);
+                    var clock = Stopwatch.StartNew();
+                    int rerasterized = 0;
+                    for (int index = 1; index <= 12; index++)
+                    {
+                        var previous = cache.GetValue(chart);
+                        chart.Size = new Size(400 + index * 8, 320 + index * 3);
+                        chart.DrawToBitmap(image, chart.ClientRectangle);
+                        if (!ReferenceEquals(previous, cache.GetValue(chart))) rerasterized++;
+                    }
+                    double fullPaint = clock.Elapsed.TotalMilliseconds;
+                    chart.Size = new Size(400, 320);
+                    chart.DrawToBitmap(image, chart.ClientRectangle);
+                    var initial = cache.GetValue(chart);
+                    form.BeginDrag();
+                    clock.Restart();
+                    for (int index = 1; index <= 12; index++)
+                    {
+                        chart.Size = new Size(400 + index * 8, 320 + index * 3);
+                        chart.DrawToBitmap(image, chart.ClientRectangle);
+                    }
+                    Console.WriteLine("CHART resize_frames=12 normal_rebuilds=" + rerasterized +
+                        " normal_ms=" + fullPaint.ToString("F1") + " live_ms=" + clock.Elapsed.TotalMilliseconds.ToString("F1"));
+                    Need(initial != null && ReferenceEquals(initial, cache.GetValue(chart)), "Live resize rerasterized the history chart");
+                    form.EndDrag();
+                    chart.DrawToBitmap(image, chart.ClientRectangle);
+                    var resized = (Bitmap)cache.GetValue(chart);
+                    Need(!ReferenceEquals(initial, resized) && resized.Size == chart.ClientSize, "Chart did not restore pixel-accurate rendering at the final size");
+                }
                 return count;
             }finally{Directory.Delete(folder,true);}
         }

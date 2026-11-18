@@ -25,7 +25,9 @@ namespace SteamDirect
             if (trace != null) trace.BeginLayout();
             try { base.OnLayout(args); } finally { if (trace != null) trace.EndLayout(); }
         }
-        private bool displayPending, fitting, liveResize, resizePending;
+        private bool displayPending, fitting, liveResize, resizePending, resizedDuringDrag;
+        private const int LiveLayoutInterval = 33;
+        internal bool IsLiveResizing { get { return liveResize; } }
         private Timer resizeTimer;
         protected override void OnVisibleChanged(EventArgs args){base.OnVisibleChanged(args);if(!Visible){liveResize=false;resizePending=false;if(resizeTimer!=null)resizeTimer.Stop();}}
         private void FlushResize()
@@ -36,13 +38,15 @@ namespace SteamDirect
         protected override void OnResizeBegin(EventArgs args)
         {
             liveResize = true;
-            if (resizeTimer == null) { resizeTimer = new Timer { Interval = 16 }; resizeTimer.Tick += (sender, eventArgs) => FlushResize(); }
-            resizeTimer.Start(); base.OnResizeBegin(args);
+            resizedDuringDrag = false;
+            base.OnResizeBegin(args);
         }
         protected override void OnResizeEnd(EventArgs args)
         {
             liveResize = false; if (resizeTimer != null) resizeTimer.Stop(); FlushResize();
-            base.OnResizeEnd(args); Invalidate(true); QueueDisplayCheck();
+            base.OnResizeEnd(args);
+            if (resizedDuringDrag) Invalidate(true);
+            QueueDisplayCheck();
         }
         protected override void Dispose(bool disposing)
         {
@@ -63,7 +67,8 @@ namespace SteamDirect
             var work = Screen.FromControl(this).WorkingArea;
             // MinimumSize is an outer size, and must not force a window beyond a smaller work area.
             Size preferred = new Size(UiStyle.Scale(this, 880), UiStyle.Scale(this, 620));
-            MinimumSize = new Size(Math.Min(preferred.Width, work.Width), Math.Min(preferred.Height, work.Height));
+            var minimum = new Size(Math.Min(preferred.Width, work.Width), Math.Min(preferred.Height, work.Height));
+            if (MinimumSize != minimum) MinimumSize = minimum;
             if (WindowState != FormWindowState.Normal) return;
             var fitted = WindowEnvironment.Fit(Bounds, work);
             if (Bounds != fitted) Bounds = fitted;
@@ -74,19 +79,34 @@ namespace SteamDirect
             // WinForms owns WM_DPICHANGED and its suggested rectangle. Never scale it a second time.
             int kind = message.Msg;
             base.WndProc(ref message);
-            if (kind == 0x007E || kind == 0x02E0 || kind == 0x001A) QueueDisplayCheck();
+            if (liveResize && kind == 0x02E0) resizedDuringDrag = true;
+            if (!liveResize && (kind == 0x007E || kind == 0x02E0 || kind == 0x001A)) QueueDisplayCheck();
         }
         private void QueueDisplayCheck()
         {
             if (!displayPending && IsHandleCreated && !IsDisposed)
             {
                 displayPending = true;
-                BeginInvoke((Action)(() => { displayPending = false; if (!IsDisposed && IsHandleCreated) CheckWorkArea(); }));
+                BeginInvoke((Action)(() => { displayPending = false; if (!IsDisposed && IsHandleCreated && !liveResize) CheckWorkArea(); }));
             }
         }
         protected override void OnResize(EventArgs e)
         {
-            if (liveResize) { resizePending = true; return; }
+            if (liveResize)
+            {
+                resizePending = resizedDuringDrag = true;
+                if (resizeTimer == null)
+                {
+                    resizeTimer = new Timer { Interval = LiveLayoutInterval };
+                    resizeTimer.Tick += (sender, args) =>
+                    {
+                        resizeTimer.Stop();
+                        FlushResize();
+                    };
+                }
+                if (!resizeTimer.Enabled) resizeTimer.Start();
+                return;
+            }
             base.OnResize(e);
             var state = WindowState;
             if (state == FormWindowState.Normal && previousState != FormWindowState.Normal && !fitting) QueueDisplayCheck();

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
 using System.Windows.Forms;
 namespace SteamDirect {
  internal sealed class HistoryNetworkChart : Control {
@@ -12,13 +11,13 @@ namespace SteamDirect {
   private string emptyMessage = "从左侧选择一条游戏记录。";
   private bool invalidData;
   private Bitmap imageCache;
-  private readonly Motion.Value reveal;
   private readonly ToolTip dataTip = new ToolTip { ShowAlways = false };
   private readonly List<HistorySample> tipSamples = new List<HistorySample>();
   private long tipAt = long.MinValue;
   private bool cachedDark;
+  private bool fontChangedDuringDrag;
   private int cachedColor, cachedDpi;
-  internal HistoryNetworkChart(){reveal=new Motion.Value(this,1F);DoubleBuffered=true;ResizeRedraw=true;Dock=DockStyle.Fill;BackColor=AppTheme.Surface;Font=UiStyle.Caption;AccessibleName="本局网络波动图";}
+  internal HistoryNetworkChart(){DoubleBuffered=true;ResizeRedraw=true;Dock=DockStyle.Fill;BackColor=AppTheme.Surface;Font=UiStyle.Caption;AccessibleName="本局网络波动图";}
   internal void SetEmpty(string message)
   {
    SetData(null, null, null);
@@ -34,35 +33,45 @@ namespace SteamDirect {
    foreach(var sample in samples)if(sample==null||sample.At<0||sample.At>253402300799999L)invalidData=true;
    foreach(var issue in events)if(issue==null||issue.Start<0||issue.Start>253402300799999L||issue.End<0||issue.End>253402300799999L)invalidData=true;
    tipSamples.Clear(); if(!invalidData){tipSamples.AddRange(samples);tipSamples.Sort((a,b)=>a.At.CompareTo(b.At));}tipAt=long.MinValue;dataTip.SetToolTip(this,null);
-   ClearCache();reveal.Set(samples.Count==0?1F:0F);reveal.To(1F,240);
+   ClearCache();
    AccessibleDescription=samples.Count==0?emptyMessage:"已加载 "+samples.Count+" 个采样点。超时不等于游戏实际丢包。";Invalidate();
   }
-  protected override void OnFontChanged(EventArgs e){base.OnFontChanged(e);ClearCache();}
+  private bool IsLiveResizing
+  {
+   get { var window = TopLevelControl as DesktopForm; return window != null && window.IsLiveResizing; }
+  }
+  protected override void OnFontChanged(EventArgs e)
+  {
+   base.OnFontChanged(e);
+   if (IsLiveResizing) fontChangedDuringDrag = true;
+   else ClearCache();
+  }
   protected override void OnPaint(PaintEventArgs e){
    base.OnPaint(e);
    if(Width<=0||Height<=0)return;
-   if(imageCache==null||imageCache.Size!=ClientSize||cachedDark!=AppTheme.IsDark||cachedColor!=AppTheme.ThemeColor.ToArgb()||cachedDpi!=UiStyle.Dpi(this)){
+   int dpi = UiStyle.Dpi(this);
+   bool sameTheme = cachedDark == AppTheme.IsDark && cachedColor == AppTheme.ThemeColor.ToArgb();
+   if (imageCache != null && sameTheme && (imageCache.Size != ClientSize || cachedDpi != dpi || fontChangedDuringDrag) && IsLiveResizing)
+   {
+    e.Graphics.InterpolationMode = InterpolationMode.Low;
+    e.Graphics.DrawImage(imageCache, ClientRectangle, 0, 0, imageCache.Width, imageCache.Height, GraphicsUnit.Pixel);
+    return;
+   }
+   if(imageCache==null||imageCache.Size!=ClientSize||!sameTheme||cachedDpi!=dpi||fontChangedDuringDrag){
     ClearCache();
     var image=new Bitmap(Width,Height);
     try{
-     image.SetResolution(UiStyle.Dpi(this),UiStyle.Dpi(this));
+     image.SetResolution(dpi,dpi);
      using(var graphics=Graphics.FromImage(image))Render(graphics);
-     imageCache=image;cachedDark=AppTheme.IsDark;cachedColor=AppTheme.ThemeColor.ToArgb();cachedDpi=UiStyle.Dpi(this);
+     imageCache=image;cachedDark=AppTheme.IsDark;cachedColor=AppTheme.ThemeColor.ToArgb();cachedDpi=dpi;
+     fontChangedDuringDrag = false;
     }catch{image.Dispose();throw;}
    }
-   if(reveal.Current>=.999F)e.Graphics.DrawImage(imageCache,ClientRectangle,0,0,imageCache.Width,imageCache.Height,GraphicsUnit.Pixel);
-   else {
-    e.Graphics.Clear(AppTheme.Background(AppTheme.Surface));
-    using(var attributes=new ImageAttributes()) {
-     var matrix=new ColorMatrix();matrix.Matrix33=reveal.Current;attributes.SetColorMatrix(matrix);
-     e.Graphics.DrawImage(imageCache,ClientRectangle,0,0,imageCache.Width,imageCache.Height,GraphicsUnit.Pixel,attributes);
-    }
-   }
+   e.Graphics.DrawImage(imageCache, ClientRectangle, 0, 0, imageCache.Width, imageCache.Height, GraphicsUnit.Pixel);
   }
   // Visibility alone does not invalidate data, size, theme or DPI. Keep the bounded cache for tray/tab restore.
-  protected override void OnSizeChanged(EventArgs e){base.OnSizeChanged(e);ClearCache();}
   private void ClearCache(){if(imageCache!=null){imageCache.Dispose();imageCache=null;}}
-  protected override void Dispose(bool disposing){if(disposing){reveal.Dispose();dataTip.Dispose();}if(disposing&&imageCache!=null){imageCache.Dispose();imageCache=null;}base.Dispose(disposing);}
+  protected override void Dispose(bool disposing){if(disposing){dataTip.Dispose();ClearCache();}base.Dispose(disposing);}
   protected override void OnMouseMove(MouseEventArgs e){
    base.OnMouseMove(e);if(tipSamples.Count==0||Width<=UiStyle.Scale(this,64))return;
    double fraction=Math.Max(0,Math.Min(1,(e.X-UiStyle.Scale(this,48))/(double)Math.Max(1,Width-UiStyle.Scale(this,64))));
