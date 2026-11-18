@@ -19,14 +19,15 @@ namespace SteamDirect
         internal bool HorizontalIndicator;
         internal UiIcon Icon = UiIcon.None;
         internal float CornerRadius = UiStyle.ControlRadius;
+        internal int CaptionInset = UiStyle.Space12;
         internal const TextFormatFlags CaptionFlags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
 
         internal Rectangle CaptionBounds
         {
             get
             {
-                int right = UiStyle.Scale(this, UiStyle.Space12);
-                int left = UiStyle.Scale(this, Icon == UiIcon.None ? UiStyle.Space12 : UiStyle.Space40);
+                int right = UiStyle.Scale(this, CaptionInset);
+                int left = UiStyle.Scale(this, Icon == UiIcon.None ? CaptionInset : UiStyle.Space40);
                 return new Rectangle(left, 2, Math.Max(0, Width - left - right), Math.Max(0, Height - 4));
             }
         }

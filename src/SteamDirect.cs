@@ -133,7 +133,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.9";
+            Text = "Steam 直连助手 v3.0.10";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -356,7 +356,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.9", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.10", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             var sidebar = UiStyle.Card();
             sidebar.Padding = new Padding(8);
@@ -403,7 +403,9 @@ namespace SteamDirect
         private Form CreatePage(string page)
         {
             if (page == "网络诊断") return new NetworkWindow(Log);
-            if (page == "游戏记录") return new HistoryWindow(history.Store, () => history.IsPlaying);
+            if (page == "游戏记录") return new HistoryWindow(history.Store, () => history.IsPlaying,
+                () => !preferences.NetworkRecording ? "自动记录已关闭，可在设置中开启。" :
+                    string.IsNullOrEmpty(history.Error) ? "自动记录已开启。" : "自动记录遇到错误，请查看日志或重启应用。");
             var settings = new SettingsWindow(preferences.TrayEnabled, StartupSettings.IsEnabled(),
                 preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor, preferences.LogDirectory, preferences.ReduceMotion, preferences.WindowDiagnostics, preferences.NetworkRecording);
             settings.Synchronize = () => settings.Reload(preferences, StartupSettings.IsEnabled());

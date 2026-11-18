@@ -9,6 +9,7 @@ namespace SteamDirect {
   private IList<HistorySample> samples = Array.Empty<HistorySample>();
   private IList<HistoryEvent> events = Array.Empty<HistoryEvent>();
   private long start,end; private string target;
+  private string emptyMessage = "从左侧选择一条游戏记录。";
   private bool invalidData;
   private Bitmap imageCache;
   private readonly Motion.Value reveal;
@@ -18,7 +19,14 @@ namespace SteamDirect {
   private bool cachedDark;
   private int cachedColor, cachedDpi;
   internal HistoryNetworkChart(){reveal=new Motion.Value(this,1F);DoubleBuffered=true;ResizeRedraw=true;Dock=DockStyle.Fill;BackColor=AppTheme.Surface;Font=UiStyle.Caption;AccessibleName="本局网络波动图";}
+  internal void SetEmpty(string message)
+  {
+   SetData(null, null, null);
+   emptyMessage = message;
+   AccessibleDescription = message;
+  }
   internal void SetData(HistorySession session,IList<HistorySample> values,IList<HistoryEvent> issues){
+   emptyMessage = "本局没有可绘制的探测样本。";
    samples=values==null?(IList<HistorySample>)Array.Empty<HistorySample>():new List<HistorySample>(values);events=issues==null?(IList<HistoryEvent>)Array.Empty<HistoryEvent>():new List<HistoryEvent>(issues);
    start=session==null?0:session.Start;end=session==null?0:session.End;target=session==null?null:session.Target;
    if(samples.Count>0&&samples[0]!=null&&samples[samples.Count-1]!=null){if(start<=0)start=samples[0].At;if(end<=start)end=samples[samples.Count-1].At;}
@@ -27,7 +35,7 @@ namespace SteamDirect {
    foreach(var issue in events)if(issue==null||issue.Start<0||issue.Start>253402300799999L||issue.End<0||issue.End>253402300799999L)invalidData=true;
    tipSamples.Clear(); if(!invalidData){tipSamples.AddRange(samples);tipSamples.Sort((a,b)=>a.At.CompareTo(b.At));}tipAt=long.MinValue;dataTip.SetToolTip(this,null);
    ClearCache();reveal.Set(samples.Count==0?1F:0F);reveal.To(1F,240);
-   AccessibleDescription="本地网关与外部目标 ICMP 延迟；超时不等于游戏实际丢包。";Invalidate();
+   AccessibleDescription=samples.Count==0?emptyMessage:"已加载 "+samples.Count+" 个采样点。超时不等于游戏实际丢包。";Invalidate();
   }
   protected override void OnFontChanged(EventArgs e){base.OnFontChanged(e);ClearCache();}
   protected override void OnPaint(PaintEventArgs e){
@@ -69,12 +77,17 @@ namespace SteamDirect {
    g.Clear(AppTheme.Background(AppTheme.Surface));g.SmoothingMode=SmoothingMode.AntiAlias;
    int line=UiStyle.TextHeight(this)+UiStyle.Scale(this,8);int pad=UiStyle.Scale(this,12);
    DrawText(g,"网关延迟 / 外部延迟（毫秒）",new Rectangle(pad,4,Width-pad*2,line),AppTheme.Ink);
-   DrawText(g,"网关 ━",new Rectangle(pad,line+4,UiStyle.Scale(this,100),line),AppTheme.Success);
-   DrawText(g,"外部 ┄",new Rectangle(pad+UiStyle.Scale(this,108),line+4,UiStyle.Scale(this,100),line),AppTheme.Accent);
-   DrawText(g,"超时 |",new Rectangle(pad+UiStyle.Scale(this,216),line+4,UiStyle.Scale(this,100),line),AppTheme.Error);
+   if(invalidData){DrawText(g,"记录包含无效时间，无法绘图。请导出原始记录核对。",new Rectangle(pad,line+8,Width-pad*2,line*3),AppTheme.Error);return;}
+   if(samples.Count==0){
+    TextRenderer.DrawText(g,emptyMessage,Font,new Rectangle(pad,line+8,Math.Max(1,Width-pad*2),Math.Max(1,Height-line-12)),
+      AppTheme.Text(AppTheme.Muted),TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+    return;
+   }
+   int legendWidth=Math.Max(1,(Width-pad*2)/3);
+   DrawText(g,"网关 ━",new Rectangle(pad,line+4,legendWidth,line),AppTheme.Success);
+   DrawText(g,"外部 ┄",new Rectangle(pad+legendWidth,line+4,legendWidth,line),AppTheme.Accent);
+   DrawText(g,"超时 |",new Rectangle(pad+legendWidth*2,line+4,legendWidth,line),AppTheme.Error);
    DrawText(g,"红色背景：已记录的异常时段",new Rectangle(pad,line*2+4,Width-pad*2,line),AppTheme.Muted);
-   if(invalidData){DrawText(g,"记录包含无效时间，无法绘图。请导出原始记录核对。",new Rectangle(pad,line*3,Width-pad*2,line*2),AppTheme.Error);return;}
-   if(samples.Count==0){DrawText(g,"本局没有可绘制的探测数据",new Rectangle(pad,line*3,Width-pad*2,line*2),AppTheme.Muted);return;}
    var plot=new Rectangle(UiStyle.Scale(this,48),line*3+8,Math.Max(1,Width-UiStyle.Scale(this,64)),Math.Max(1,Height-line*6-24));
    if(plot.Width<40||plot.Height<30)return;
    long finish=Math.Max(start+1,end);int max=10;

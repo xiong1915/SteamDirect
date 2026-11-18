@@ -23,9 +23,11 @@ namespace SteamDirect
 
         private readonly HistoryStore store;
         private readonly Func<bool> isGaming;
+        private readonly Func<string> recordingStatus;
         private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
         private readonly ListView records = new HistoryRecordList();
         private readonly ListView incidents = new ListView();
+        private readonly Label incidentSummary = new Label();
         private readonly TextBox gameFilter = new TextBox();
         private readonly ComboBox modeFilter = new DarkComboBox();
         private readonly ComboBox recordScope = new DarkComboBox();
@@ -39,7 +41,8 @@ namespace SteamDirect
         private readonly Label detailTitle = new Label();
         private readonly Label detailMeta = new Label();
         private readonly Button refresh = new RoundedButton();
-        private readonly Button previousPage = new RoundedButton(), nextPage = new RoundedButton();
+        private readonly Button previousPage = new RoundedButton { CaptionInset = UiStyle.Space4 },
+            nextPage = new RoundedButton { CaptionInset = UiStyle.Space4 };
         private readonly Label pageLabel = new Label();
         private int page;
         private bool hasNext;
@@ -52,6 +55,8 @@ namespace SteamDirect
         private long loadedRevision = -1;
         private DateTime loadedDay;
         private bool selectionPending, gameAtRequest;
+        private bool initialScopeResolved;
+        private string selectionHint;
         internal double LastDataLoadMilliseconds { get; private set; }
         internal double LastQueryMilliseconds { get; private set; }
         internal double LastAnalysisMilliseconds { get; private set; }
@@ -60,7 +65,7 @@ namespace SteamDirect
             if (!Available) return;
             if (queryWork != null && !queryWork.IsCancellationRequested) return;
             if (loadedRevision != store.Revision || loadedDay != DateTime.Today)
-                await RefreshAsync(loadedDay == DateTime.Today ? page : 0);
+                await QueryAsync(loadedDay == DateTime.Today ? page : 0, !initialScopeResolved);
             else if (selectionPending) { selectionPending = false; await LoadSelectionAsync(); }
         }
         public void LeavePage()
@@ -69,9 +74,10 @@ namespace SteamDirect
             if (selectionWork != null) { selectionPending = true; selectionWork.Cancel(); }
         }
 
-        internal HistoryWindow(HistoryStore store, Func<bool> isGaming = null)
+        internal HistoryWindow(HistoryStore store, Func<bool> isGaming = null, Func<string> recordingStatus = null)
         {
             this.store = store;
+            this.recordingStatus = recordingStatus;
             this.isGaming = isGaming;
             SuspendLayout();
             Text = "游戏网络报告";
@@ -219,13 +225,16 @@ namespace SteamDirect
             incidents.Columns.Add("恢复用时", 94);
             SetColumnWeights(incidents, 31, 25, 25, 19);
             tabs.Add("本局报告", BuildOverview());
-            var chartScroll = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Surface };
-            networkChart.Dock = DockStyle.Fill;
-            networkChart.Height = 240;
-            chartScroll.Controls.Add(networkChart);
-
-            tabs.Add("网络波动", chartScroll);
-            tabs.Add("异常时间线", new NativeScrollFrame(incidents));
+            tabs.Add("网络波动", new ContentViewport(networkChart, 300) { BackColor = AppTheme.Surface });
+            var timeline = Grid(1, 2);
+            timeline.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+            timeline.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            incidentSummary.Dock = DockStyle.Fill;
+            incidentSummary.Margin = Padding.Empty;
+            incidentSummary.ForeColor = Muted;
+            timeline.Controls.Add(incidentSummary, 0, 0);
+            timeline.Controls.Add(new NativeScrollFrame(incidents), 0, 1);
+            tabs.Add("异常时间线", timeline);
             tabs.Add("历史参考", new NativeScrollFrame(comparisonText));
             detail.Controls.Add(tabs, 0, 2);
             detailCard.Controls.Add(detail);
@@ -497,7 +506,12 @@ namespace SteamDirect
             base.Dispose(disposing);
         }
 
-        private async Task RefreshAsync(int requestedPage = 0)
+        private Task RefreshAsync(int requestedPage = 0)
+        {
+            return QueryAsync(requestedPage, false);
+        }
+
+        private async Task QueryAsync(int requestedPage, bool showLatestIfTodayEmpty)
         {
             if (!Available) return;
             gameAtRequest = SteamGameDiscovery.IsSteamGameActive();
@@ -517,8 +531,10 @@ namespace SteamDirect
             DateTime today = DateTime.Today;
             long from = recordScope.SelectedIndex == 0 ? (long)(new DateTimeOffset(today).ToUniversalTime() - Epoch).TotalMilliseconds : 0;
             long before = recordScope.SelectedIndex == 0 ? (long)(new DateTimeOffset(today.AddDays(1)).ToUniversalTime() - Epoch).TotalMilliseconds : 0;
+            bool usedHistory = false;
+            bool offerHistory = showLatestIfTodayEmpty && before != 0 && requestedPage == 0 && name.Length == 0 && mode == "全部";
             status.Text = "正在读取本地记录…";
-            if (sessions.Count == 0) UiStyle.SetState(overviewTitle, overviewNote, "正在读取游戏记录…", "读取完成后，在这里查看本局网络报告。");
+            if (sessions.Count == 0) ShowDetailState("正在读取游戏记录…", "正在读取本地记录，请稍候。");
             double queryMilliseconds = 0;
             try
             {
@@ -528,12 +544,21 @@ namespace SteamDirect
                     store.Initialize();
                     var queryClock = System.Diagnostics.Stopwatch.StartNew();
                     var loaded = store.ListSessions(RecordLimit + 1, requestedPage * RecordLimit, name, mode == "全部" ? null : mode, from, before);
+                    if (offerHistory && loaded.Count == 0)
+                    {
+                        CheckAnalysis(token);
+                        loaded = store.ListSessions(RecordLimit + 1);
+                        usedHistory = loaded.Count > 0;
+                    }
                     queryMilliseconds = queryClock.Elapsed.TotalMilliseconds;
                     CheckAnalysis(token);
                     return loaded;
                 }, token);
                 if (Available && !token.IsCancellationRequested && generation == queryGeneration)
                 {
+                    selectionHint = usedHistory ? "今天暂无对局，已显示最近历史 · " : null;
+                    if (usedHistory) recordScope.SelectedIndex = 1;
+                    initialScopeResolved = true;
                     page = requestedPage;
                     LastQueryMilliseconds = queryMilliseconds;
                     hasNext = result.Count > RecordLimit;
@@ -554,7 +579,7 @@ namespace SteamDirect
                 if (Available && !token.IsCancellationRequested && generation == queryGeneration)
                 {
                     ClearDetails();
-                    UiStyle.SetState(overviewTitle, overviewNote, "历史记录暂时无法读取", "点击查询重试，错误详情见下方。", true);
+                    ShowDetailState("历史记录暂时无法读取", "点击查询重试，错误详情见窗口底部。", true);
                     status.Text = "无法读取历史记录：" + ex.Message;
                     overviewText.Text = status.Text;
                 }
@@ -624,9 +649,11 @@ namespace SteamDirect
             if (selected == null)
             {
                 selectionPending = false;
-                status.Text = recordScope.SelectedIndex == 0 ? "今天没有匹配的对局。可切换“查看历史对局”读取以前的记录。" : "没有匹配的历史对局记录。";
-                UiStyle.SetState(overviewTitle, overviewNote, "暂无可用报告", "完成一局后，点击查询查看网络报告。");
-                overviewText.Text = status.Text;
+                bool filtered = gameFilter.Text.Trim().Length > 0 || modeFilter.SelectedIndex > 0;
+                status.Text = filtered ? "没有匹配的对局，请调整筛选。" :
+                    recordScope.SelectedIndex == 0 ? "今天还没有对局记录，可切换到“历史对局”。" : "还没有游戏记录。";
+                string recording = recordingStatus == null ? null : recordingStatus();
+                ShowDetailState("没有可选对局", string.IsNullOrEmpty(recording) ? status.Text : status.Text + " " + recording);
                 return;
             }
             detailTitle.Text = selected.Game ?? "未知游戏";
@@ -636,8 +663,7 @@ namespace SteamDirect
                 Environment.NewLine + (selected.End == 0 ? "记录中" : "结束  " + LocalTime(selected.End, "yyyy-MM-dd HH:mm:ss"));
             if (selected.End == 0 || Gaming)
             {
-                overviewTitle.Text = "本局尚未生成报告";
-                overviewNote.Text = "游戏结束后，点击查询读取结果。";
+                ShowDetailState("本局尚未生成报告", "游戏结束后，点击查询读取结果。");
                 status.Text = "游戏运行中，报告计算已暂停。";
                 return;
             }
@@ -646,7 +672,7 @@ namespace SteamDirect
             selectionWork = work;
             var token = work.Token;
             status.Text = "正在整理已结束会话的探测记录…";
-            UiStyle.SetState(overviewTitle, overviewNote, "正在整理本局结果…", "正在读取本地记录，请稍候。");
+            ShowDetailState("正在整理本局结果…", "正在读取本地记录，请稍候。");
             try
             {
                 double analysisMilliseconds = 0;
@@ -671,7 +697,7 @@ namespace SteamDirect
                 ShowDetails(result);
                 LastAnalysisMilliseconds = analysisMilliseconds;
                 selectionPending = false;
-                status.Text = "报告已生成 · " + (selected.Interrupted ? "本局记录曾中断，详见报告" : "左侧可切换其他对局");
+                status.Text = selectionHint + (selected.Interrupted ? "本局记录曾中断，详见报告" : "已加载本局记录");
             }
             catch (OperationCanceledException)
             {
@@ -682,7 +708,7 @@ namespace SteamDirect
                 if (Available && !token.IsCancellationRequested)
                 {
                     status.Text = "无法生成报告：" + ex.Message;
-                    UiStyle.SetState(overviewTitle, overviewNote, "本局报告暂时无法生成", "点击查询重试，错误原因见窗口底部。", true);
+                    ShowDetailState("本局报告暂时无法生成", "点击查询重试，错误原因见窗口底部。", true);
                 }
             }
             finally
@@ -696,12 +722,18 @@ namespace SteamDirect
         {
             detailTitle.Text = "会话详情";
             detailMeta.Text = "从左侧选择一条游戏记录";
-            comparisonText.Clear();
             incidents.Items.Clear();
-            UiStyle.SetState(overviewTitle, overviewNote, "选择记录后显示本局结果", "左侧列出了自动保存的游戏记录。");
             overviewText.Clear();
             foreach (var value in metricValues) value.Text = "—";
-            networkChart.SetData(null, null, null);
+            ShowDetailState("选择对局查看报告", "从左侧选择一条游戏记录。");
+        }
+
+        private void ShowDetailState(string title, string message, bool failed = false)
+        {
+            UiStyle.SetState(overviewTitle, overviewNote, title, message, failed);
+            comparisonText.Text = message;
+            incidentSummary.Text = message;
+            networkChart.SetEmpty(message);
         }
 
         private sealed class Detail
@@ -911,8 +943,12 @@ namespace SteamDirect
                 text.AppendLine("如果卡顿只在某一种模式出现，退出游戏后切换另一种模式复测。");
             }
             text.AppendLine();
+            text.AppendLine("探测目标 " + target);
+            text.AppendLine("直连 · " + direct.Describe());
+            text.AppendLine("代理 · " + proxy.Describe());
+            text.AppendLine();
             text.AppendLine("比较范围");
-            text.AppendLine("只参考相同游戏、相同目标，以及本局之前结束的记录。不同时间的网络环境可能不同。");
+            text.AppendLine("仅纳入同一游戏、相同目标的本局和更早已结束的记录。不同时间的网络环境可能不同。");
             text.AppendLine("直连/代理标签按本机设置推断；外部探测无法证明游戏连接经过代理，也不能证明游戏服务器表现相同。");
             return text.ToString();
         }
@@ -953,8 +989,10 @@ namespace SteamDirect
                     row.SubItems.Add(item.End > 0 ? SpanText(item.End - item.Start) : "—");
                     incidents.Items.Add(row);
                 }
-                if (count == 0) incidents.Items.Add(new ListViewItem("没有异常记录"));
-                else if (count < detail.Events.Count) incidents.Items.Add(new ListViewItem("其余异常可导出 CSV 查看"));
+                incidentSummary.Text = detail.Events.Count > 0 ? "记录到 " + detail.Events.Count + " 次异常。" :
+                    detail.Samples.Count == 0 ? "本局没有探测样本，无法判断是否出现异常。" :
+                    "本局未记录到异常。短暂波动可能发生在两次探测之间。";
+                if (count < detail.Events.Count) incidentSummary.Text += "其余事件可导出 CSV 查看。";
             }
             finally { incidents.EndUpdate(); }
         }

@@ -73,6 +73,32 @@ namespace SteamDirect
                     var preferences=new UserPreferences{ThemeColor="#FF0000",NightMode=true,TrayEnabled=false,RetentionDays=30,ReduceMotion=true,WindowDiagnostics=true,LogDirectory=temporary};settings.Synchronize=()=>settings.Reload(preferences,true);
                     settings.EnterPage();Need(settings.ThemeColor=="#FF0000"&&settings.NightMode&&!settings.TrayEnabled&&settings.RetentionDays==30&&settings.AutoStart&&settings.DiagnosticsEnabled,"Cached settings reload current configuration");
                 }
+                var olderStore = new HistoryStore(Path.Combine(temporary, "older.sqlite3"));
+                olderStore.Initialize();
+                long yesterday = new DateTimeOffset(DateTime.Today.AddDays(-1).AddHours(12)).ToUnixTimeMilliseconds();
+                var last = new HistorySession { Id = "last", Game = "Fixture", Mode = "直连", Target = "192.0.2.1", Start = yesterday, End = yesterday + 60000 };
+                var prior = new HistorySession { Id = "prior", Game = "Fixture", Mode = "代理", Target = last.Target, Start = yesterday - 120000, End = yesterday - 60000 };
+                olderStore.WriteBatch(new[] { last, prior }, new[] {
+                    new HistorySample { SessionId = last.Id, At = yesterday + 5000, Mode = "直连", ExternalMs = 25, GatewayMs = 2, AdapterUp = true },
+                    new HistorySample { SessionId = prior.Id, At = prior.Start + 5000, Mode = "代理", ExternalMs = 40, GatewayMs = 3, AdapterUp = true }
+                }, new[] { new HistoryEvent { Id = "incident", SessionId = last.Id, Start = yesterday + 5000, End = yesterday + 10000, Kind = "外部探测异常" } });
+                using (var history = new HistoryWindow(olderStore) { StartPosition = FormStartPosition.Manual, Location = new Point(-24000, -24000), ShowInTaskbar = false })
+                {
+                    history.Show();
+                    var rows = (ListView)Field(history, "records");
+                    var scope = (ComboBox)Field(history, "recordScope");
+                    Wait(() => rows.Items.Count == 2 && !(bool)Field(history, "loadingRecords"));
+                    Need(scope.SelectedIndex == 1 && ((Label)Field(history, "status")).Text.Contains("已显示最近历史"), "Empty today opens existing history once");
+                    Need(((RichTextBox)Field(history, "overviewText")).Text.Length > 0, "Overview loaded");
+                    Need(((Control)Field(history, "networkChart")).AccessibleDescription.Contains("1 个采样点"), "Chart loaded");
+                    Need(((ListView)Field(history, "incidents")).Items.Count == 1, "Timeline loaded");
+                    string comparison = ((RichTextBox)Field(history, "comparisonText")).Text;
+                    Need(comparison.Contains("直连 ·") && comparison.Contains("代理 ·") && comparison.Contains("样本不足"), "History shows both modes and insufficient-data status");
+                    scope.SelectedIndex = 0;
+                    Wait(() => rows.Items.Count == 0 && !(bool)Field(history, "loadingRecords"));
+                    Need(scope.SelectedIndex == 0 && ((Label)Field(history, "incidentSummary")).Text.Contains("今天") &&
+                        ((RichTextBox)Field(history, "comparisonText")).Text.Contains("今天"), "Explicit today selection remains in place and explains missing data");
+                }
                 int calls=0;using(var gate=new ManualResetEventSlim())using(var started=new ManualResetEventSlim())
                 using(var network=new NetworkWindow(_=>{},(server,update,log,token)=>{Interlocked.Increment(ref calls);started.Set();gate.Wait(token);return new NetworkEvidence();})){
                     network.StartPosition=FormStartPosition.Manual;network.Location=new Point(-24000,-24000);network.ShowInTaskbar=false;network.Show();
