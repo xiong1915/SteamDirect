@@ -14,7 +14,13 @@ namespace SteamDirect
         internal bool SelectedNavigation
         {
             get { return selected; }
-            set { if (selected == value) return; selected = value; UpdateMotion(); }
+            set
+            {
+                if (selected == value) return;
+                selected = value;
+                if (HorizontalIndicator) UpdateMotion();
+                else Invalidate();
+            }
         }
         internal bool HorizontalIndicator;
         internal UiIcon Icon = UiIcon.None;
@@ -49,7 +55,7 @@ namespace SteamDirect
         {
             if (interaction == null || selection == null) return;
             interaction.To(pressed ? 1F : hovering ? .55F : 0F, pressed ? 90 : 180);
-            selection.To(selected ? 1F : 0F, 150);
+            if (HorizontalIndicator) selection.To(selected ? 1F : 0F, 150);
         }
         protected override void Dispose(bool disposing) { if (disposing) { interaction.Dispose(); selection.Dispose(); } base.Dispose(disposing); }
         protected override void OnEnabledChanged(EventArgs e) { base.OnEnabledChanged(e); if (!Enabled) hovering = pressed = false; UpdateMotion(); }
@@ -77,14 +83,15 @@ namespace SteamDirect
                 amount <= .55F ? Motion.Blend(BackColor, hover, amount / .55F) : Motion.Blend(hover, down, (amount - .55F) / .45F);
             bool navigation=Icon==UiIcon.Home||Icon==UiIcon.Network||Icon==UiIcon.History||Icon==UiIcon.Settings;
             if (navigation)
-                fill = Motion.Blend(background, AppTheme.ThemeColor, selected ? .22F : .12F * amount);
+                fill = selected ? AppTheme.Background(AppTheme.Accent) :
+                    Motion.Blend(background, AppTheme.ThemeColor, .16F * amount);
             if (!TextOnly)
             {
                 using (var path = UiStyle.RoundRect(box, radius))
                 using (var brush = new SolidBrush(fill)) e.Graphics.FillPath(brush, path);
             }
             var bounds = CaptionBounds;
-            Color textColor = Enabled && navigation && selected ? AppTheme.Text(AppTheme.Ink) :
+            Color textColor = Enabled && navigation && selected ? AppTheme.AccentForeground :
                 Enabled ? ForeColor : AppTheme.Text(AppTheme.Disabled);
             var alignment = TextOnly ? TextFormatFlags.Left : TextFormatFlags.HorizontalCenter;
             if (Icon != UiIcon.None)
@@ -95,14 +102,11 @@ namespace SteamDirect
             }
             TextRenderer.DrawText(e.Graphics, Text, Font, bounds, textColor,
                 alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | CaptionFlags);
-            if (selected && selection.Current > 0 && Width > 8 && Height > 8)
+            if (selected && HorizontalIndicator && selection.Current > 0 && Width > 8 && Height > 8)
             {
                 using (var marker = new SolidBrush(AppTheme.Background(AppTheme.Accent)))
                 {
-                    if (HorizontalIndicator)
-                        e.Graphics.FillRectangle(marker, (int)(Width * .18F), Height - Math.Max(2, (int)(2 * scale)), Math.Max(1, (int)(Width * .64F * selection.Current)), Math.Max(2, (int)(2 * scale)));
-                    else
-                        e.Graphics.FillRectangle(marker, 1, (int)(Height * .22F), Math.Max(2, (int)(3 * scale)), Math.Max(1, (int)(Height * .56F * selection.Current)));
+                    e.Graphics.FillRectangle(marker, (int)(Width * .18F), Height - Math.Max(2, (int)(2 * scale)), Math.Max(1, (int)(Width * .64F * selection.Current)), Math.Max(2, (int)(2 * scale)));
                 }
             }
             if (Focused && ShowFocusCues)

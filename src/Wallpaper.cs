@@ -22,7 +22,7 @@ namespace SteamDirect
 
         internal static void PaintBanner(Graphics graphics, Rectangle bounds, GraphicsPath outline, Color surface, int dpi)
         {
-            int width = Math.Min(bounds.Width / 3, (int)(220 * dpi / 96F));
+            int width = Math.Min(bounds.Width / 2, (int)(540 * dpi / 96F));
             if (width < 2 || bounds.Height < 2) return;
             var banner = new Rectangle(bounds.Right - width, bounds.Top, width, bounds.Height);
             var image = artwork.Value;
@@ -41,12 +41,12 @@ namespace SteamDirect
                 graphics.InterpolationMode = InterpolationMode.Bilinear;
                 graphics.DrawImage(image, banner, source, GraphicsUnit.Pixel);
                 var veilBounds = Rectangle.Inflate(banner, 2, 0);
-                using (var veil = new LinearGradientBrush(veilBounds, surface, Color.FromArgb(116, surface), 0F))
+                using (var veil = new LinearGradientBrush(veilBounds, surface, Color.FromArgb(26, surface), 0F))
                 {
                     veil.Blend = new Blend
                     {
-                        Positions = new[] { 0F, .18F, .72F, 1F },
-                        Factors = new[] { 0F, 0F, .93F, 1F }
+                        Positions = new[] { 0F, .14F, .65F, 1F },
+                        Factors = new[] { 0F, .05F, .83F, 1F }
                     };
                     graphics.FillRectangle(veil, veilBounds);
                 }

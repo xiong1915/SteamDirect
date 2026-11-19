@@ -17,6 +17,7 @@ namespace SteamDirect
         internal static readonly Color Surface = Color.White;
         internal static readonly Color InputSurface = Color.FromArgb(242, 244, 247);
         internal static readonly Color ElevatedSurface = Color.FromArgb(236, 239, 243);
+        internal static readonly Color Rail = Color.FromArgb(231, 234, 239);
         internal static readonly Color Success = Color.FromArgb(24, 137, 110);
         internal static readonly Color Warning = Color.FromArgb(184, 102, 24);
         internal static readonly Color Error = Color.FromArgb(191, 72, 57);
@@ -69,10 +70,10 @@ namespace SteamDirect
         private static void UpdatePalette()
         {
             primary = ThemeColor;
-            canvas = IsDark ? Color.FromArgb(12, 19, 30) : Color.FromArgb(245, 248, 252);
-            surface = IsDark ? Color.FromArgb(24, 34, 49) : Color.FromArgb(252, 253, 255);
-            inkText = IsDark ? Color.FromArgb(235, 241, 250) : Color.FromArgb(28, 43, 63);
-            mutedText = IsDark ? Color.FromArgb(208, 223, 244) : Color.FromArgb(70, 86, 108);
+            canvas = IsDark ? Color.FromArgb(22, 23, 27) : Color.FromArgb(246, 247, 249);
+            surface = IsDark ? Color.FromArgb(33, 35, 41) : Color.White;
+            inkText = IsDark ? Color.FromArgb(239, 240, 244) : Color.FromArgb(28, 30, 37);
+            mutedText = IsDark ? Color.FromArgb(178, 183, 196) : Color.FromArgb(83, 89, 105);
             Color textSurface = IsDark ? surface : canvas;
             Color limit = IsDark ? Color.White : Color.Black;
             accentText = primary;
@@ -127,8 +128,9 @@ namespace SteamDirect
         internal static Color Background(Color light)
         {
             if (light.A == 0) return light;
-            if (light.ToArgb() == InputSurface.ToArgb()) return IsDark ? Color.FromArgb(17, 26, 40) : InputSurface;
-            if (light.ToArgb() == ElevatedSurface.ToArgb()) return IsDark ? Color.FromArgb(31, 46, 65) : ElevatedSurface;
+            if (light.ToArgb() == Rail.ToArgb()) return IsDark ? Color.FromArgb(28, 29, 34) : Rail;
+            if (light.ToArgb() == InputSurface.ToArgb()) return IsDark ? Color.FromArgb(27, 28, 34) : InputSurface;
+            if (light.ToArgb() == ElevatedSurface.ToArgb()) return IsDark ? Color.FromArgb(40, 42, 49) : ElevatedSurface;
             if (light.ToArgb() == Pill.ToArgb()) return tone;
             if (light.ToArgb() == Accent.ToArgb()) return primary;
             bool page = light.ToArgb() == Page.ToArgb();

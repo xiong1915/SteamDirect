@@ -147,7 +147,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.19";
+            Text = "Steam 直连助手 v3.0.20";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -160,72 +160,75 @@ namespace SteamDirect
             DoubleBuffered = true;
 
             BuildNavigation();
-            const int overviewHeight = 392;
+            const int overviewHeight = 400;
             recentHistory = new OverviewHistory(OpenOverviewHistoryAsync);
-            var root = UiStyle.Grid(1, 9);
+            var root = UiStyle.Grid(1, 8);
             root.Padding = UiStyle.PagePadding;
             root.BackColor = AppTheme.Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 60, 140, 68, recentHistory.NaturalHeight + UiStyle.Space12, 38, 0, 38, 0 })
+            foreach (int height in new[] { 208, recentHistory.NaturalHeight + UiStyle.Space12, 68, 38, 0, 38, 0 })
                 root.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             var overview = new ContentViewport(root, overviewHeight + recentHistory.NaturalHeight + UiStyle.Space12);
             pageHost.Controls.Add(overview);
             pages = new PageManager(pageHost, overview);
-            root.Controls.Add(new Label
-            {
-                Text = "Steam 直连", Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.HeroTitle,
-                ForeColor = AppTheme.Ink, TextAlign = ContentAlignment.MiddleLeft
-            }, 0, 0);
-
-            var action = UiStyle.Card(true);
+            var action = UiStyle.Card();
             action.ShowArtwork = true;
             action.Margin = new Padding(0, 0, 0, UiStyle.Space12);
-            var actionLayout = UiStyle.Grid(1, 3);
+            var actionLayout = UiStyle.Grid(2, 4);
+            actionLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
+            actionLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
+            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            actionLayout.Controls.Add(new Label
+            {
+                Text = "Steam 直连", Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.LeadTitle,
+                ForeColor = AppTheme.Ink, TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 0);
             runButton.Text = "严格直连并重启 Steam";
             runButton.Dock = DockStyle.Left;
+            runButton.MinimumSize = new Size(224, 0);
             runButton.Width = 244;
             runButton.Margin = Padding.Empty;
             AppTheme.ActionButton(runButton, true);
             runButton.Font = UiStyle.Button;
             runButton.Click += async (sender, args) => await RunAsync();
-            actionLayout.Controls.Add(runButton, 0, 0);
+            actionLayout.Controls.Add(runButton, 0, 1);
 
             statusLabel.Text = "退出游戏后开始";
             statusLabel.Dock = DockStyle.Fill;
             statusLabel.Margin = new Padding(0, UiStyle.Space4, 0, 0);
             statusLabel.AutoEllipsis = true;
             statusLabel.Font = UiStyle.Caption;
-            actionLayout.Controls.Add(statusLabel, 0, 1);
+            actionLayout.Controls.Add(statusLabel, 0, 2);
             elapsedLabel.Text = "";
             elapsedLabel.ForeColor = AppTheme.Muted;
             elapsedLabel.Font = UiStyle.Caption;
             elapsedLabel.Dock = DockStyle.Fill;
             elapsedLabel.Margin = Padding.Empty;
-            actionLayout.Controls.Add(elapsedLabel, 0, 2);
+            actionLayout.Controls.Add(elapsedLabel, 0, 3);
             action.Controls.Add(actionLayout);
-            root.Controls.Add(action, 0, 1);
+            root.Controls.Add(action, 0, 0);
 
             cleanupPanel = new CleanupPanel(Log) { Margin = Padding.Empty };
             root.Controls.Add(cleanupPanel, 0, 2);
 
             var flowHeader = CreateDisclosure("直连流程", out flowToggle);
             var logHeader = CreateDisclosure("操作日志", out logToggle);
-            root.Controls.Add(flowHeader, 0, 4);
-            root.Controls.Add(logHeader, 0, 6);
+            root.Controls.Add(flowHeader, 0, 3);
+            root.Controls.Add(logHeader, 0, 5);
             timeline.Dock = DockStyle.Fill;
             timeline.BackColor = AppTheme.Page;
             timeline.Visible = false;
-            root.Controls.Add(timeline, 0, 5);
+            root.Controls.Add(timeline, 0, 4);
 
             var logArea = UiStyle.Grid(1, 2);
             logArea.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space40));
             logArea.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             logArea.Visible = false;
-            root.Controls.Add(logArea, 0, 7);
+            root.Controls.Add(logArea, 0, 6);
             logButton.Text = "打开日志文件";
             logButton.Dock = DockStyle.Left;
             logButton.Width = 132;
@@ -233,15 +236,15 @@ namespace SteamDirect
             AppTheme.ActionButton(logButton, false);
             ((RoundedButton)logButton).TextOnly = true;
             logArea.Controls.Add(logButton, 0, 0);
-            root.Controls.Add(recentHistory, 0, 3);
+            root.Controls.Add(recentHistory, 0, 1);
             Action updateOverviewHeight = () => overview.SetMinimumHeight(overviewHeight + recentHistory.NaturalHeight +
-                UiStyle.Space12 + (root.RowStyles[5].Height > 0 ? 300 : 0) + (root.RowStyles[7].Height > 0 ? 192 : 0));
+                UiStyle.Space12 + (root.RowStyles[4].Height > 0 ? 300 : 0) + (root.RowStyles[6].Height > 0 ? 192 : 0));
             recentHistory.HeightChanged += () =>
             {
                 root.SuspendLayout();
                 try
                 {
-                    root.RowStyles[3].Height = UiStyle.Scale(root, recentHistory.NaturalHeight + UiStyle.Space12);
+                    root.RowStyles[1].Height = UiStyle.Scale(root, recentHistory.NaturalHeight + UiStyle.Space12);
                     updateOverviewHeight();
                 }
                 finally { root.ResumeLayout(true); }
@@ -262,8 +265,8 @@ namespace SteamDirect
                 finally { root.ResumeLayout(true); }
                 if (expand) overview.RevealTop(section, UiStyle.Scale(root, 125));
             };
-            flowToggle.Click += (sender, args) => toggleSection("直连流程", flowToggle, timeline, 5, 300);
-            logToggle.Click += (sender, args) => toggleSection("操作日志", logToggle, logArea, 7, 192);
+            flowToggle.Click += (sender, args) => toggleSection("直连流程", flowToggle, timeline, 4, 300);
+            logToggle.Click += (sender, args) => toggleSection("操作日志", logToggle, logArea, 6, 192);
 
             logButton.Click += (s, e) =>
             {
@@ -352,33 +355,33 @@ namespace SteamDirect
         private void BuildNavigation()
         {
             var shell = UiStyle.Grid(2, 1);
-            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168));
+            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 184));
             shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var rail = UiStyle.Grid(1, 7); rail.Padding = new Padding(12, 24, 12, 16);
+            var rail = UiStyle.Grid(1, 7);
             rail.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+            rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
             for (int i = 0; i < 4; i++) rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
             rail.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-            var brand = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
+            var brand = UiStyle.Grid(2, 1);
+            brand.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 38));
             brand.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            brand.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
             brand.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             var mascot = new PictureBox { Image = Icon.ToBitmap(), Dock = DockStyle.Fill,
-                SizeMode = PictureBoxSizeMode.Zoom, TabStop = false, Margin = new Padding(32, 0, 32, 0) };
+                SizeMode = PictureBoxSizeMode.Zoom, TabStop = false, Margin = new Padding(0, 16, 6, 16) };
             using (var stream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("SteamDirect.Mascot"))
                 if (stream != null)
                     using (var source = Image.FromStream(stream))
                     {
                         mascot.Image.Dispose();
-                        // The rail shows a 52-DIP icon. Keep enough pixels for high DPI without retaining the source raster.
+                        // Retain a small, high-DPI-sized raster for the navigation.
                         mascot.Image = new Bitmap(source, 256, 256);
                     }
             mascot.Disposed += (sender, args) => mascot.Image.Dispose();
             brand.Controls.Add(mascot, 0, 0);
             brand.Controls.Add(new Label { Text = "SteamDirect", Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter, Font = UiStyle.SectionTitle }, 0, 1);
+                Margin = Padding.Empty, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.BodyStrong }, 1, 0);
             rail.Controls.Add(brand, 0, 0);
             string[] pages = { "概览", "网络诊断", "游戏记录", "设置" };
             UiIcon[] icons = { UiIcon.Home, UiIcon.Network, UiIcon.History, UiIcon.Settings };
@@ -393,13 +396,11 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.19", ForeColor = AppTheme.Muted,
-                Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
-            var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Page };
-            sidebar.Padding = new Padding(8);
-            sidebar.Margin = new Padding(12, 12, 0, 12);
+            rail.Controls.Add(new Label { Text = "v3.0.20", ForeColor = AppTheme.Muted,
+                Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption }, 0, 6);
+            var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
+            sidebar.Padding = new Padding(12, 12, 12, 8);
             sidebar.Controls.Add(rail);
-            rail.Padding = new Padding(0, 8, 0, 0);
             shell.Controls.Add(sidebar, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);
             Controls.Add(shell);

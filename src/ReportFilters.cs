@@ -43,7 +43,7 @@ namespace SteamDirect
             arrangedButtonFont = query.Font;
             int gap = UiStyle.Scale(this, 12), label = Math.Max(UiStyle.Scale(this, 24), UiStyle.TextHeight(labels[0]) + UiStyle.Scale(this, 4));
             int height = Math.Max(UiStyle.Scale(this, 40), UiStyle.TextHeight(query) + UiStyle.Scale(this, 16));
-            bool compact = Width < UiStyle.Scale(this, 790);
+            bool compact = Width < UiStyle.Scale(this, 660);
             int mode = UiStyle.Scale(this, 116), scope = UiStyle.Scale(this, 160), q = UiStyle.Scale(this, 88), exp = UiStyle.Scale(this, 108);
             int search = Math.Max(1, Width - mode - scope - gap * (compact ? 2 : 4) - (compact ? 0 : q + exp));
             int x = 0;

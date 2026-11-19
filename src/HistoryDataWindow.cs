@@ -29,7 +29,7 @@ namespace SteamDirect
         internal void Add(string title, Control page)
         {
             int index = pages.Count;
-            var button = new RoundedButton { HorizontalIndicator = true, Text = title, AutoSize = false, Width = 116, Height = UiStyle.ButtonHeight, MinimumSize = new Size(116, UiStyle.ButtonHeight), Margin = new Padding(0, 0, 8, 0) };
+            var button = new RoundedButton { HorizontalIndicator = true, Text = title, AutoSize = false, Width = 100, Height = UiStyle.ButtonHeight, Margin = new Padding(0, 0, 8, 0), CaptionInset = UiStyle.Space8 };
             AppTheme.ActionButton(button, false);
             button.Font = UiStyle.Button;
             button.Click += (sender, args) =>
@@ -65,14 +65,15 @@ namespace SteamDirect
             if (fittedWidth == Width && fittedDpi == dpi) return;
             fittedWidth = Width;
             fittedDpi = dpi;
-            int required = UiStyle.Scale(this, 116), height = UiStyle.Scale(this, UiStyle.ButtonHeight);
+            int required = UiStyle.Scale(this, 100), height = UiStyle.Scale(this, UiStyle.ButtonHeight);
             int margin = 0;
             foreach (var button in buttons) {
-                required = Math.Max(required, TextRenderer.MeasureText(button.Text, button.Font).Width + UiStyle.Scale(this, 32));
+                required = Math.Max(required, TextRenderer.MeasureText(button.Text, button.Font).Width + UiStyle.Scale(this, 20));
                 height = Math.Max(height, UiStyle.TextHeight(button) + UiStyle.Scale(this, 16));
                 margin = Math.Max(margin, button.Margin.Horizontal);
             }
             int columns = Math.Max(1, Math.Min(buttons.Count, Width / (required + margin)));
+            if (buttons.Count == 4 && columns == 3) columns = 2;
             int width = Math.Max(1, Width / columns - margin);
             foreach (var button in buttons) { button.MinimumSize = Size.Empty; button.Size = new Size(width, height); }
             int total = ((buttons.Count + columns - 1) / columns) * (height + UiStyle.Scale(this, 8));

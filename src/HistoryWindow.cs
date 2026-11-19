@@ -111,7 +111,7 @@ namespace SteamDirect
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
 
-            root.Controls.Add(UiStyle.Header("游戏记录", "选择对局查看报告"), 0, 0);
+            root.Controls.Add(UiStyle.Header("游戏记录", "按游戏、网络模式和日期查找"), 0, 0);
 
             var filterCard = UiStyle.Card(true);
             filterCard.Margin = new Padding(0, 0, 0, UiStyle.Gap);
@@ -140,19 +140,14 @@ namespace SteamDirect
             listLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
             listLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             listLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
-            var listHeader = Grid(2, 1);
-            listHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            listHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 122));
-            listHeader.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            listHeader.Controls.Add(new Label { Text = "对局", Font = UiStyle.SectionTitle,
-                Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
             pageLabel.Text = "第 1 页";
             pageLabel.Dock = DockStyle.Fill;
+            pageLabel.Margin = Padding.Empty;
+            pageLabel.Font = UiStyle.Caption;
             pageLabel.ForeColor = Muted;
-            pageLabel.TextAlign = ContentAlignment.MiddleRight;
+            pageLabel.TextAlign = ContentAlignment.MiddleLeft;
             pageLabel.AutoEllipsis = true;
-            listHeader.Controls.Add(pageLabel, 1, 0);
-            listLayout.Controls.Add(listHeader, 0, 0);
+            listLayout.Controls.Add(pageLabel, 0, 0);
             SetupList(records, "游戏历史记录");
             records.Font = UiStyle.Caption;
             records.MultiSelect = false;

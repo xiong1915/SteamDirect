@@ -8,7 +8,7 @@ namespace SteamDirect
 {
     internal sealed class OverviewHistory : TableLayoutPanel
     {
-        private const int HeaderHeight = UiStyle.Space40;
+        private const int HeaderHeight = UiStyle.Space48;
         private const int EntryHeight = UiStyle.Space48;
         private readonly Entry[] entries = new Entry[5];
         private readonly Label state = Caption("", UiStyle.Body, AppTheme.Muted);
@@ -122,6 +122,8 @@ namespace SteamDirect
             private readonly RoundedButton game = Link("", AppTheme.Ink);
             private readonly Label timing = Caption("", UiStyle.Caption, AppTheme.Muted);
             private readonly Label status = Caption("", UiStyle.Caption, AppTheme.Muted);
+            private readonly TableLayoutPanel row = UiStyle.Grid(3, 2);
+            private bool wide;
             private HistorySession current;
 
             internal Entry(Func<string, Task> open)
@@ -130,15 +132,15 @@ namespace SteamDirect
                 Margin = Padding.Empty;
                 Padding = new Padding(0, 1, 0, 0);
                 BackColor = AppTheme.Page;
-                var row = UiStyle.Grid(2, 2);
+                row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0));
                 row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
                 row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
                 row.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
                 row.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
                 status.TextAlign = ContentAlignment.MiddleLeft;
-                row.Controls.Add(game, 0, 0);
-                row.Controls.Add(timing, 0, 1);
-                row.Controls.Add(status, 1, 0);
+                row.Controls.Add(game, 1, 0);
+                row.Controls.Add(timing, 1, 1);
+                row.Controls.Add(status, 2, 0);
                 row.SetRowSpan(status, 2);
                 game.Click += async (sender, args) =>
                 {
@@ -146,6 +148,26 @@ namespace SteamDirect
                 };
                 Controls.Add(row);
                 Visible = false;
+            }
+
+            protected override void OnSizeChanged(EventArgs args)
+            {
+                base.OnSizeChanged(args);
+                if (row == null) return;
+                bool split = Width >= UiStyle.Scale(this, 760);
+                if (wide == split) return;
+                wide = split;
+                row.SuspendLayout();
+                try
+                {
+                    row.ColumnStyles[0].Width = wide ? 42 : 0;
+                    row.ColumnStyles[1].Width = wide ? 58 : 100;
+                    row.SetCellPosition(game, new TableLayoutPanelCellPosition(wide ? 0 : 1, 0));
+                    row.SetRowSpan(game, wide ? 2 : 1);
+                    row.SetCellPosition(timing, new TableLayoutPanelCellPosition(1, wide ? 0 : 1));
+                    row.SetRowSpan(timing, wide ? 2 : 1);
+                }
+                finally { row.ResumeLayout(true); }
             }
 
             internal void Display(HistorySession session)

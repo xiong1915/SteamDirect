@@ -392,7 +392,8 @@ namespace SteamDirect
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
             int actionHeight = UiStyle.DensePadding.Vertical + UiStyle.Space32 + UiStyle.ButtonHeight +
                 UiStyle.Space32 + UiStyle.Space4 + UiStyle.Gap;
-            int statusHeight = 2 * (UiStyle.DensePadding.Vertical + UiStyle.Space24 + UiStyle.CompactHeight + UiStyle.Space32) + UiStyle.SmallGap + UiStyle.Gap;
+            int statusHeight = 2 * (UiStyle.Space24 + UiStyle.CompactHeight + UiStyle.Space32) +
+                UiStyle.DensePadding.Vertical + UiStyle.SmallGap + UiStyle.Gap;
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, actionHeight));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, statusHeight));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
@@ -481,18 +482,20 @@ namespace SteamDirect
             return panel;
         }
 
-        private TableLayoutPanel BuildStatusCards()
+        private Control BuildStatusCards()
         {
+            var group = UiStyle.Card(true);
+            group.Margin = new Padding(0, 0, 0, UiStyle.Gap);
             var cards = UiStyle.Grid(3, 2);
-            cards.Margin = new Padding(0, 0, 0, UiStyle.Gap);
             for (int i = 0; i < 3; i++) cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333F));
             cards.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
             cards.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
             string[] titles = { "本地网络", "代理 / VPN", "Steam 服务", "Steam 客户端", "CS2 进程", "对局服务器" };
             for (int i = 0; i < titles.Length; i++)
             {
-                var card = UiStyle.Card(true);
-                card.Margin = new Padding(0, 0, i % 3 == 2 ? 0 : UiStyle.Gap, i < 3 ? UiStyle.SmallGap : 0);
+                var cell = new SectionRule { Dock = DockStyle.Fill,
+                    BackColor = AppTheme.Surface, Margin = new Padding(0, 0, i % 3 == 2 ? 0 : UiStyle.Gap, 0),
+                    Padding = new Padding(0, UiStyle.Space8, 0, 0) };
                 var inner = UiStyle.Grid(1, 3);
                 inner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
                 inner.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
@@ -501,13 +504,14 @@ namespace SteamDirect
                 inner.Controls.Add(new Label { Text = titles[i], Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.Body, ForeColor = AppTheme.Ink, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
                 states[i] = new Label { Text = "待检测", Dock = DockStyle.Fill, Margin = Padding.Empty, ForeColor = AppTheme.Ink, Font = UiStyle.SectionTitle, TextAlign = ContentAlignment.MiddleLeft };
                 states[i].AccessibleName = titles[i] + "状态";
-                notes[i] = new Label { Text = i == 5 ? "选填服务器地址。官方匹配可能使用中继。" : "等待检测", Dock = DockStyle.Fill, Margin = Padding.Empty, AutoEllipsis = true, Font = UiStyle.Caption, ForeColor = AppTheme.Muted };
+                notes[i] = new Label { Text = i == 5 ? "可填服务器地址" : "", Dock = DockStyle.Fill, Margin = Padding.Empty, AutoEllipsis = true, Font = UiStyle.Caption, ForeColor = AppTheme.Muted };
                 inner.Controls.Add(states[i], 0, 1);
                 inner.Controls.Add(notes[i], 0, 2);
-                card.Controls.Add(inner);
-                cards.Controls.Add(card, i % 3, i / 3);
+                cell.Controls.Add(inner);
+                cards.Controls.Add(cell, i % 3, i / 3);
             }
-            return cards;
+            group.Controls.Add(cards);
+            return group;
         }
 
         private RoundedPanel BuildReadout(string title, TextBox box, Color foreground, Padding margin)

@@ -82,7 +82,8 @@ namespace SteamDirect
         internal static readonly Font BodyStrong = new Font(Family, 11F, FontStyle.Bold);
         internal static readonly Font Caption = new Font(Family, 10F);
         internal static readonly Font Button = BodyStrong;
-        internal static readonly Font PageTitle = new Font(Family, 24F);
+        internal static readonly Font PageTitle = new Font(Family, 24F, FontStyle.Bold);
+        internal static readonly Font LeadTitle = new Font(Family, 27F, FontStyle.Bold);
         internal static readonly Font SectionTitle = new Font(Family, 12F, FontStyle.Bold);
         internal static readonly Font HeroTitle = new Font(Family, 18F, FontStyle.Bold);
         internal static readonly Font DiagramCaption = new Font(Family, 13.5F, FontStyle.Regular, GraphicsUnit.Pixel);
@@ -127,7 +128,7 @@ namespace SteamDirect
             header.Controls.Add(new Label { Text = title, Dock = DockStyle.Fill, Margin = Padding.Empty,
                 Font = PageTitle, ForeColor = AppTheme.Ink, AutoEllipsis = true, TextAlign=ContentAlignment.MiddleLeft }, 0, 0);
             header.Controls.Add(new Label { Text = description, Dock = DockStyle.Fill, Margin = Padding.Empty,
-                Font = Body, ForeColor = AppTheme.Muted, AutoEllipsis = true }, 0, 1);
+                Font = Caption, ForeColor = AppTheme.Muted, AutoEllipsis = true }, 0, 1);
             header.Margin = new Padding(0, 0, 0, Space12);
             return header;
         }
