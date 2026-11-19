@@ -26,6 +26,7 @@ namespace SteamDirect
             try { base.OnLayout(args); } finally { if (trace != null) trace.EndLayout(); }
         }
         private bool displayPending, fitting, liveResize, resizePending, displayChangedDuringDrag;
+        private Size dragStartClientSize;
         private string dragScreen;
         internal bool IsLiveResizing { get { return liveResize; } }
 
@@ -39,6 +40,7 @@ namespace SteamDirect
             if (!liveResize)
             {
                 dragScreen = WindowEnvironment.OffscreenTests ? null : Screen.FromHandle(Handle).DeviceName;
+                dragStartClientSize = ClientSize;
                 liveResize = true;
                 resizePending = displayChangedDuringDrag = false;
                 SuspendLayout();
@@ -59,15 +61,17 @@ namespace SteamDirect
                 if (fitMonitor && !WindowEnvironment.OffscreenTests &&
                     (displayChangedDuringDrag || dragScreen != Screen.FromHandle(Handle).DeviceName))
                     CheckWorkArea();
-                repaint = resizePending || displayChangedDuringDrag;
-                if (resizePending && !IsDisposed) base.OnResize(EventArgs.Empty);
+                bool resized = resizePending || ClientSize != dragStartClientSize;
+                repaint = resized || displayChangedDuringDrag;
+                if (resized && !IsDisposed) base.OnResize(EventArgs.Empty);
             }
             finally
             {
                 liveResize = resizePending = displayChangedDuringDrag = false;
                 dragScreen = null;
-                ResumeLayout(repaint);
+                ResumeLayout(false);
             }
+            if (repaint && !IsDisposed) PerformLayout();
             if (repaint && Visible) Invalidate(true);
         }
         private FormWindowState previousState;

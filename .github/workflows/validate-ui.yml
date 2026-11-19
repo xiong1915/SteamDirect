@@ -24,12 +24,12 @@ jobs:
         run: .\Build.ps1
       - name: Run isolated regression tests
         run: .\tests\Run.ps1
-      - name: Offscreen layout and restore acceptance
-        run: .\tests\Run-Render.ps1
       - name: Offscreen navigation and resource acceptance (1080p and 4K)
         run: |
           .\tests\Run-Navigation.ps1 -OutputDirectory dist/navigation-1080p -ProductionBootstrap
           .\tests\Run-Navigation.ps1 -OutputDirectory dist/navigation-4k -FourK -ProductionBootstrap
+      - name: Offscreen layout and restore acceptance
+        run: .\tests\Run-Render.ps1
       - name: Preserve offscreen acceptance artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

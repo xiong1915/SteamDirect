@@ -17,6 +17,7 @@ namespace SteamDirect
         [DllImport("user32.dll")] private static extern int GetGuiResources(IntPtr process, int kind);
         [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr h,int m,IntPtr w,IntPtr l);
         [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
+        [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
         [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
         [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
         [DllImport("gdi32.dll",EntryPoint="GetObjectW")]private static extern int GetFontObject(IntPtr h,int size,IntPtr data);
@@ -32,6 +33,8 @@ namespace SteamDirect
                 var initialize=typeof(HighDpi).GetMethod("InitializeUi",BindingFlags.Static|BindingFlags.NonPublic);
                 if(initialize!=null)initialize.Invoke(null,null);else{Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);}
             }else{HighDpi.EnablePerMonitorContext();Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);}
+            if (Environment.GetEnvironmentVariable("STEAMDIRECT_TEST_NATIVE_96") == "1")
+                Need(SetThreadDpiAwarenessContext(new IntPtr(-1)) != IntPtr.Zero, "Cannot initialize native 96-DPI fixture.");
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException+=(s,e)=>{Console.Error.WriteLine(e.Exception);Environment.Exit(1);};
             using (var context = new ApplicationContext())
@@ -195,7 +198,11 @@ namespace SteamDirect
                 Need(layouts == 0, "Full main-window layout ran during corner drag");
             }
             finally { SendMessage(main.Handle, 0x0232, IntPtr.Zero, IntPtr.Zero); } // WM_EXITSIZEMOVE
-            Need(page.Bounds == host.PageBounds && page.Bounds != original, "Active page did not fit the released window");
+            Need(main.ClientSize == new Size(size.Width - 60, size.Height - 50),
+                "The fixture did not apply the requested final drag size: starting_client=" + size + " client=" + main.ClientSize);
+            Need(page.Bounds == host.PageBounds && page.Bounds != original, "Active page did not fit the released window: original=" +
+                original + " current=" + page.Bounds + " expected=" + host.PageBounds + " client=" + main.ClientSize +
+                " starting_client=" + size + " layouts=" + layouts);
             Console.WriteLine("CORNER drag_steps=10 layouts_during=0 layouts_on_release=" + layouts + " elapsed_ms=" + clock.ElapsedMilliseconds);
             layouts = 0;
             var origin = main.Location;
