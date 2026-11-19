@@ -13,7 +13,7 @@ namespace SteamDirect
         private readonly FlowLayoutPanel navigation = new FlowLayoutPanel { Dock = DockStyle.Top, Height = UiStyle.ButtonHeight + UiStyle.SmallGap, WrapContents = true, Margin = Padding.Empty };
         private readonly Panel content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, UiStyle.SmallGap, 0, 0) };
         private readonly List<Control> pages = new List<Control>();
-        private readonly List<Button> buttons = new List<Button>();
+        private readonly List<RoundedButton> buttons = new List<RoundedButton>();
         private int fittedWidth = -1, fittedDpi;
         internal int SelectedIndex { get; private set; }
         internal int PageCount { get { return pages.Count; } }
@@ -55,19 +55,30 @@ namespace SteamDirect
             if (fittedWidth == Width && fittedDpi == dpi) return;
             fittedWidth = Width;
             fittedDpi = dpi;
-            int required = UiStyle.Scale(this, 100), height = UiStyle.Scale(this, UiStyle.ButtonHeight);
+            int required = UiStyle.Scale(this, 72), height = UiStyle.Scale(this, UiStyle.ButtonHeight);
             int margin = 0;
-            foreach (var button in buttons) {
-                required = Math.Max(required, TextRenderer.MeasureText(button.Text, button.Font).Width + UiStyle.Scale(this, 20));
+            foreach (var button in buttons)
+            {
+                int caption = TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, RoundedButton.CaptionFlags).Width;
+                required = Math.Max(required, caption + 2 * UiStyle.Scale(this, button.CaptionInset));
                 height = Math.Max(height, UiStyle.TextHeight(button) + UiStyle.Scale(this, 16));
                 margin = Math.Max(margin, button.Margin.Horizontal);
             }
             int columns = Math.Max(1, Math.Min(buttons.Count, Width / (required + margin)));
             if (buttons.Count == 4 && columns == 3) columns = 2;
             int width = Math.Max(1, Width / columns - margin);
-            foreach (var button in buttons) { button.MinimumSize = Size.Empty; button.Size = new Size(width, height); }
-            int total = ((buttons.Count + columns - 1) / columns) * (height + UiStyle.Scale(this, 8));
-            if (navigation.Height != total) navigation.Height = total;
+            int rows = (buttons.Count + columns - 1) / columns;
+            navigation.SuspendLayout();
+            try
+            {
+                foreach (var button in buttons)
+                {
+                    button.MinimumSize = Size.Empty;
+                    button.Size = new Size(width, height);
+                }
+                navigation.Height = rows * height + UiStyle.Scale(this, UiStyle.SmallGap);
+            }
+            finally { navigation.ResumeLayout(true); }
         }
 
         private void RefitNavigation()
@@ -107,7 +118,7 @@ namespace SteamDirect
         private void SetPageSelected(int index, bool selected)
         {
             pages[index].Visible = selected;
-            ((RoundedButton)buttons[index]).SelectedNavigation = selected;
+            buttons[index].SelectedNavigation = selected;
             AppTheme.SetBackground(buttons[index], selected ? AppTheme.Pill : AppTheme.Surface);
             AppTheme.SetForeground(buttons[index], selected ? AppTheme.Accent : AppTheme.Muted);
         }

@@ -49,6 +49,33 @@ namespace SteamDirect {
        UiStyle.SectionTitle.SizeInPoints == 13.5F && UiStyle.Body.SizeInPoints == 10.5F &&
        UiStyle.Caption.SizeInPoints == 9, "Fluent typography must use logical pixels at 96 DPI.");
    WindowEnvironment.OffscreenTests=true; Motion.Reduced=true;
+   int originalDpi = WindowEnvironment.LayoutDpi;
+   try
+   {
+    WindowEnvironment.LayoutDpi = 192;
+    using (var font = new Font(UiStyle.Button.FontFamily, 28, UiStyle.Button.Style, GraphicsUnit.Pixel))
+    using (var sections = new HistorySections { Dock = DockStyle.None, Size = new Size(429, 408) })
+    {
+     foreach (string caption in new[] { "本局报告", "网络波动", "异常时间线", "历史参考" })
+      sections.Add(caption, new Panel());
+     var nav = (FlowLayoutPanel)typeof(HistorySections).GetField("navigation", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(sections);
+     foreach (RoundedButton button in nav.Controls)
+     {
+      button.Font = font;
+      button.Margin = new Padding(0, 0, 16, 0);
+     }
+     sections.Width = 430;
+     nav.PerformLayout();
+     var first = (RoundedButton)nav.Controls[0];
+     Check(nav.Controls[1].Top == first.Top && nav.Controls[2].Top > first.Top && nav.Controls[2].Top == nav.Controls[3].Top,
+      "The 430-pixel history pane at 200% must fit the four report tabs into two rows.");
+     Check(sections.Height - nav.Height >= 160, "Leave a usable chart area below the report tabs.");
+     foreach (RoundedButton button in nav.Controls)
+      Check(TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, RoundedButton.CaptionFlags).Width <= button.CaptionBounds.Width,
+       "History tab captions must fit before choosing a column count.");
+    }
+   }
+   finally { WindowEnvironment.LayoutDpi = originalDpi; }
    using(var chart=new HistoryNetworkChart()) using(var bitmap=new Bitmap(640,360)) {
     chart.Size=bitmap.Size;
     var data=new List<HistorySample> {
