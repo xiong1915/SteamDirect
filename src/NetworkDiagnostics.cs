@@ -509,17 +509,9 @@ namespace SteamDirect
                 var cell = new SectionRule { Dock = DockStyle.Fill,
                     BackColor = AppTheme.Surface, Margin = new Padding(0, 0, i % 3 == 2 ? 0 : UiStyle.Gap, 0),
                     Padding = new Padding(0, UiStyle.Space8, 0, 0) };
-                var inner = UiStyle.Grid(1, 3);
-                inner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-                inner.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
-                inner.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.CompactHeight));
-                inner.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-                inner.Controls.Add(new Label { Text = titles[i], Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.Body, ForeColor = AppTheme.Ink, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
-                states[i] = new Label { Text = "待检测", Dock = DockStyle.Fill, Margin = Padding.Empty, ForeColor = AppTheme.Ink, Font = UiStyle.SectionTitle, TextAlign = ContentAlignment.MiddleLeft };
-                states[i].AccessibleName = titles[i] + "状态";
-                notes[i] = new Label { Text = i == 5 ? "可填服务器地址" : "", Dock = DockStyle.Fill, Margin = Padding.Empty, AutoEllipsis = true, Font = UiStyle.Caption, ForeColor = AppTheme.Muted };
-                inner.Controls.Add(states[i], 0, 1);
-                inner.Controls.Add(notes[i], 0, 2);
+                var inner = UiStyle.Metric(titles[i], UiIcon.None, out states[i], out notes[i]);
+                states[i].Text = "待检测";
+                if (i == 5) notes[i].Text = "可填服务器地址";
                 cell.Controls.Add(inner);
                 cards.Controls.Add(cell, i % 3, i / 3);
             }

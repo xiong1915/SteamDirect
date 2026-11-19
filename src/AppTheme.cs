@@ -8,13 +8,13 @@ namespace SteamDirect
 {
     internal static class AppTheme
     {
-        internal const string DefaultAccent = "#60A5FA";
-        private static readonly Color DefaultAccentColor = Color.FromArgb(0x60, 0xA5, 0xFA);
+        internal const string DefaultAccent = "#D1D5DB";
+        private static readonly Color DefaultAccentColor = Color.FromArgb(0xD1, 0xD5, 0xDB);
         internal static bool IsDark = true;
         internal static readonly Color Page = Color.FromArgb(246, 247, 249);
         internal static readonly Color Ink = Color.FromArgb(29, 33, 41);
         internal static readonly Color Muted = Color.FromArgb(99, 108, 122);
-        internal static readonly Color Accent = Color.FromArgb(103, 80, 164);
+        internal static readonly Color Accent = DefaultAccentColor;
         internal static readonly Color Pill = Color.FromArgb(234, 235, 240);
         internal static readonly Color Surface = Color.White;
         internal static readonly Color InputSurface = Color.FromArgb(242, 244, 247);
@@ -23,21 +23,24 @@ namespace SteamDirect
         internal static readonly Color Success = Color.FromArgb(24, 137, 110);
         internal static readonly Color Warning = Color.FromArgb(184, 102, 24);
         internal static readonly Color Error = Color.FromArgb(191, 72, 57);
-        internal static readonly Color Info = Accent;
+        internal static readonly Color Info = Muted;
         internal static readonly Color Disabled = Color.FromArgb(145, 145, 145);
         internal static Color ThemeColor = DefaultAccentColor;
         private static Color primary, accentText, tone, primaryText;
         private static Color canvas, surface, mutedText, inkText, successText, warningText, errorText;
-        private static readonly Color DarkRail = Color.FromArgb(0x15, 0x19, 0x22);
-        private static readonly Color DarkElevated = Color.FromArgb(0x22, 0x2B, 0x38);
-        private static readonly Color DarkSelected = Color.FromArgb(0x26, 0x36, 0x4A);
-        private static readonly Color DarkHover = Color.FromArgb(0x28, 0x33, 0x42);
-        private static readonly Color DarkBorder = Color.FromArgb(0x30, 0x3A, 0x48);
-        private static readonly Color DarkAccentHover = Color.FromArgb(0x93, 0xC5, 0xFD);
+        private static readonly Color DarkRail = Color.FromArgb(0x15, 0x19, 0x1F);
+        private static readonly Color DarkElevated = Color.FromArgb(0x22, 0x28, 0x32);
+        private static readonly Color DarkSelected = Color.FromArgb(0x30, 0x36, 0x40);
+        private static readonly Color DarkHover = Color.FromArgb(0x29, 0x2F, 0x39);
+        private static readonly Color DarkBorderSubtle = Color.FromArgb(0x26, 0x2C, 0x35);
+        private static readonly Color AccentHover = Color.FromArgb(0xF3, 0xF4, 0xF6);
+        private static readonly Color AccentPressed = Color.FromArgb(0xB8, 0xBE, 0xC8);
+        private static Color focus;
         internal static readonly Color Subtle = Color.FromArgb(109, 117, 130);
         internal static Color AccentForeground { get { return primaryText; } }
-        internal static Color Edge { get { return IsDark ? DarkBorder : Blend(surface, inkText, .13); } }
-        internal static Color Focus { get { return accentText; } }
+        internal static Color Edge { get { return IsDark ? DarkSelected : Blend(surface, inkText, .13); } }
+        internal static Color Divider { get { return IsDark ? DarkBorderSubtle : Edge; } }
+        internal static Color Focus { get { return focus; } }
         internal static Color Hover { get { return IsDark ? DarkHover : Blend(tone, accentText, .12); } }
 
         internal static bool TryColor(string value, out Color color)
@@ -79,11 +82,11 @@ namespace SteamDirect
 
         private static void UpdatePalette()
         {
-            primary = ThemeColor;
-            canvas = IsDark ? Color.FromArgb(0x0F, 0x11, 0x16) : Page;
-            surface = IsDark ? Color.FromArgb(0x1B, 0x21, 0x2B) : Color.White;
-            inkText = IsDark ? Color.FromArgb(0xF2, 0xF5, 0xF9) : Color.FromArgb(28, 30, 37);
-            mutedText = IsDark ? Color.FromArgb(0xA8, 0xB3, 0xC2) : Color.FromArgb(83, 89, 105);
+            primary = DefaultAccentColor;
+            canvas = IsDark ? Color.FromArgb(0x10, 0x12, 0x16) : Page;
+            surface = IsDark ? Color.FromArgb(0x1A, 0x1F, 0x27) : Color.White;
+            inkText = IsDark ? AccentHover : Color.FromArgb(28, 30, 37);
+            mutedText = IsDark ? Color.FromArgb(0xA5, 0xAB, 0xB4) : Color.FromArgb(83, 89, 99);
             Color textSurface = IsDark ? surface : canvas;
             Color limit = IsDark ? Color.White : Color.Black;
             accentText = primary;
@@ -95,10 +98,14 @@ namespace SteamDirect
                 accentText = Blend(accentText, limit, .12);
                 if (!IsDark) tone = Blend(Color.White, accentText, .08);
             }
-            primaryText = Contrast(primary, Color.White) >= Contrast(primary, Color.Black) ? Color.White : Color.Black;
-            successText = Readable(IsDark ? Color.FromArgb(0x4A, 0xDE, 0x80) : Success, textSurface);
-            warningText = Readable(IsDark ? Color.FromArgb(0xFB, 0xBF, 0x24) : Warning, textSurface);
-            errorText = Readable(IsDark ? Color.FromArgb(0xF8, 0x71, 0x71) : Error, textSurface);
+            primaryText = Color.FromArgb(0x17, 0x1A, 0x20);
+            // A saved custom color controls focus intensity only. Action fills and text remain neutral.
+            int gray = (int)Math.Round(.2126 * ThemeColor.R + .7152 * ThemeColor.G + .0722 * ThemeColor.B);
+            focus = ThemeColor.ToArgb() == DefaultAccentColor.ToArgb()
+                ? mutedText : Readable(Color.FromArgb(gray, gray, gray), textSurface);
+            successText = Readable(IsDark ? Color.FromArgb(0x4C, 0xAF, 0x79) : Success, textSurface);
+            warningText = Readable(IsDark ? Color.FromArgb(0xD9, 0xA4, 0x41) : Warning, textSurface);
+            errorText = Readable(IsDark ? Color.FromArgb(0xD9, 0x6B, 0x6B) : Error, textSurface);
         }
 
         private static Color Readable(Color color, Color background)
@@ -132,8 +139,8 @@ namespace SteamDirect
             if (light.ToArgb() == Warning.ToArgb()) return warningText;
             if (light.ToArgb() == Error.ToArgb()) return errorText;
             if (light.ToArgb() == Disabled.ToArgb() || light.ToArgb() == SystemColors.GrayText.ToArgb())
-                return IsDark ? Color.FromArgb(0x59, 0x64, 0x74) : Subtle;
-            if (light.ToArgb() == Subtle.ToArgb()) return IsDark ? Color.FromArgb(0x7D, 0x89, 0x98) : Subtle;
+                return IsDark ? Color.FromArgb(0x59, 0x61, 0x6D) : Subtle;
+            if (light.ToArgb() == Subtle.ToArgb()) return IsDark ? Color.FromArgb(0x7B, 0x84, 0x90) : Subtle;
             if (light.ToArgb() == Muted.ToArgb()) return mutedText;
             return inkText;
         }
@@ -239,7 +246,8 @@ namespace SteamDirect
             bool transparent = control is Label || control is PictureBox || control is TableLayoutPanel || control is FlowLayoutPanel;
             control.BackColor = transparent ? Color.Transparent : Background(original.Back);
             control.ForeColor = Text(original.Fore);
-            if (control is ListView || control is TextBoxBase || control is ComboBox || control is DataGridView || control is ScrollableControl)
+            if (control is ListView || control is TextBoxBase || control is ComboBox ||
+                control is DataGridView || control is ScrollableControl || control is ScrollBar)
             {
                 control.HandleCreated -= NativeThemeCreated;
                 control.HandleCreated += NativeThemeCreated;
@@ -276,11 +284,8 @@ namespace SteamDirect
                     push.ForeColor = primaryText;
                 }
                 push.FlatAppearance.BorderColor = Edge;
-                Color awayFromText = primaryText == Color.White ? Color.Black : Color.White;
-                push.FlatAppearance.MouseOverBackColor = primary
-                    ? (IsDark && ThemeColor.ToArgb() == DefaultAccentColor.ToArgb() ? DarkAccentHover : Blend(AppTheme.primary, awayFromText, .08))
-                    : Hover;
-                push.FlatAppearance.MouseDownBackColor = primary ? Blend(AppTheme.primary, awayFromText, .15) : Edge;
+                push.FlatAppearance.MouseOverBackColor = primary ? AccentHover : Hover;
+                push.FlatAppearance.MouseDownBackColor = primary ? AccentPressed : Edge;
                 push.Paint -= PaintDisabledButton; if (!(push is RoundedButton)) push.Paint += PaintDisabledButton;
             }
             foreach (Control child in control.Controls) Paint(child);

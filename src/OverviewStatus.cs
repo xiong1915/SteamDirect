@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Drawing;
 using System.Net.NetworkInformation;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -20,20 +19,18 @@ namespace SteamDirect
             Margin = Padding.Empty;
             RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             string[] titles = { "Windows 代理", "Steam 客户端", "网络接口" };
+            UiIcon[] icons = { UiIcon.Settings, UiIcon.Home, UiIcon.Network };
+            string[] sources = { "Windows 系统代理设置", "Steam 进程", "本机接口状态" };
             for (int i = 0; i < values.Length; i++)
             {
                 ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / values.Length));
                 var panel = UiStyle.Card(true);
                 panel.Padding = new Padding(UiStyle.Space12, UiStyle.Space4, UiStyle.Space12, UiStyle.Space4);
                 panel.Margin = new Padding(0, 0, i == values.Length - 1 ? 0 : UiStyle.Space8, UiStyle.Space8);
-                var metric = UiStyle.Grid(1, 2);
-                metric.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-                metric.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-                metric.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
-                metric.Controls.Add(Caption(titles[i], UiStyle.Caption, AppTheme.Muted), 0, 0);
-                values[i] = Caption("未检查", UiStyle.Subtitle, AppTheme.Ink);
-                values[i].AccessibleName = titles[i] + "状态";
-                metric.Controls.Add(values[i], 0, 1);
+                Label note;
+                var metric = UiStyle.Metric(titles[i], icons[i], out values[i], out note);
+                values[i].Text = "未检查";
+                note.Text = sources[i];
                 panel.Controls.Add(metric);
                 Controls.Add(panel, i, 0);
             }
@@ -60,7 +57,13 @@ namespace SteamDirect
                 {
                     reading = false;
                     if (!IsDisposed && !Disposing)
-                        for (int i = 0; i < values.Length; i++) values[i].Text = snapshot[i];
+                        for (int i = 0; i < values.Length; i++)
+                        {
+                            string text = snapshot[i];
+                            values[i].Text = text;
+                            AppTheme.SetForeground(values[i], text == "代理已配置" || text == "已启用自动检测" || text == "无可用接口"
+                                ? AppTheme.Warning : AppTheme.Ink);
+                        }
                 }));
             }
             catch (InvalidOperationException) { /* The window closed before delivery. */ }
@@ -72,10 +75,5 @@ namespace SteamDirect
             catch (Exception) { return "未知"; }
         }
 
-        private static Label Caption(string text, Font font, Color color)
-        {
-            return new Label { Text = text, Font = font, ForeColor = color, Dock = DockStyle.Fill,
-                Margin = Padding.Empty, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
-        }
     }
 }

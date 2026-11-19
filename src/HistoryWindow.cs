@@ -41,6 +41,7 @@ namespace SteamDirect
         private readonly Label detailTitle = new Label();
         private readonly Label detailMeta = new Label();
         private readonly Button refresh = new RoundedButton();
+        private readonly Button detailData = new RoundedButton { Visible = false };
         private readonly Button previousPage = new RoundedButton { CaptionInset = UiStyle.Space4 },
             nextPage = new RoundedButton { CaptionInset = UiStyle.Space4 };
         private readonly Label pageLabel = new Label();
@@ -107,12 +108,12 @@ namespace SteamDirect
             root.Padding = UiStyle.PagePadding;
             root.BackColor = Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
 
-            root.Controls.Add(UiStyle.Header("游戏记录", "按游戏、网络模式和日期查找"), 0, 0);
+            root.Controls.Add(UiStyle.Header("游戏记录", ""), 0, 0);
 
             var filterCard = UiStyle.Card(true);
             filterCard.Margin = new Padding(0, 0, 0, UiStyle.Gap);
@@ -148,7 +149,7 @@ namespace SteamDirect
             pageLabel.ForeColor = Muted;
             pageLabel.TextAlign = ContentAlignment.MiddleLeft;
             pageLabel.AutoEllipsis = true;
-            listLayout.Controls.Add(pageLabel, 0, 0);
+            listLayout.Controls.Add(Caption("对局列表"), 0, 0);
             SetupList(records, "游戏历史记录");
             records.Font = UiStyle.Caption;
             records.MultiSelect = false;
@@ -157,15 +158,15 @@ namespace SteamDirect
             records.Columns.Add("开始时间", 122);
             records.Columns.Add("时长", 68);
             records.Columns.Add("模式", 48);
-            records.Columns.Add("", 84);
-            SetColumnWeights(records, 100, 0, 0, 0, 0);
+            SetColumnWeights(records, 100, 0, 0, 0);
             records.FontChanged += (sender, args) => FitRecordRows();
             records.SizeChanged += (sender, args) => FitRecordRows();
             records.ShowItemToolTips = true;
-            records.MouseClick += (sender, args) =>
+            records.MouseDoubleClick += (sender, args) =>
             {
-                var session = DetailedRecordAt(args.Location);
-                if (session != null) OpenDetailedData(session);
+                if (args.Button != MouseButtons.Left) return;
+                var item = records.GetItemAt(args.X, args.Y);
+                if (item != null) OpenDetailedData(item.Tag as HistorySession);
             };
             records.KeyDown += (sender, args) =>
             {
@@ -178,34 +179,35 @@ namespace SteamDirect
             {
                 if (records.SelectedItems.Count == 1) OpenDetailedData(records.SelectedItems[0].Tag as HistorySession);
             });
-            records.Disposed += (sender, args) => recordMenu.Dispose();
             recordMenu.Opening += (sender, args) => AppTheme.ApplyTray(recordMenu);
             records.ContextMenuStrip = recordMenu;
-            records.MouseMove += (sender, args) =>
-            {
-                records.Cursor = DetailedRecordAt(args.Location) != null ? Cursors.Hand : Cursors.Default;
-            };
             listLayout.Controls.Add(new NativeScrollFrame(records), 0, 1);
-            var pages = Grid(2, 1);
-            pages.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            pages.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            var pages = Grid(3, 1);
+            pages.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24));
+            pages.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52));
+            pages.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24));
             pages.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            StyleButton(previousPage, "上一页", false);
-            StyleButton(nextPage, "下一页", false);
+            StyleButton(previousPage, "‹", false);
+            StyleButton(nextPage, "›", false);
+            previousPage.AccessibleName = "上一页";
+            nextPage.AccessibleName = "下一页";
+            pageLabel.TextAlign = ContentAlignment.MiddleCenter;
             previousPage.Enabled = nextPage.Enabled = false;
             pages.Controls.Add(previousPage, 0, 0);
-            pages.Controls.Add(nextPage, 1, 0);
+            pages.Controls.Add(pageLabel, 1, 0);
+            pages.Controls.Add(nextPage, 2, 0);
             listLayout.Controls.Add(pages, 0, 2);
             listCard.Controls.Add(listLayout);
             body.Controls.Add(listCard, 0, 0);
 
             var detailCard = UiStyle.Card(true);
             detailCard.Margin = Padding.Empty;
-            var detail = Grid(2, 3);
+            var detail = Grid(2, 4);
             detail.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            detail.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0));
-            detail.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-            detail.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+            detail.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108));
+            detail.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
+            detail.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48));
+            detail.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
             detail.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             detailTitle.Text = "会话详情";
             detailTitle.Font = UiStyle.SectionTitle;
@@ -214,6 +216,12 @@ namespace SteamDirect
             detailTitle.TextAlign = ContentAlignment.MiddleLeft;
             detailTitle.AutoEllipsis = true;
             detail.Controls.Add(detailTitle, 0, 0);
+            StyleButton(detailData, "详细数据", false);
+            detailData.Click += (sender, args) =>
+            {
+                if (records.SelectedItems.Count == 1) OpenDetailedData(records.SelectedItems[0].Tag as HistorySession);
+            };
+            detail.Controls.Add(detailData, 1, 0);
             detailMeta.Text = "从左侧选择一条游戏记录";
             detailMeta.Dock = DockStyle.Fill;
             detailMeta.Margin = Padding.Empty;
@@ -221,6 +229,7 @@ namespace SteamDirect
             detailMeta.ForeColor = Muted;
             detailMeta.AutoEllipsis = true;
             detail.Controls.Add(detailMeta, 0, 1);
+            detail.SetColumnSpan(detailMeta, 2);
             var tabs = reportSections = new HistorySections();
             SetupText(comparisonText, "模式对比结果");
             SetupList(incidents, "网络异常时间线");
@@ -241,26 +250,20 @@ namespace SteamDirect
             timeline.Controls.Add(new NativeScrollFrame(incidents), 0, 1);
             tabs.Add("异常时间线", timeline);
             tabs.Add("历史参考", new NativeScrollFrame(comparisonText));
-            detail.Controls.Add(tabs, 0, 2);
-            bool splitDetail = false;
+            detail.Controls.Add(tabs, 0, 3);
+            detail.SetColumnSpan(tabs, 2);
+            bool compactHeader = false;
             detail.SizeChanged += (sender, args) =>
             {
-                bool wide = detail.Width >= UiStyle.Scale(detail, 700);
-                if (splitDetail == wide) return;
-                splitDetail = wide;
+                bool compact = detail.ClientSize.Width < UiStyle.Scale(detail, 400);
+                if (compact == compactHeader) return;
+                compactHeader = compact;
                 detail.SuspendLayout();
                 try
                 {
-                    detail.ColumnStyles[0].SizeType = wide ? SizeType.Absolute : SizeType.Percent;
-                    detail.ColumnStyles[0].Width = wide ? UiStyle.Scale(detail, 200) : 100;
-                    detail.ColumnStyles[1].Width = wide ? 100 : 0;
-                    detail.RowStyles[0].Height = UiStyle.Scale(detail, wide ? UiStyle.Space48 : UiStyle.Space32);
-                    detailTitle.Margin = wide ? new Padding(0, 0, UiStyle.Scale(detail, UiStyle.Space12), 0) : Padding.Empty;
-                    detailMeta.Margin = detailTitle.Margin;
-                    detailTitle.TextAlign = wide ? ContentAlignment.TopLeft : ContentAlignment.MiddleLeft;
-                    detailTitle.UseCompatibleTextRendering = wide;
-                    detail.SetCellPosition(tabs, new TableLayoutPanelCellPosition(wide ? 1 : 0, wide ? 0 : 2));
-                    detail.SetRowSpan(tabs, wide ? 3 : 1);
+                    detail.SetCellPosition(detailData, new TableLayoutPanelCellPosition(1, compact ? 2 : 0));
+                    detail.SetColumnSpan(detailTitle, compact ? 2 : 1);
+                    detail.RowStyles[2].Height = compact ? UiStyle.Scale(detail, UiStyle.ButtonHeight) : 0;
                 }
                 finally { detail.ResumeLayout(true); }
             };
@@ -310,14 +313,12 @@ namespace SteamDirect
 
         private Control BuildOverview()
         {
-            // At 1080p/175%, fixed report headings can consume the whole remaining height.
-            // Keep a usable report body and scroll the section rather than collapsing it to zero.
             var layout = Grid(1, 4);
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space40));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48 + UiStyle.Space16));
             overviewTitle.Text = "选择记录后显示本局结果";
             overviewTitle.Dock = DockStyle.Fill;
             overviewTitle.Font = UiStyle.HeroTitle;
@@ -339,10 +340,11 @@ namespace SteamDirect
                 value.AutoEllipsis = true; value.Margin = Padding.Empty; value.AccessibleName = headings[i];
                 metrics.Controls.Add(value, i, 1);
             }
-            layout.Controls.Add(metrics, 0, 2);
+            metrics.Margin = new Padding(0, UiStyle.Space8, 0, 0);
+            layout.Controls.Add(metrics, 0, 3);
             SetupText(overviewText, "本局结果说明与建议");
             overviewText.Font = UiStyle.Body;
-            layout.Controls.Add(new NativeScrollFrame(overviewText), 0, 3);
+            layout.Controls.Add(new NativeScrollFrame(overviewText), 0, 2);
             return new ContentViewport(layout, 340);
         }
 
@@ -422,24 +424,22 @@ namespace SteamDirect
             var color = args.ColumnIndex == 0 ? Ink : Muted;
             if (args.Item.Tag is HistorySession && args.ColumnIndex == 0)
             {
-                var area = Rectangle.Inflate(bounds, -8, -6);
+                int gutter = UiStyle.Scale(view, UiStyle.Space8);
+                var area = Rectangle.Inflate(bounds, -gutter, -UiStyle.Scale(view, UiStyle.Space4));
+                using (var line = new Pen(AppTheme.Divider))
+                    args.Graphics.DrawLine(line, area.Left, bounds.Bottom - 1, area.Right, bounds.Bottom - 1);
                 var session = (HistorySession)args.Item.Tag;
-                int[] heights = ((HistoryRecordList)view).MeasureRow(args.Item, area.Width, RecordTextHeights);
+                var history = (HistoryRecordList)view;
+                int[] heights = history.MeasureRow(args.Item, area.Width, RecordTextHeights);
                 string title = (session.HasAnomalies ? "● 异常 · " : "") + args.Item.Text;
-                using (var font = new Font(view.Font, FontStyle.Bold))
-                    TextRenderer.DrawText(args.Graphics, title, font,
-                        new Rectangle(area.X, area.Y, area.Width, heights[0]),
-                        AppTheme.Text(session.HasAnomalies ? AppTheme.Error : Ink),
-                        TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(args.Graphics, title, history.RecordTitleFont,
+                    new Rectangle(area.X, area.Y, area.Width, heights[0]),
+                    AppTheme.Text(session.HasAnomalies ? AppTheme.Error : Ink),
+                    TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
                 TextRenderer.DrawText(args.Graphics, args.Item.SubItems[1].Text, view.Font,
                     new Rectangle(area.X, area.Y + heights[0], area.Width, heights[1]), AppTheme.Text(Muted), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
                 TextRenderer.DrawText(args.Graphics, args.Item.SubItems[2].Text + " · " + args.Item.SubItems[3].Text, view.Font,
                     new Rectangle(area.X, area.Y + heights[0] + heights[1], area.Width, heights[2]), AppTheme.Text(Ink), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
-                var action = RecordActionBounds(args.Item);
-                using (var brush = new SolidBrush(AppTheme.Background(AppTheme.Pill)))
-                using (var path = UiStyle.RoundRect(action, UiStyle.ControlRadius * UiStyle.Dpi(view) / 96F)) args.Graphics.FillPath(brush, path);
-                TextRenderer.DrawText(args.Graphics, "详细数据", view.Font, action, AppTheme.Text(Accent),
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine);
                 return;
             }
             TextRenderer.DrawText(args.Graphics, args.SubItem.Text, view.Font, Rectangle.Inflate(bounds, -6, 0),
@@ -454,7 +454,7 @@ namespace SteamDirect
         private static void FormatNarrative(RichTextBox text)
         {
             text.SelectAll(); text.SelectionFont = text.Font; text.SelectionColor = AppTheme.Text(Ink);
-            foreach (string heading in new[] { "问题在哪", "怎么处理", "恢复情况", "判断范围", "比较范围", "怎么使用这个结论", "直连和代理，哪种表现更好" })
+            foreach (string heading in new[] { "问题在哪", "怎么处理", "恢复情况", "判断范围", "比较范围", "直连与代理对比" })
             {
                 int at = text.Text.IndexOf(heading, StringComparison.Ordinal);
                 if (at < 0) continue;
@@ -462,24 +462,15 @@ namespace SteamDirect
             }
             text.Select(0, 0); text.ScrollToCaret();
         }
-        private static Rectangle RecordActionBounds(ListViewItem item)
-        {
-            var view = item.ListView;
-            int height = UiStyle.TextHeight(view) + UiStyle.Scale(view, 12);
-            int width = TextRenderer.MeasureText("详细数据", view.Font).Width + 24;
-            var bounds = item.Bounds;
-            return new Rectangle(bounds.Right - width - 8, bounds.Bottom - height - 6, width, height);
-        }
-
         private static int[] RecordTextHeights(ListViewItem item, int width)
         {
-            var font = item.ListView == null ? UiStyle.Caption : item.ListView.Font;
+            var view = item.ListView as HistoryRecordList;
+            var font = view == null ? UiStyle.Caption : view.Font;
+            var bold = view == null ? UiStyle.CaptionStrong : view.RecordTitleFont;
             var size = new Size(Math.Max(1, width), 1000);
             var flags = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
             string prefix = item.Tag is HistorySession && ((HistorySession)item.Tag).HasAnomalies ? "● 异常 · " : "";
-            int title;
-            using (var bold = new Font(font, FontStyle.Bold))
-                title = TextRenderer.MeasureText(prefix + item.Text, bold, size, flags).Height + 6;
+            int title = TextRenderer.MeasureText(prefix + item.Text, bold, size, flags).Height + 6;
             return new[] { title, TextRenderer.MeasureText(item.SubItems[1].Text, font, size, flags).Height + 6,
                 TextRenderer.MeasureText(item.SubItems[2].Text + " · " + item.SubItems[3].Text, font, size, flags).Height + 6 };
         }
@@ -488,25 +479,18 @@ namespace SteamDirect
         {
             if (fillingRecords || shuttingDown || records.IsDisposed || records.ClientSize.Width < 1) return;
             var list = (HistoryRecordList)records;
-            int width = Math.Max(1, records.Columns[0].Width - 16);
+            int width = Math.Max(1, records.Columns[0].Width - 2 * UiStyle.Scale(records, UiStyle.Space8));
             if (!list.RowLayoutChanged(width, force)) return;
-            int height = (UiStyle.TextHeight(records) + UiStyle.Scale(records, 6)) * 4 + UiStyle.Scale(records, 24);
+            int padding = 2 * UiStyle.Scale(records, UiStyle.Space4);
+            int height = (UiStyle.TextHeight(records) + UiStyle.Scale(records, UiStyle.Space4)) * 3 + padding;
             foreach (ListViewItem row in records.Items)
             {
                 if (row == null || row.ListView != records || !(row.Tag is HistorySession) || row.SubItems.Count < 4) continue;
                 int[] blocks = list.MeasureRow(row, width, RecordTextHeights);
-                height = Math.Max(height, blocks[0] + blocks[1] + blocks[2] + UiStyle.TextHeight(records) + UiStyle.Scale(records, 28));
+                height = Math.Max(height, blocks[0] + blocks[1] + blocks[2] + padding);
             }
             list.SetRowHeight(height);
             records.Invalidate();
-        }
-
-        private HistorySession DetailedRecordAt(Point point)
-        {
-            if (!records.ClientRectangle.Contains(point)) return null;
-            var item = records.GetItemAt(point.X, point.Y);
-            if (item == null || item.SubItems.Count <= 4 || !RecordActionBounds(item).Contains(point)) return null;
-            return item.Tag as HistorySession;
         }
 
         private void OpenDetailedData(HistorySession session)
@@ -665,7 +649,9 @@ namespace SteamDirect
             if (!Available) return;
             var previous = Selected();
             string selectedId = preferredId ?? (previous == null ? null : previous.Id);
-            ListViewItem preferred = null;
+            var previousTop = preferredId == null ? records.TopItem : null;
+            var topSession = previousTop == null ? null : previousTop.Tag as HistorySession;
+            ListViewItem preferred = null, top = null;
             fillingRecords = true;
             records.BeginUpdate();
             try
@@ -678,10 +664,10 @@ namespace SteamDirect
                     row.SubItems.Add(LocalTime(session.Start, "yyyy-MM-dd HH:mm:ss"));
                     row.SubItems.Add((session.End == 0 ? "已玩 " : "游玩 ") + SpanText((session.End == 0 ? (long)(DateTimeOffset.UtcNow - Epoch).TotalMilliseconds : session.End) - session.Start));
                     row.SubItems.Add(session.Mode ?? "未知");
-                    row.SubItems.Add("详细数据");
                     row.Tag = session;
                     records.Items.Add(row);
                     if (session.Id == selectedId) preferred = row;
+                    if (topSession != null && session.Id == topSession.Id) top = row;
                 }
                 if (records.Items.Count > 0 && (preferredId == null || preferred != null))
                 {
@@ -692,6 +678,7 @@ namespace SteamDirect
             }
             finally { records.EndUpdate(); fillingRecords = false; }
             FitRecordRows(true);
+            if (preferred != null && top != null) records.TopItem = top;
             await LoadSelectionAsync();
             if (Available && preferredId != null && preferred == null)
                 status.Text = "这条记录已不在近期列表中，可在游戏记录中查询。";
@@ -704,7 +691,9 @@ namespace SteamDirect
             if (!Available) return;
             var selected = Selected();
             ClearDetails();
-            export.Enabled = selected != null && selected.End != 0 && !exporting && !Gaming;
+            bool finished = selected != null && selected.End != 0;
+            bool gaming = selected != null && Gaming;
+            export.Enabled = finished && !exporting && !gaming;
             if (selected == null)
             {
                 selectionPending = false;
@@ -716,11 +705,14 @@ namespace SteamDirect
                 return;
             }
             detailTitle.Text = selected.Game ?? "未知游戏";
-            detailMeta.Text = (selected.Mode ?? "未知") + " · " + (selected.End == 0 ? "已玩 " : "共玩 ") +
+            detailData.Visible = finished;
+            detailData.Enabled = finished && !gaming;
+            detailMeta.Text = (selected.Mode ?? "未知") + " · " +
                 SpanText((selected.End == 0 ? (long)(DateTimeOffset.UtcNow - Epoch).TotalMilliseconds : selected.End) - selected.Start) +
-                Environment.NewLine + "开始  " + LocalTime(selected.Start, "yyyy-MM-dd HH:mm:ss") +
-                Environment.NewLine + (selected.End == 0 ? "记录中" : "结束  " + LocalTime(selected.End, "yyyy-MM-dd HH:mm:ss"));
-            if (selected.End == 0 || Gaming)
+                Environment.NewLine + LocalTime(selected.Start, "MM-dd HH:mm") + " → " +
+                (selected.End == 0 ? "记录中" : LocalTime(selected.End, "MM-dd HH:mm"));
+            detailMeta.AccessibleDescription = SessionTiming(selected);
+            if (selected.End == 0 || gaming)
             {
                 ShowDetailState("本局尚未生成报告", "游戏结束后，点击查询读取结果。");
                 status.Text = "游戏运行中，报告计算已暂停。";
@@ -781,6 +773,8 @@ namespace SteamDirect
         {
             detailTitle.Text = "会话详情";
             detailMeta.Text = "从左侧选择一条游戏记录";
+            detailMeta.AccessibleDescription = null;
+            detailData.Visible = false;
             incidents.Items.Clear();
             overviewText.Clear();
             foreach (var value in metricValues) value.Text = "—";
@@ -986,8 +980,7 @@ namespace SteamDirect
         {
             if (string.IsNullOrWhiteSpace(target) || direct == null || proxy == null) return "没有相同目标的历史记录，暂时无法比较两种模式。";
             var text = new StringBuilder();
-            text.AppendLine("直连和代理，哪种表现更好");
-            text.AppendLine();
+            text.AppendLine("直连与代理对比");
             if (!Comparable(direct, proxy))
                 text.AppendLine("样本不足，暂时无法判断。需要同一游戏、相同目标下两种模式都有足够的已结束记录。");
             else
@@ -998,7 +991,7 @@ namespace SteamDirect
                     proxyBetter ? "这批记录中，代理模式的探测回复更快，超时也没有更多。" :
                     "两种模式的结果没有一致优劣，暂时无法推荐某一种。");
                 text.AppendLine();
-                text.AppendLine("怎么使用这个结论");
+                text.AppendLine("怎么处理");
                 text.AppendLine("如果卡顿只在某一种模式出现，退出游戏后切换另一种模式复测。");
             }
             text.AppendLine();

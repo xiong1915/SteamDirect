@@ -9,19 +9,19 @@ namespace SteamDirect
     internal sealed class OverviewHistory : TableLayoutPanel
     {
         private const int HeaderHeight = UiStyle.Space48;
-        private const int EntryHeight = UiStyle.Space48;
+        private const int EntryHeight = UiStyle.Space32 + UiStyle.Space24;
         private readonly Entry[] entries = new Entry[5];
         private readonly Label state = Caption("", UiStyle.Body, AppTheme.Muted);
         private long loadedRevision = -1;
         private bool loading;
         internal int RecordCount { get; private set; }
-        internal int NaturalHeight { get { return HeaderHeight + Math.Max(1, RecordCount) * EntryHeight; } }
+        internal int NaturalHeight { get { return HeaderHeight + UiStyle.Space32 + Math.Max(1, RecordCount) * EntryHeight; } }
         internal event Action HeightChanged;
 
         internal OverviewHistory(Func<string, Task> open)
         {
             ColumnCount = 2;
-            RowCount = entries.Length + 2;
+            RowCount = entries.Length + 3;
             Dock = DockStyle.Fill;
             Margin = new Padding(0, UiStyle.Space12, 0, 0);
             BackColor = AppTheme.Page;
@@ -32,15 +32,23 @@ namespace SteamDirect
             var all = Link("全部记录 →", AppTheme.Accent);
             all.Click += async (sender, args) => await open(null);
             Controls.Add(all, 1, 0);
+            RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32));
+            var columns = UiStyle.Grid(5, 1);
+            SetColumnWidths(columns);
+            string[] labels = { "游戏名称", "开始时间", "游戏时长", "网络模式", "记录状态" };
+            for (int i = 0; i < labels.Length; i++)
+                columns.Controls.Add(Caption(labels[i], UiStyle.Caption, AppTheme.Muted), i, 0);
+            Controls.Add(columns, 0, 1);
+            SetColumnSpan(columns, 2);
             RowStyles.Add(new RowStyle(SizeType.Absolute, EntryHeight));
             state.Text = "正在读取游戏记录…";
-            Controls.Add(state, 0, 1);
+            Controls.Add(state, 0, 2);
             SetColumnSpan(state, 2);
             for (int i = 0; i < entries.Length; i++)
             {
                 RowStyles.Add(new RowStyle(SizeType.Absolute, EntryHeight));
                 var entry = entries[i] = new Entry(open);
-                Controls.Add(entry, 0, i + 2);
+                Controls.Add(entry, 0, i + 3);
                 SetColumnSpan(entry, 2);
             }
         }
@@ -89,7 +97,7 @@ namespace SteamDirect
                 RecordCount = sessions.Count;
                 state.Text = EmptyMessage(recording);
                 state.Visible = RecordCount == 0;
-                RowStyles[1].Height = RecordCount == 0 ? UiStyle.Scale(this, EntryHeight) : 0;
+                RowStyles[2].Height = RecordCount == 0 ? UiStyle.Scale(this, EntryHeight) : 0;
                 for (int i = 0; i < entries.Length; i++)
                     entries[i].Display(i < RecordCount ? sessions[i] : null);
                 if (previousCount != RecordCount && HeightChanged != null) HeightChanged();
@@ -117,13 +125,19 @@ namespace SteamDirect
             return button;
         }
 
+        private static void SetColumnWidths(TableLayoutPanel grid)
+        {
+            foreach (int width in new[] { 34, 23, 16, 10, 17 })
+                grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, width));
+        }
+
         private sealed class Entry : SectionRule
         {
             private readonly RoundedButton game = Link("", AppTheme.Ink);
             private readonly Label timing = Caption("", UiStyle.Caption, AppTheme.Muted);
+            private readonly Label duration = Caption("", UiStyle.Caption, AppTheme.Muted);
+            private readonly Label mode = Caption("", UiStyle.Caption, AppTheme.Ink);
             private readonly Label status = Caption("", UiStyle.Caption, AppTheme.Muted);
-            private readonly TableLayoutPanel row = UiStyle.Grid(3, 2);
-            private bool wide;
             private HistorySession current;
 
             internal Entry(Func<string, Task> open)
@@ -132,42 +146,32 @@ namespace SteamDirect
                 Margin = Padding.Empty;
                 Padding = new Padding(0, 1, 0, 0);
                 BackColor = AppTheme.Page;
-                row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0));
-                row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-                row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
-                row.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
-                row.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-                status.TextAlign = ContentAlignment.MiddleLeft;
-                row.Controls.Add(game, 1, 0);
-                row.Controls.Add(timing, 1, 1);
-                row.Controls.Add(status, 2, 0);
-                row.SetRowSpan(status, 2);
-                game.Click += async (sender, args) =>
+                var row = UiStyle.Grid(5, 1);
+                SetColumnWidths(row);
+                row.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+                row.Controls.Add(game, 0, 0);
+                row.Controls.Add(timing, 1, 0);
+                row.Controls.Add(duration, 2, 0);
+                var tag = UiStyle.Card(true);
+                tag.CornerRadius = UiStyle.SmallRadius;
+                tag.BackColor = AppTheme.Pill;
+                tag.Padding = Padding.Empty;
+                tag.Margin = new Padding(0, UiStyle.Space16, UiStyle.Space8, UiStyle.Space16);
+                mode.TextAlign = ContentAlignment.MiddleCenter;
+                tag.Controls.Add(mode);
+                row.Controls.Add(tag, 3, 0);
+                row.Controls.Add(status, 4, 0);
+                EventHandler openRecord = async (sender, args) =>
                 {
                     if (current != null) await open(current.Id);
                 };
+                foreach (var target in new Control[] { game, timing, duration, mode, status })
+                {
+                    target.Cursor = Cursors.Hand;
+                    target.Click += openRecord;
+                }
                 Controls.Add(row);
                 Visible = false;
-            }
-
-            protected override void OnSizeChanged(EventArgs args)
-            {
-                base.OnSizeChanged(args);
-                if (row == null) return;
-                bool split = Width >= UiStyle.Scale(this, 760);
-                if (wide == split) return;
-                wide = split;
-                row.SuspendLayout();
-                try
-                {
-                    row.ColumnStyles[0].Width = wide ? 42 : 0;
-                    row.ColumnStyles[1].Width = wide ? 58 : 100;
-                    row.SetCellPosition(game, new TableLayoutPanelCellPosition(wide ? 0 : 1, 0));
-                    row.SetRowSpan(game, wide ? 2 : 1);
-                    row.SetCellPosition(timing, new TableLayoutPanelCellPosition(1, wide ? 0 : 1));
-                    row.SetRowSpan(timing, wide ? 2 : 1);
-                }
-                finally { row.ResumeLayout(true); }
             }
 
             internal void Display(HistorySession session)
@@ -177,8 +181,9 @@ namespace SteamDirect
                 if (session == null) return;
                 game.Text = string.IsNullOrWhiteSpace(session.Game) ? "未知游戏" : session.Game;
                 game.AccessibleDescription = "查看网络报告";
-                string played = session.End > 0 ? HistoryWindow.SpanText(session.End - session.Start) : "游玩中";
-                timing.Text = HistoryWindow.LocalTime(session.Start, "yyyy-MM-dd HH:mm") + "  ·  " + played + "  ·  " + (session.Mode ?? "未知");
+                duration.Text = session.End > 0 ? HistoryWindow.SpanText(session.End - session.Start) : "游玩中";
+                timing.Text = HistoryWindow.LocalTime(session.Start, "yyyy-MM-dd HH:mm");
+                mode.Text = session.Mode ?? "未知";
                 status.Text = session.HasAnomalies ? "●  有异常" : session.Interrupted ? "记录中断" :
                     session.End == 0 ? "记录中" : "未记录异常";
                 AppTheme.SetForeground(status, session.HasAnomalies ? AppTheme.Error : AppTheme.Muted);

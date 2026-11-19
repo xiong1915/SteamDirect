@@ -50,7 +50,7 @@ namespace SteamDirect
     }
     internal sealed class CleanupCandidate
     {
-        internal string Root, Path;
+        internal string Path;
         internal long Length;
         internal uint Volume, IndexHigh, IndexLow;
         internal DateTime Created, Accessed, Written;
@@ -70,7 +70,7 @@ namespace SteamDirect
             return status.Load;
         }
     }
-    internal static class TempCleaner
+    internal sealed class TempCleaner
     {
         private static int cleaning;
         [StructLayout(LayoutKind.Sequential)] private struct FileInformation
@@ -82,51 +82,19 @@ namespace SteamDirect
         [StructLayout(LayoutKind.Sequential)] private struct Disposition { internal byte Delete; }
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
         [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetFileInformationByHandle(SafeFileHandle handle, out FileInformation information);
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder name, uint length, uint flags);
         [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetFileInformationByHandle(SafeFileHandle handle, int informationClass, ref Disposition information, uint size);
         private const uint ProtectedAttributes = 0x400 | 0x10 | 0x1 | 0x2 | 0x4 | 0x1000;
-        private static string UserTemp { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp"); } }
-        private static string OwnedTemp { get { return Path.Combine(UserTemp, "SteamDirect"); } }
-
-        internal static TempCleanupResult ScanUserTemp(DateTime now, CancellationToken token)
+        private readonly string ownedTemp;
+        internal TempCleaner(string localAppData = null)
         {
-            return Scan(new[] { UserTemp, OwnedTemp }, false, now, token);
+            var local = localAppData ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!Path.IsPathRooted(local)) throw new InvalidOperationException("无法确定本机应用数据目录。");
+            ownedTemp = Path.GetFullPath(Path.Combine(local, "Temp", "SteamDirect"));
         }
 
-        private static bool IsUserTemp(string root)
+        private bool IsAllowedCandidate(string path)
         {
-            return string.Equals(root, UserTemp, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool IsAllowedCandidate(string root, string path)
-        {
-            return IsInside(root, path) && (IsUserTemp(root)
-                ? string.Equals(Path.GetDirectoryName(Path.GetFullPath(path)), UserTemp, StringComparison.OrdinalIgnoreCase)
-                : string.Equals(root, OwnedTemp, StringComparison.OrdinalIgnoreCase));
-        }
-        internal static bool IsInside(string root, string path)
-        {
-            if (string.IsNullOrWhiteSpace(root) || string.IsNullOrWhiteSpace(path) || !Path.IsPathRooted(root) || !Path.IsPathRooted(path)) return false;
-            try { return Path.GetFullPath(path).StartsWith(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase); }
-            catch (ArgumentException) { return false; }
-            catch (NotSupportedException) { return false; }
-            catch (PathTooLongException) { return false; }
-        }
-        internal static bool NoReparseAncestors(string path)
-        {
-            try
-            {
-                string current = Path.GetFullPath(path);
-                while (!string.IsNullOrEmpty(current))
-                {
-                    if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0) return false;
-                    current = Path.GetDirectoryName(current);
-                }
-                return true;
-            }
-            catch (IOException) { return false; }
-            catch (UnauthorizedAccessException) { return false; }
-            catch (ArgumentException) { return false; }
+            return FilePathSafety.IsInside(ownedTemp, path) && EligibleName(path);
         }
         private static bool EligibleName(string path)
         {
@@ -135,11 +103,11 @@ namespace SteamDirect
         }
         private static DateTime FileTime(System.Runtime.InteropServices.ComTypes.FILETIME time)
         { return DateTime.FromFileTimeUtc(((long)time.dwHighDateTime << 32) | (uint)time.dwLowDateTime); }
-        private static bool DeleteEligible(CleanupCandidate candidate, DateTime cutoff, out long bytes)
+        private bool DeleteEligible(CleanupCandidate candidate, DateTime cutoff, out long bytes)
         {
             bytes = 0;
-            string root = candidate.Root, path = candidate.Path;
-            if (!IsAllowedCandidate(root, path) || !EligibleName(path) || !NoReparseAncestors(path)) return false;
+            string path = candidate.Path;
+            if (!IsAllowedCandidate(path) || !FilePathSafety.NoReparseAncestors(path)) return false;
             // Request deletion rights and exclusive ownership, but do not mark for deletion until all checks pass.
             using (var handle = CreateFile(path, 0x10080, 0, IntPtr.Zero, 3, 0x200000, IntPtr.Zero))
             {
@@ -151,44 +119,45 @@ namespace SteamDirect
                     candidate.Length != lengthOnDisk || candidate.Created != FileTime(info.Created) ||
                     candidate.Written != FileTime(info.Written) || candidate.Accessed != FileTime(info.Accessed)) return false;
                 if (FileTime(info.Created) >= cutoff || FileTime(info.Accessed) >= cutoff || FileTime(info.Written) >= cutoff) return false;
-                var final = new StringBuilder(1024);
-                uint length = GetFinalPathNameByHandle(handle, final, (uint)final.Capacity, 0);
-                if (length == 0 || length >= final.Capacity) return false;
-                string resolved = final.ToString();
-                if (resolved.StartsWith(@"\\?\", StringComparison.Ordinal)) resolved = resolved.Substring(4);
-                if (!IsAllowedCandidate(root, resolved) || !string.Equals(resolved, Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase) || !EligibleName(resolved)) return false;
+                if (!FilePathSafety.IsSameFinalPath(handle, path)) return false;
                 var disposition = new Disposition { Delete = 1 };
                 if (!SetFileInformationByHandle(handle, 4, ref disposition, 1)) return false;
                 bytes = ((long)info.SizeHigh << 32) | info.SizeLow;
                 return true;
             }
         }
-        internal static TempCleanupResult Scan(string[] roots, bool delete, DateTime now, CancellationToken token, bool topLevelOnly = false)
+        internal TempCleanupResult Scan(DateTime now, CancellationToken token)
         {
-            if (delete) throw new InvalidOperationException("必须先扫描并确认具体文件清单，再执行清理。");
-            var result = new TempCleanupResult(); var watch = Stopwatch.StartNew(); int inspected = 0;
+            var result = new TempCleanupResult();
+            var watch = Stopwatch.StartNew();
+            int inspected = 0;
             DateTime cutoff = now.ToUniversalTime().AddDays(-7);
-            foreach (string root in roots)
+            token.ThrowIfCancellationRequested();
+            if (!Directory.Exists(ownedTemp)) return result;
+            var pending = new Stack<string>();
+            pending.Push(ownedTemp);
+            while (pending.Count > 0)
             {
                 token.ThrowIfCancellationRequested();
-                if (!Directory.Exists(root)) continue;
-                var pending = new Stack<string>(); pending.Push(root);
-                while (pending.Count > 0)
+                if (watch.ElapsedMilliseconds > 10000 || inspected > 15000) { result.Limited = true; return result; }
+                string directory = pending.Pop();
+                try
                 {
-                    token.ThrowIfCancellationRequested();
-                    if (watch.ElapsedMilliseconds > 10000 || inspected > 15000) { result.Limited = true; return result; }
-                    string directory = pending.Pop();
-                    try
+                    if (!FilePathSafety.NoReparseAncestors(directory)) { result.ScanSkipped++; continue; }
+                    // Keep the directory open without delete sharing during enumeration.
+                    using (var scope = CreateFile(directory, 0x80, 3, IntPtr.Zero, 3, 0x2200000, IntPtr.Zero))
                     {
-                        if (!NoReparseAncestors(directory)) { result.ScanSkipped++; continue; }
-                        if (!topLevelOnly && !IsUserTemp(root))
-                            foreach (string child in Directory.EnumerateDirectories(directory)) { inspected++; if (watch.ElapsedMilliseconds > 10000 || inspected > 15000) { result.Limited = true; return result; } pending.Push(child); }
+                        FileInformation directoryInfo;
+                        if (scope.IsInvalid || !GetFileInformationByHandle(scope, out directoryInfo) ||
+                            (directoryInfo.Attributes & (0x400 | 0x10)) != 0x10 || !FilePathSafety.IsSameFinalPath(scope, directory))
+                        { result.ScanSkipped++; continue; }
+                        foreach (string child in Directory.EnumerateDirectories(directory)) { inspected++; if (watch.ElapsedMilliseconds > 10000 || inspected > 15000) { result.Limited = true; return result; } pending.Push(child); }
                         foreach (string file in Directory.EnumerateFiles(directory))
                         {
                             inspected++; token.ThrowIfCancellationRequested();
                             if (watch.ElapsedMilliseconds > 10000 || inspected > 15000) { result.Limited = true; return result; }
                             result.Scanned++;
-                            if (!EligibleName(file)) continue;
+                            if (!IsAllowedCandidate(file)) continue;
                             try
                             {
                                 var info = new FileInfo(file);
@@ -207,28 +176,29 @@ namespace SteamDirect
                                 {
                                     FileInformation identity;
                                     if (snapshot.IsInvalid || !GetFileInformationByHandle(snapshot, out identity) || identity.Links != 1 ||
-                                        (identity.Attributes & ProtectedAttributes) != 0) { result.Protected++; continue; }
+                                        (identity.Attributes & ProtectedAttributes) != 0 || !FilePathSafety.IsSameFinalPath(snapshot, file)) { result.Protected++; continue; }
                                     if (FileTime(identity.Created) >= cutoff || FileTime(identity.Accessed) >= cutoff || FileTime(identity.Written) >= cutoff)
                                     { result.Recent++; continue; }
                                     long length = ((long)identity.SizeHigh << 32) | identity.SizeLow;
                                     result.Candidates++;
-                                    result.Items.Add(new CleanupCandidate { Root = root, Path = file, Length = length,
+                                    result.Items.Add(new CleanupCandidate { Path = file, Length = length,
                                         Volume = identity.Volume, IndexHigh = identity.IndexHigh, IndexLow = identity.IndexLow,
                                         Created = FileTime(identity.Created), Accessed = FileTime(identity.Accessed), Written = FileTime(identity.Written) });
                                     result.Bytes += length; result.Files++;
+                                    if (result.Items.Count == 500) { result.Limited = true; return result; }
                                 }
                             }
                             catch (IOException) { result.ScanSkipped++; }
                             catch (UnauthorizedAccessException) { result.ScanSkipped++; }
                         }
                     }
-                    catch (IOException) { result.ScanSkipped++; }
-                    catch (UnauthorizedAccessException) { result.ScanSkipped++; }
                 }
+                catch (IOException) { result.ScanSkipped++; }
+                catch (UnauthorizedAccessException) { result.ScanSkipped++; }
             }
             return result;
         }
-        internal static TempCleanupResult CleanConfirmed(TempCleanupResult preview, CancellationToken token)
+        internal TempCleanupResult CleanConfirmed(TempCleanupResult preview, CancellationToken token)
         {
             if (preview == null) throw new ArgumentNullException("preview");
             if (Interlocked.CompareExchange(ref cleaning, 1, 0) != 0) throw new InvalidOperationException("已有临时文件清理正在进行。");
@@ -258,6 +228,7 @@ namespace SteamDirect
         private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
         private readonly Action<string> log;
+        private readonly TempCleaner cleaner = new TempCleaner();
         private bool busy, allowed = true;
         internal CleanupPanel(Action<string> saveLog)
         {
@@ -274,7 +245,7 @@ namespace SteamDirect
             memory.Font = files.Font = UiStyle.Caption;
             memory.TextAlign = files.TextAlign = ContentAlignment.MiddleLeft;
             layout.Controls.Add(memory, 0, 0); layout.Controls.Add(files, 1, 0);
-            note.Text = "扫描当前用户的临时目录 · 保留最近 7 天文件";
+            note.Text = "仅扫描 SteamDirect 自有临时目录 · 保留最近 7 天";
             note.Dock = DockStyle.Fill; note.Margin = Padding.Empty; note.AutoEllipsis = true; note.Font = UiStyle.Caption; note.ForeColor = AppTheme.Muted;
             layout.Controls.Add(note, 0, 1); layout.SetColumnSpan(note, 3);
             clean.Text = "扫描过期临时文件"; clean.Dock = DockStyle.Fill;
@@ -306,7 +277,7 @@ namespace SteamDirect
             try
             {
                 var token = lifetime.Token;
-                var preview = await Task.Run(() => TempCleaner.ScanUserTemp(DateTime.UtcNow, token));
+                var preview = await Task.Run(() => cleaner.Scan(DateTime.UtcNow, token));
                 if (IsDisposed || !allowed) return;
                 files.Text = preview.Files == 0 ? "临时文件：无可清理项" : "可清理：" + preview.Files + " 个 · " + preview.SizeText;
                 details.SetToolTip(files, preview.Details());
@@ -318,15 +289,16 @@ namespace SteamDirect
                 if (preview.Files == 0) return;
                 var listing = new StringBuilder();
                 foreach (var item in preview.Items) listing.AppendLine(item.Path + "  (" + item.Length + " B)");
-                using (var dialog = new Form { Text = "确认手动清理", Size = new Size(640, 440), AutoScaleMode = AutoScaleMode.Dpi, AutoScaleDimensions = new SizeF(96F, 96F), StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false })
+                using (var dialog = new DesktopForm { Text = "确认手动清理", Size = new Size(640, 440), AutoScaleMode = AutoScaleMode.Dpi, AutoScaleDimensions = new SizeF(96F, 96F), StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false })
                 {
                     var description = new Label { Dock = DockStyle.Top, Height = 90, Padding = new Padding(12), Text =
-                        "将永久删除以下 " + preview.Files + " 个当前用户临时文件（" + preview.SizeText + "）。" +
+                        "将永久删除以下 " + preview.Files + " 个 SteamDirect 临时文件（" + preview.SizeText + "）。" +
                         "仅包含超过 7 天且未改变的 .tmp / .temp / .cache 文件。请核对清单；删除后不能撤销。" };
                     var list = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Text = listing.ToString() };
                     var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 52, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
-                    var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel };
-                    var confirm = new Button { Text = "确认删除", DialogResult = DialogResult.OK };
+                    var cancel = new RoundedButton { Text = "取消", Width = 100, Height = UiStyle.ButtonHeight, DialogResult = DialogResult.Cancel };
+                    var confirm = new RoundedButton { Text = "确认删除", Width = 108, Height = UiStyle.ButtonHeight, DialogResult = DialogResult.OK };
+                    AppTheme.ActionButton(cancel, false); AppTheme.ActionButton(confirm, true);
                     buttons.Controls.Add(cancel); buttons.Controls.Add(confirm);
                     dialog.Controls.Add(list); dialog.Controls.Add(description); dialog.Controls.Add(buttons); dialog.CancelButton = cancel;
                     AppTheme.Apply(dialog);
@@ -334,7 +306,7 @@ namespace SteamDirect
                 }
                 if (GameRunning()) { note.Text = "游戏已启动，未执行清理。"; return; }
                 clean.Text = "正在清理已确认文件…";
-                var result = await Task.Run(() => TempCleaner.CleanConfirmed(preview, token));
+                var result = await Task.Run(() => cleaner.CleanConfirmed(preview, token));
                 if (!IsDisposed)
                 {
                     note.Text = result.Describe();

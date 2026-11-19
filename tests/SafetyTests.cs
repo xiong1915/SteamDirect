@@ -50,39 +50,54 @@ namespace SteamDirect
                 }
                 finally { if (!child.HasExited) child.Kill(); }
             }
-            Assert(!TempCleaner.IsInside(@"C:\Temp\SteamDirect", @"C:\Temp\SteamDirect-other\x.tmp"), "Reject sibling prefix.");
-            Assert(!TempCleaner.IsInside(@"C:\Temp\SteamDirect", @"C:\Temp\SteamDirect\..\personal.tmp"), "Reject parent traversal.");
-            Assert(!TempCleaner.IsInside(@"C:\Temp\SteamDirect", @"x.tmp"), "Reject relative cleanup paths.");
-            Assert(TempCleaner.IsInside(@"C:\Temp\SteamDirect", @"C:\Temp\SteamDirect\nested\x.tmp"), "Accept actual descendant.");
+            Assert(!FilePathSafety.IsInside(@"C:\Temp\SteamDirect", @"C:\Temp\SteamDirect-other\x.tmp"), "Reject sibling prefix.");
+            Assert(!FilePathSafety.IsInside(@"C:\Temp\SteamDirect", @"C:\Temp\SteamDirect\..\personal.tmp"), "Reject parent traversal.");
+            Assert(!FilePathSafety.IsInside(@"C:\Temp\SteamDirect", @"x.tmp"), "Reject relative cleanup paths.");
+            Assert(FilePathSafety.IsInside(@"C:\Temp\SteamDirect", @"C:\Temp\SteamDirect\nested\x.tmp"), "Accept actual descendant.");
             Assert(ProxyAppShutdown.Identify(@"C:\Unknown\chrome.exe", ProxyAppShutdown.YouTubeAppId, @"C:\Local", @"C:\Program Files") == null, "App ID alone cannot trust executable.");
             string root = Path.Combine(Path.GetTempPath(), "SteamDirectSafetyTest-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
             try
             {
-                string stale = Path.Combine(root, "stale.tmp"), recent = Path.Combine(root, "recent.tmp"), document = Path.Combine(root, "personal.txt");
-                File.WriteAllText(stale, "temporary"); File.WriteAllText(recent, "active"); File.WriteAllText(document, "retain");
+                bool blocked = false;
+                try { SteamTrust.OpenVerified("steam.exe").Dispose(); }
+                catch (InvalidOperationException) { blocked = true; }
+                Assert(blocked, "The Steam trust gate requires an absolute path.");
+                string unsignedSteam = Path.Combine(root, "steam.exe");
+                File.Copy(fixture, unsignedSteam);
+                blocked = false;
+                try { SteamTrust.OpenVerified(unsignedSteam).Dispose(); }
+                catch (InvalidOperationException) { blocked = true; }
+                Assert(blocked, "An unsigned executable under the expected name must be rejected.");
+                var cleaner = new TempCleaner(root);
+                var token = System.Threading.CancellationToken.None;
+                string shared = Directory.CreateDirectory(Path.Combine(root, "Temp")).FullName;
+                string owned = Directory.CreateDirectory(Path.Combine(shared, "SteamDirect")).FullName;
+                string nested = Directory.CreateDirectory(Path.Combine(owned, "cache")).FullName;
+                string stale = Path.Combine(owned, "stale.tmp");
+                string recent = Path.Combine(owned, "recent.tmp");
+                string document = Path.Combine(owned, "personal.txt");
+                string privateTemp = Path.Combine(shared, "not-steamdirect.tmp");
+                string nestedFile = Path.Combine(nested, "nested.cache");
+                foreach (string file in new[] { stale, recent, document, privateTemp, nestedFile })
+                    File.WriteAllText(file, "fixture");
                 var old = DateTime.UtcNow.AddDays(-10);
-                foreach (string file in new[] { stale, document })
+                foreach (string file in new[] { stale, document, privateTemp, nestedFile })
                 { File.SetCreationTimeUtc(file, old); File.SetLastWriteTimeUtc(file, old); File.SetLastAccessTimeUtc(file, old); }
-                var scan = TempCleaner.Scan(new[] { root }, false, DateTime.UtcNow, System.Threading.CancellationToken.None);
-                Assert(scan.Items.Count == 1 && scan.Items[0].Path == stale, "Only stale allowed extensions appear in preview.");
-                var nested = Directory.CreateDirectory(Path.Combine(root, "app-cache"));
-                var nestedFile = Path.Combine(nested.FullName, "nested.tmp");
-                File.WriteAllText(nestedFile, "retain");
-                File.SetCreationTimeUtc(nestedFile, old);
-                File.SetLastWriteTimeUtc(nestedFile, old);
-                File.SetLastAccessTimeUtc(nestedFile, old);
-                var scoped = TempCleaner.Scan(new[] { root }, false, DateTime.UtcNow, System.Threading.CancellationToken.None, topLevelOnly: true);
-                Assert(scoped.Items.Count == 1 && scoped.Items[0].Path == stale && scoped.Recent == 1, "Top-level scan must skip app folders and preserve recent files.");
-                bool refused = false;
-                try { TempCleaner.Scan(new[] { root }, true, DateTime.UtcNow, System.Threading.CancellationToken.None); }
-                catch (InvalidOperationException) { refused = true; }
-                Assert(refused && File.Exists(stale), "Scan cannot silently delete files.");
-                var deleted = TempCleaner.CleanConfirmed(scan, System.Threading.CancellationToken.None);
-                Assert(deleted.Files == 0 && File.Exists(stale) && File.Exists(document), "Even confirmed candidates outside owned roots cannot be deleted.");
+                var scan = cleaner.Scan(DateTime.UtcNow, token);
+                Assert(scan.Scanned == 4 && scan.Items.Count == 2 && scan.Recent == 1, "Scan includes only the owned root, with nested files and retention.");
+                Assert(scan.Items.Exists(item => item.Path == stale) && scan.Items.Exists(item => item.Path == nestedFile),
+                    "Preview contains the eligible root and nested files.");
+                Assert(File.Exists(stale) && File.Exists(nestedFile), "Scanning must leave previewed files intact.");
+                File.AppendAllText(nestedFile, "changed after preview");
+                scan.Items.Add(new CleanupCandidate { Path = privateTemp });
+                var deleted = cleaner.CleanConfirmed(scan, token);
+                Assert(deleted.Files == 1 && !File.Exists(stale), "Only the unchanged confirmed owned file was cleaned.");
+                Assert(deleted.DeleteSkipped == 2 && File.Exists(privateTemp) && File.Exists(nestedFile), "Changed and out-of-scope files must remain intact.");
+                Assert(File.Exists(recent) && File.Exists(document), "Recent files and unrelated extensions must be retained.");
             }
             finally { Directory.Delete(root, true); }
-            return 19;
+            return 23;
         }
         private static void Assert(bool value, string message) { if (!value) throw new Exception(message); }
         private static int Main() { try { Console.WriteLine("Safety tests: " + Run() + " passed"); return 0; } catch (Exception ex) { Console.Error.WriteLine(ex); return 1; } }

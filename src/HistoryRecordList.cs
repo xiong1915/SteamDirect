@@ -11,6 +11,30 @@ namespace SteamDirect {
   private ConditionalWeakTable<ListViewItem, int[]> heights = new ConditionalWeakTable<ListViewItem, int[]>();
   private int measuredWidth, fittedWidth, fittedCount = -1, fittedDpi;
   private Font measuredFont, fittedFont;
+  private Font recordTitleFont;
+  internal Font RecordTitleFont
+  {
+      get { return recordTitleFont ?? (recordTitleFont = new Font(Font, FontStyle.Bold)); }
+  }
+
+  protected override void OnFontChanged(EventArgs e)
+  {
+      ReleaseTitleFont();
+      base.OnFontChanged(e);
+  }
+
+  protected override void Dispose(bool disposing)
+  {
+      if (disposing) ReleaseTitleFont();
+      base.Dispose(disposing);
+  }
+
+  private void ReleaseTitleFont()
+  {
+      if (recordTitleFont == null) return;
+      recordTitleFont.Dispose();
+      recordTitleFont = null;
+  }
 
   internal int[] MeasureRow(ListViewItem item, int width, Func<ListViewItem, int, int[]> measure)
   {

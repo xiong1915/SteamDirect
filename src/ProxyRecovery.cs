@@ -36,7 +36,10 @@ namespace SteamDirect
         internal void SaveNew(string path)
         {
             Validate();
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            path = Path.GetFullPath(path);
+            string directory = Path.GetDirectoryName(path);
+            Directory.CreateDirectory(directory);
+            if (!FilePathSafety.NoReparseAncestors(directory)) throw new IOException("代理备份目录包含重解析路径。");
             var document = new XmlDocument();
             var root = document.CreateElement("ProxyBackup"); root.SetAttribute("Version", "1"); root.SetAttribute("Created", DateTime.Now.ToString("o", CultureInfo.InvariantCulture)); document.AppendChild(root);
             Add(document, root, "Flags", Flags.ToString(CultureInfo.InvariantCulture));
@@ -52,17 +55,19 @@ namespace SteamDirect
             byte[] bytes;
             using (var memory = new MemoryStream()) { document.Save(memory); bytes = memory.ToArray(); }
             bytes = ProtectedData.Protect(bytes, protectedHeader, DataProtectionScope.CurrentUser);
+            string stage = path + ".new-" + Guid.NewGuid().ToString("N");
             bool created = false;
             try
             {
-                using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                using (var output = new FileStream(stage, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 { created = true; output.Write(protectedHeader, 0, protectedHeader.Length); output.Write(bytes, 0, bytes.Length); output.Flush(true); }
-                Load(path);
+                if (!SameAs(Load(stage))) throw new InvalidDataException("代理备份写入核验失败。");
+                File.Move(stage, path);
+                created = false;
             }
-            catch
+            finally
             {
-                if (created) { try { File.Delete(path); } catch { } }
-                throw;
+                if (created) { try { File.Delete(stage); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
             }
         }
         private static void Add(XmlDocument document, XmlElement root, string name, string value)
@@ -122,8 +127,11 @@ namespace SteamDirect
         }
         private static byte[] ReadBounded(string path)
         {
+            if (!FilePathSafety.NoReparseAncestors(path)) throw new IOException("代理备份路径不存在、不可访问或包含重解析点。");
             using (var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
+                if (!FilePathSafety.IsSameFinalPath(input.SafeFileHandle, Path.GetFullPath(path)))
+                    throw new IOException("代理备份的实际路径与预期不符。");
                 if (input.Length > 1048576) throw new InvalidDataException("代理备份过大，已拒绝读取。");
                 using (var memory = new MemoryStream()) { input.CopyTo(memory); return memory.ToArray(); }
             }
@@ -222,7 +230,7 @@ namespace SteamDirect
         {
             if (completed) return;
             if (!baseline.SameAs(access.Capture())) RestoreVerified(access, baseline);
-            if (created) File.Delete(path);
+            if (created && File.Exists(path) && baseline.SameAs(ProxySnapshot.Load(path))) File.Delete(path);
             completed = true;
         }
         private static void RestoreVerified(IProxyAccess access, ProxySnapshot snapshot)

@@ -40,7 +40,7 @@ namespace SteamDirect
                         try
                         {
                             string path = process.MainModule.FileName;
-                            if (!IsAllowed(name, path, folders) || !TempCleaner.NoReparseAncestors(path))
+                            if (!IsAllowed(name, path, folders) || !FilePathSafety.NoReparseAncestors(path))
                                 throw new InvalidOperationException("无法确认 " + name + " 的可信安装位置。请手动退出自定义目录中的 FlClash 和内核后重试；未关闭未知程序。");
                             result.Add(new Target { Id = process.Id, Started = process.StartTime.ToUniversalTime().Ticks, Path = path, Name = name });
                         }

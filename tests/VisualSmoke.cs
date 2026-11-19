@@ -53,14 +53,22 @@ namespace SteamDirect
                     var samples = new List<HistorySample>();
                     for (int i = 0; i < 16; i++) samples.Add(new HistorySample { SessionId = session.Id, At = stamp + i * 5000, Mode = "直连", Gateway = "192.0.2.254", GatewayMs = 2, ExternalMs = i == 8 ? -1 : 20 + i, Dns = 1, AdapterUp = true });
                     monitor.Store.WriteBatch(new[] { session }, samples, new[] { new HistoryEvent { Id = "event", SessionId = session.Id, Kind = "外部探测异常", Start = stamp + 30000, End = stamp + 45000 } });
-                    using (var main = new MainWindow(false, monitor))
+                    using (var main = new MainWindow(false, monitor, new UserPreferences
                     {
+                        NightMode = true,
+                        ThemeColor = AppTheme.DefaultAccent,
+                        NetworkRecording = false,
+                        TrayEnabled = false
+                    }))
+                    {
+                        main.ShowInTaskbar = false;
                         main.StartPosition = FormStartPosition.Manual; main.Location = new Point(-20000, -20000); main.Show();
                         Pump(250);
                         Console.WriteLine("Native device DPI: " + main.DeviceDpi + "; client: " + main.ClientSize);
                         foreach (string mode in new[] { "dark", "light", "red" })
                         {
-                            AppTheme.SetTheme(mode != "light", mode == "red" ? "#FF0000" : "#6750A4");
+                            AppTheme.SetTheme(mode != "light", mode == "red" ? "#FF0000" : AppTheme.DefaultAccent);
+                            AppTheme.Apply(main);
                             foreach (string page in new[] { "概览", "网络诊断", "游戏记录", "设置" })
                             {
                                 Navigate(main, page); Pump(page == "游戏记录" ? 400 : 0);
@@ -73,6 +81,20 @@ namespace SteamDirect
                             details.StartPosition = FormStartPosition.Manual; details.Location = new Point(-20000, -20000); details.Show(); Pump(500);
                             Capture(details, Path.Combine(output, "details.png"));
                         }
+                        for (int cycle = 0; cycle < 5; cycle++)
+                        {
+                            using (var details = new HistoryDataWindow(monitor.Store, session, () => false))
+                            {
+                                details.ShowInTaskbar = false;
+                                details.StartPosition = FormStartPosition.Manual;
+                                details.Location = new Point(-20000, -20000);
+                                details.Show();
+                                details.Close();
+                                Pump(25);
+                                if (!details.IsDisposed) throw new Exception("Closing the history detail did not dispose the window.");
+                            }
+                        }
+                        Console.WriteLine("PASS history detail open/close during initial data load: 5 cycles.");
                         AppTheme.SetTheme(true, "#6750A4");
                         Navigate(main, "概览");
                         int before = GetGuiResources(Process.GetCurrentProcess().Handle, 0);

@@ -29,6 +29,11 @@ namespace SteamDirect
         [STAThread]
         private static int Main(string[] args)
         {
+            if (args.Length == 2 && args[0] == "--verify-steam-image")
+            {
+                using (SteamTrust.OpenVerified(args[1])) Console.WriteLine("PASS local Steam Authenticode and image identity (read-only)");
+                return 0;
+            }
             if (args.Length == 1 && args[0] == "--process-shutdown-fixture")
             {
                 System.Threading.Thread.Sleep(15000);
@@ -114,6 +119,8 @@ namespace SteamDirect
                 Throws<IOException>(() => ProxySnapshot.MigrateLegacy(legacyPath), "migration overwrote previous .legacy recovery point");
                 Need(File.ReadAllBytes(legacyPath).SequenceEqual(legacyBytes) && File.ReadAllBytes(legacyPath + ".legacy").SequenceEqual(legacyBytes), "migration collision damaged existing files");
                 Throws<IOException>(() => Snapshot("new").SaveNew(path), "old recovery point overwritten");
+                Need(Directory.GetFiles(directory, "*.new-*").Length == 0 &&
+                    File.ReadAllBytes(path).SequenceEqual(protectedBytes), "failed publishing changed the backup or left a staging file");
                 var access = new FakeProxy { Current = original, IgnoreRestore = true };
                 var rollbackProbe = new ProxySession(path, access); access.Current = Snapshot("changed");
                 Throws<InvalidOperationException>(rollbackProbe.Rollback, "unverified rollback accepted");
@@ -130,6 +137,14 @@ namespace SteamDirect
                 Need(File.Exists(fresh), "failed workflow rollback deleted backup");
                 access.IgnoreRestore = false; session.Rollback();
                 Need(!File.Exists(fresh) && original.SameAs(access.Current), "workflow rollback failed");
+                var replaced = new ProxySession(fresh, access);
+                File.Delete(fresh);
+                var newerBackup = Snapshot("other recovery point");
+                newerBackup.SaveNew(fresh);
+                access.Current = Snapshot("drifted");
+                replaced.Rollback();
+                Need(original.SameAs(access.Current) && newerBackup.SameAs(ProxySnapshot.Load(fresh)),
+                    "rollback removed a different recovery snapshot");
                 var failedRollback = new ProxySession(path, access); access.Current = Snapshot("another"); access.Failures = 1;
                 Throws<IOException>(failedRollback.Rollback, "repeated rollback failure not surfaced");
                 Need(File.Exists(path) && original.SameAs(ProxySnapshot.Load(path)), "double failure damaged original recovery point");

@@ -95,7 +95,7 @@ namespace SteamDirect
         {
             if (retentionDays < 1 || retentionDays > 365) throw new ArgumentOutOfRangeException("retentionDays");
             if (!Directory.Exists(directory)) return 0;
-            if (!TempCleaner.NoReparseAncestors(Path.GetFullPath(directory))) throw new IOException("日志目录包含重解析路径，拒绝清理。");
+            if (!FilePathSafety.NoReparseAncestors(Path.GetFullPath(directory))) throw new IOException("日志目录包含重解析路径，拒绝清理。");
             int removed = 0;
             foreach (string path in Directory.GetFiles(directory, "*.log", SearchOption.TopDirectoryOnly))
             {
@@ -193,7 +193,7 @@ namespace SteamDirect
             night.Dock = DockStyle.Fill;
             appearance.Controls.Add(night, 0, 0);
             appearance.Controls.Add(BuildColorPicker(themeColor), 0, 1);
-            appearance.Controls.Add(new Label { Text = "选择主题色或输入 #RRGGBB，保存后生效。", Dock = DockStyle.Fill,
+            appearance.Controls.Add(new Label { Text = "自选颜色以灰度用于键盘焦点。", Dock = DockStyle.Fill,
                 ForeColor = AppTheme.Muted, AutoEllipsis = true, Margin = Padding.Empty, Font = UiStyle.Caption }, 0, 2);
             reduce.Text = "减少动画";
             reduce.Checked = reduceMotion;
@@ -277,7 +277,7 @@ namespace SteamDirect
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
             about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.22", Dock = DockStyle.Fill,
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.23", Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true, Font = UiStyle.Caption }, 0, 0);
             const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
             var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill,
@@ -308,7 +308,7 @@ namespace SteamDirect
         {
             Color parsed;
             if (AppTheme.TryColor(ThemeColor, out parsed)) return true;
-            feedback.Text = "颜色格式应为 #RRGGBB，例如 #60A5FA";
+            feedback.Text = "颜色格式应为 #RRGGBB，例如 " + AppTheme.DefaultAccent;
             colorCode.Focus();
             return false;
         }

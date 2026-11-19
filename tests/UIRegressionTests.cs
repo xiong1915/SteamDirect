@@ -28,18 +28,23 @@ namespace SteamDirect {
     Check(AppTheme.Contrast(AppTheme.AccentForeground,AppTheme.Background(AppTheme.Accent))>=4.5,"Primary button contrast.");
    }
    AppTheme.SetTheme(true, AppTheme.DefaultAccent);
-   Check(AppTheme.ColorCode(AppTheme.Background(AppTheme.Page)) == "#0F1116" &&
-       AppTheme.ColorCode(AppTheme.Background(AppTheme.Rail)) == "#151922" &&
-       AppTheme.ColorCode(AppTheme.Background(AppTheme.Surface)) == "#1B212B" &&
-       AppTheme.ColorCode(AppTheme.Background(AppTheme.ElevatedSurface)) == "#222B38" &&
-       AppTheme.ColorCode(AppTheme.Background(AppTheme.Pill)) == "#26364A" &&
-       AppTheme.ColorCode(AppTheme.Edge) == "#303A48" &&
-       AppTheme.ColorCode(AppTheme.Focus) == "#60A5FA", "Fluent dark surface and focus tokens.");
-   Check(AppTheme.ColorCode(AppTheme.Text(AppTheme.Ink)) == "#F2F5F9" &&
-       AppTheme.ColorCode(AppTheme.Text(AppTheme.Muted)) == "#A8B3C2" &&
-       AppTheme.ColorCode(AppTheme.Text(AppTheme.Error)) == "#F87171" &&
-       AppTheme.ColorCode(AppTheme.Text(AppTheme.Warning)) == "#FBBF24" &&
-       AppTheme.ColorCode(AppTheme.Text(AppTheme.Success)) == "#4ADE80", "Fluent dark text and state tokens.");
+   Check(AppTheme.ColorCode(AppTheme.Background(AppTheme.Page)) == "#101216" &&
+       AppTheme.ColorCode(AppTheme.Background(AppTheme.Rail)) == "#15191F" &&
+       AppTheme.ColorCode(AppTheme.Background(AppTheme.Surface)) == "#1A1F27" &&
+       AppTheme.ColorCode(AppTheme.Background(AppTheme.ElevatedSurface)) == "#222832" &&
+       AppTheme.ColorCode(AppTheme.Background(AppTheme.Pill)) == "#303640" &&
+       AppTheme.ColorCode(AppTheme.Edge) == "#303640" &&
+       AppTheme.ColorCode(AppTheme.Divider) == "#262C35" &&
+       AppTheme.ColorCode(AppTheme.Focus) == "#A5ABB4", "Neutral dark surface and focus tokens.");
+   Check(AppTheme.ColorCode(AppTheme.Text(AppTheme.Ink)) == "#F3F4F6" &&
+       AppTheme.ColorCode(AppTheme.Text(AppTheme.Muted)) == "#A5ABB4" &&
+       AppTheme.ColorCode(AppTheme.Text(AppTheme.Error)) == "#D96B6B" &&
+       AppTheme.ColorCode(AppTheme.Text(AppTheme.Warning)) == "#D9A441" &&
+       AppTheme.ColorCode(AppTheme.Text(AppTheme.Success)) == "#4CAF79", "Neutral dark text and state tokens.");
+   AppTheme.SetTheme(true, "#6750A4");
+   Check(AppTheme.ColorCode(AppTheme.Background(AppTheme.Accent)) == "#D1D5DB" &&
+       AppTheme.Focus.R == AppTheme.Focus.G && AppTheme.Focus.G == AppTheme.Focus.B,
+       "Saved legacy colors keep a neutral action and keyboard focus.");
    Check(UiStyle.LeadTitle.SizeInPoints == 21 && UiStyle.PageTitle.SizeInPoints == 18 &&
        UiStyle.SectionTitle.SizeInPoints == 13.5F && UiStyle.Body.SizeInPoints == 10.5F &&
        UiStyle.Caption.SizeInPoints == 9, "Fluent typography must use logical pixels at 96 DPI.");

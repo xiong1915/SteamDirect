@@ -91,7 +91,7 @@ namespace SteamDirect
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            using (var pen = new Pen(AppTheme.Edge))
+            using (var pen = new Pen(AppTheme.Divider))
                 e.Graphics.DrawLine(pen, 0, 0, Width, 0);
         }
     }
@@ -102,7 +102,7 @@ namespace SteamDirect
             Space24 = 24, Space32 = 32, Space40 = 40, Space48 = 48;
         internal const int HeaderHeight = 80, ButtonHeight = 40, CompactHeight = 32, Gap = Space16, SmallGap = Space8;
         internal const int LargeButtonHeight = 44, AppHeaderHeight = Space48, StatusBarHeight = Space32,
-            SidebarWidth = 216, CollapsedSidebarWidth = 64, MinimumWindowWidth = 1100, MinimumWindowHeight = 700,
+            SidebarWidth = 232, CollapsedSidebarWidth = 64, MinimumWindowWidth = 1100, MinimumWindowHeight = 700,
             CompactWindowWidth = 880, CompactWindowHeight = 540;
         internal const int ButtonMotion = 100, DialogMotion = 180, StatusMotion = 180;
         internal const float SmallRadius = 6, ControlRadius = 8, CardRadius = 12, DialogRadius = 16, NavigationRadius = ControlRadius;
@@ -112,6 +112,7 @@ namespace SteamDirect
         internal static readonly Font Body = FontAt(14);
         internal static readonly Font BodyStrong = FontAt(14, true);
         internal static readonly Font Caption = FontAt(12);
+        internal static readonly Font CaptionStrong = FontAt(12, true);
         internal static readonly Font Button = BodyStrong;
         internal static readonly Font PageTitle = FontAt(24, true);
         internal static readonly Font LeadTitle = FontAt(28, true);
@@ -182,6 +183,41 @@ namespace SteamDirect
         {
             return new RoundedPanel { Dock = DockStyle.Fill, BackColor = AppTheme.Surface,
                 Padding = compact ? DensePadding : CardPadding, Margin = Padding.Empty };
+        }
+
+        internal static Control Metric(string title, UiIcon icon, out Label value, out Label note)
+        {
+            int column = icon == UiIcon.None ? 0 : 1;
+            var grid = Grid(column + 1, 3);
+            if (column != 0)
+            {
+                grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Space32));
+                var symbol = new PictureBox { Dock = DockStyle.Fill, Margin = Padding.Empty, TabStop = false };
+                symbol.Paint += (sender, args) =>
+                {
+                    int size = Scale(symbol, Space20);
+                    DrawIcon(args.Graphics, icon, new RectangleF(0, (symbol.Height - size) / 2F, size, size), AppTheme.Text(AppTheme.Muted));
+                };
+                grid.Controls.Add(symbol, 0, 0);
+                grid.SetRowSpan(symbol, 2);
+            }
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, Space20));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, Space24));
+            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            grid.Controls.Add(MetricLabel(title, Caption, AppTheme.Muted), column, 0);
+            value = MetricLabel("", Subtitle, AppTheme.Ink);
+            value.AccessibleName = title + "状态";
+            grid.Controls.Add(value, column, 1);
+            note = MetricLabel("", Caption, AppTheme.Muted);
+            grid.Controls.Add(note, column, 2);
+            return grid;
+        }
+
+        private static Label MetricLabel(string text, Font font, Color color)
+        {
+            return new Label { Text = text, Font = font, ForeColor = color, Dock = DockStyle.Fill,
+                Margin = Padding.Empty, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
         }
 
         internal static Control Entry(Control input, string accessibleName)

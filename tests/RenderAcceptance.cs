@@ -17,6 +17,9 @@ namespace SteamDirect
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
         [DllImport("user32.dll")] private static extern int GetGuiResources(IntPtr process, int kind);
+        [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+        [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
+        [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
         private static bool OwnForeground() { uint process; GetWindowThreadProcessId(GetForegroundWindow(), out process); return process == (uint)Process.GetCurrentProcess().Id; }
         private static void Pump(int milliseconds) { var watch = Stopwatch.StartNew(); while (watch.ElapsedMilliseconds < milliseconds) { Application.DoEvents(); Need(!OwnForeground(),"Test process activated a foreground window"); Thread.Sleep(5); } }
         private static void Await(Task task) { var watch = Stopwatch.StartNew(); while (!task.IsCompleted && watch.ElapsedMilliseconds < 10000) Pump(5); if (!task.IsCompleted) throw new TimeoutException("Fixture asynchronous operation timed out"); task.GetAwaiter().GetResult(); }
@@ -30,6 +33,9 @@ namespace SteamDirect
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException); Application.ThreadException += (sender,eventArgs) => { Console.Error.WriteLine(eventArgs.Exception.ToString()); Environment.Exit(1); }; WindowEnvironment.OffscreenTests = true;
             var initializeUi=typeof(HighDpi).GetMethod("InitializeUi",BindingFlags.Static|BindingFlags.NonPublic);
             if(initializeUi!=null)initializeUi.Invoke(null,null);else{HighDpi.EnablePerMonitorContext();Application.EnableVisualStyles();}
+            // Reproduce the CI host's 96-DPI native metrics without changing either desktop monitor.
+            if (Environment.GetEnvironmentVariable("STEAMDIRECT_TEST_NATIVE_96") == "1")
+                Need(SetThreadDpiAwarenessContext(new IntPtr(-1)) != IntPtr.Zero, "Cannot initialize native 96-DPI fixture");
             Motion.Reduced = true;
             bool baseline = args.Length > 1 && args[1] == "baseline";
             string output = Path.GetFullPath(args[0]), temporary = Path.Combine(Path.GetTempPath(), "SteamDirect-render-" + Guid.NewGuid().ToString("N"));
@@ -49,6 +55,7 @@ namespace SteamDirect
                     }
                     sessions.Add(new HistorySession { Id = "yesterday", Game = "昨日记录", Mode = "直连", Target = "192.0.2.1", Start = stamp - 86400000, End = stamp - 86000000 });
                     store.WriteBatch(sessions, samples, incidents);
+                    if (args.Length > 1 && args[1] == "monitors") { ProbeMonitors(monitor); return 0; }
                     if (args.Length > 1 && args[1] == "desktop") { MainMatrix(monitor, output); return 0; }
                     int[,] matrix = { {1920,1080,96}, {1920,1080,120}, {2560,1440,96}, {2560,1440,144}, {3840,2160,144}, {3840,2160,168}, {3840,2160,192} };
                     foreach (string theme in new[] { "dark", "light", "red" }) {
@@ -105,6 +112,47 @@ namespace SteamDirect
             } catch(Exception ex) {Console.Error.WriteLine(ex);return 1;}
             finally {Motion.IsGaming=null;try{Directory.Delete(temporary,true);}catch(IOException){}}
         }
+        private static void ProbeMonitors(HistoryMonitor monitor)
+        {
+            var screens = Screen.AllScreens.OrderByDescending(screen => screen.Primary).ToArray();
+            Need(screens.Length >= 2, "The hidden-window transition requires at least two active monitors.");
+            using (var main = new MainWindow(false, monitor, new UserPreferences
+            {
+                NetworkRecording = false, TrayEnabled = false, ReduceMotion = true
+            }))
+            {
+                main.StartPosition = FormStartPosition.Manual;
+                main.ShowInTaskbar = false;
+                main.MinimumSize = Size.Empty;
+                main.Bounds = new Rectangle(screens[0].Bounds.Location, new Size(700, 500));
+                var handle = main.Handle;
+                int notifications = 0;
+                main.DpiChanged += (sender, args) => notifications++;
+                uint previous = 0;
+                foreach (var screen in new[] { screens[0], screens[1], screens[0] })
+                {
+                    var bounds = screen.Bounds;
+                    int oldNotifications = notifications;
+                    Need(SetWindowPos(handle, IntPtr.Zero, bounds.X + 32, bounds.Y + 32, 700, 500, 0x214),
+                        "Moving the hidden window failed.");
+                    Pump(50);
+                    uint dpi = GetDpiForWindow(handle);
+                    Need(!main.Visible && !OwnForeground() && Screen.FromHandle(handle).DeviceName == screen.DeviceName,
+                        "The hidden window became visible, activated, or did not reach the requested monitor.");
+                    Need(dpi > 0 && main.DeviceDpi == dpi && UiStyle.Dpi(main) == dpi,
+                        "Native DPI and WinForms layout DPI diverged after the monitor move.");
+                    if (previous != 0 && previous != dpi)
+                        Need(notifications > oldNotifications, "WinForms missed the real cross-monitor DPI notification.");
+                    Console.WriteLine((screen.Primary ? "Primary" : "Secondary") + " " + bounds.Width + "x" +
+                        bounds.Height + " native_dpi=" + dpi + " winforms_dpi=" + main.DeviceDpi +
+                        " notifications=" + (notifications - oldNotifications) + " visible=" + main.Visible);
+                    previous = dpi;
+                }
+                Need(notifications >= 2, "The physical monitor pair did not produce two DPI transitions.");
+                Console.WriteLine("PASS real-monitor DPI propagation with a hidden SteamDirect window.");
+            }
+        }
+
         private static IEnumerable<Control> Descendants(Control root){foreach(Control child in root.Controls){yield return child;foreach(Control nested in Descendants(child))yield return nested;}}
         private static void MainMatrix(HistoryMonitor monitor,string output)
         {
@@ -127,11 +175,15 @@ namespace SteamDirect
 
         private static void RunMainMatrix(HistoryMonitor monitor, string output)
         {
-            int[,] sizes={{1280,800,96},{1920,1080,96},{1920,1080,120},{1920,1080,144},{1920,1080,168},{1920,1080,192},{3840,2160,168},{3840,2160,192}};
+            int[,] sizes = { {1280,800,96}, {1920,1080,96}, {1920,1080,120}, {1920,1080,144},
+                {1920,1080,168}, {1920,1080,192}, {2560,1440,120}, {1440,2560,120},
+                {3840,2160,168}, {3840,2160,192} };
             for (int index = 0; index < sizes.GetLength(0); index++) {
                 bool lightOverview = sizes[index,0] == 1920 && sizes[index,2] == 168;
                 using(var main=new MainWindow(false,monitor,new UserPreferences{NightMode=!lightOverview,ThemeColor=lightOverview?"#6750A4":AppTheme.DefaultAccent,NetworkRecording=false})){
                     main.ShowInTaskbar=false;main.FormBorderStyle=FormBorderStyle.None;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.Show();
+                    if (Environment.GetEnvironmentVariable("STEAMDIRECT_TEST_NATIVE_96") == "1")
+                        Need(main.DeviceDpi == 96, "Fixture did not receive native 96-DPI metrics");
                     var navigate=typeof(MainWindow).GetMethod("NavigateTo",Private);var manager=Field(main,"pages");
                     foreach(string page in new[]{"网络诊断","游戏记录","设置","概览"}){navigate.Invoke(main,new object[]{page});Pump(40);}
                     var original=new Dictionary<Control,Font>();Collect(main,original);var owned=new List<Font>();
@@ -224,7 +276,16 @@ namespace SteamDirect
                                 Need(records.Height >= UiStyle.Scale(records, 100), "History list collapsed");
                                 Need(report.Height >= UiStyle.Scale(report, 80), "History report collapsed");
                                 if (sizes[index,0] == 1920 && dpi >= 168)
-                                    CaptureHistoryTabs(main, (HistoryWindow)active, output, dpi);
+                                {
+                                    var history = (HistoryWindow)active;
+                                    CaptureHistoryTabs(main, history, output, dpi);
+                                    var title = (Label)Field(history, "detailTitle");
+                                    var detail = (Button)Field(history, "detailData");
+                                    Need(detail.Visible && detail.Enabled && !title.Bounds.IntersectsWith(detail.Bounds),
+                                        "The selected history data action is unavailable or overlaps the game title.");
+                                    Need(TextRenderer.MeasureText(title.Text, title.Font).Width <= title.Width,
+                                        "Selected fixture title does not fit at DPI " + dpi);
+                                }
                             }
                         }
                         Console.WriteLine("PASS desktop simulation "+sizes[index,0]+"x"+sizes[index,1]+" dpi="+dpi+" four pages / recording off");
@@ -248,7 +309,9 @@ namespace SteamDirect
                 var visible = target.RectangleToScreen(target.ClientRectangle);
                 for (Control parent = target.Parent; parent != null; parent = parent.Parent)
                     visible.Intersect(parent.RectangleToScreen(parent.ClientRectangle));
-                Need(visible.Height >= UiStyle.Scale(main, 32) && visible.Width > 0, "History tab content was clipped: " + index + " dpi=" + dpi);
+                Need(visible.Height >= UiStyle.Scale(main, 32) && visible.Width > 0,
+                    "History tab content was clipped: " + index + " dpi=" + dpi + " native=" + main.DeviceDpi +
+                    " visible=" + visible + " chart=" + target.Bounds + " tab=" + section.Bounds);
                 Capture(main, Path.Combine(output, "history-click-" + dpi + "-" + index + ".png"));
             }
         }

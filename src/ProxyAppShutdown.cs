@@ -130,7 +130,7 @@ namespace SteamDirect
                     catch (COMException) { }
                 }
                 string app = Identify(path, appId, localApps, programFiles);
-                if (app != null && TempCleaner.NoReparseAncestors(path)) windows.Add(new AppWindow { Handle = window, ProcessId = pid, Name = app, Path = path, Started = started });
+                if (app != null && FilePathSafety.NoReparseAncestors(path)) windows.Add(new AppWindow { Handle = window, ProcessId = pid, Name = app, Path = path, Started = started });
                 return true;
             }, IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error(), "无法枚举需要关闭的应用窗口。");
             return windows;
@@ -157,7 +157,7 @@ namespace SteamDirect
                             var info = Inspect(process.Id, null);
                             if (info == null) continue;
                             string app = Identify(info.Path, null, local, programs);
-                            if (app != null && TempCleaner.NoReparseAncestors(info.Path))
+                            if (app != null && FilePathSafety.NoReparseAncestors(info.Path))
                             {
                                 info.Name = app;
                                 result.Add(info);
@@ -225,7 +225,7 @@ namespace SteamDirect
             Inspect(target.Id, (handle, actual) =>
             {
                 if (!SameIdentity(target.Id, target.Started, target.Path, actual.Id, actual.Started, actual.Path) ||
-                    !TempCleaner.NoReparseAncestors(actual.Path) || !trusted(actual.Path))
+                    !FilePathSafety.NoReparseAncestors(actual.Path) || !trusted(actual.Path))
                     throw new InvalidOperationException("进程身份已变化，拒绝终止。");
                 if (!TerminateProcess(handle, 0))
                 {
@@ -277,7 +277,7 @@ namespace SteamDirect
                 {
                     using (var process = Process.GetProcessById((int)pid))
                     {
-                        if (!TempCleaner.NoReparseAncestors(target.Path) || !SameIdentity((int)target.ProcessId, target.Started, target.Path, process.Id,
+                        if (!FilePathSafety.NoReparseAncestors(target.Path) || !SameIdentity((int)target.ProcessId, target.Started, target.Path, process.Id,
                             process.StartTime.ToUniversalTime().Ticks, process.MainModule.FileName))
                             throw new InvalidOperationException("应用进程身份已变化，已停止关闭请求。");
                         if (GetWindowThreadProcessId(target.Handle, out pid) == 0 || pid != target.ProcessId)

@@ -85,7 +85,9 @@ namespace SteamDirect
             bool navigation=Icon==UiIcon.Home||Icon==UiIcon.Network||Icon==UiIcon.History||Icon==UiIcon.Settings;
             if (navigation && Enabled)
                 fill = Motion.Blend(selected ? AppTheme.Background(AppTheme.Pill) : background, AppTheme.Hover, .6F * amount);
-            if (!TextOnly)
+            if (TextOnly && Enabled && amount > 0)
+                fill = Motion.Blend(background, AppTheme.Hover, Math.Min(1F, amount / .55F));
+            if (!TextOnly || Enabled && amount > 0)
             {
                 using (var path = UiStyle.RoundRect(box, radius))
                 using (var brush = new SolidBrush(fill)) e.Graphics.FillPath(brush, path);

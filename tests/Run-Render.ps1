@@ -1,4 +1,4 @@
-param([string]$OutputDirectory, [string]$SourceDirectory, [switch]$Baseline, [switch]$DesktopOnly)
+param([string]$OutputDirectory, [string]$SourceDirectory, [switch]$Baseline, [switch]$DesktopOnly, [switch]$MonitorProbe)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $source=Join-Path $root 'src'
@@ -11,5 +11,5 @@ $sources=@(Get-ChildItem $source -Filter '*.cs' -File | ForEach-Object FullName)
 & $compiler /nologo /target:exe /main:SteamDirect.RenderAcceptance /platform:x64 /optimize+ /warnaserror+ "/win32manifest:$source\app.manifest" "/out:$output" "/resource:$source\mascot.png,SteamDirect.Mascot" "/resource:$source\app.config,SteamDirect.HighDpiConfig" "/resource:$source\wallpaper.jpg,SteamDirect.Wallpaper" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.ServiceProcess.dll /r:System.Security.dll @sources (Join-Path $PSScriptRoot 'RenderAcceptance.cs') (Join-Path $PSScriptRoot 'OffscreenGeometry.cs')
 if($LASTEXITCODE -ne 0){throw 'Render acceptance compilation failed'}
 Copy-Item "$source\app.config" "$output.config" -Force
-& $output $OutputDirectory $(if($Baseline){"baseline"}elseif($DesktopOnly){"desktop"}else{"current"}) | Tee-Object -FilePath (Join-Path $OutputDirectory 'results.txt')
+& $output $OutputDirectory $(if($Baseline){"baseline"}elseif($DesktopOnly){"desktop"}elseif($MonitorProbe){"monitors"}else{"current"}) | Tee-Object -FilePath (Join-Path $OutputDirectory 'results.txt')
 if($LASTEXITCODE -ne 0){throw 'Render acceptance failed'}

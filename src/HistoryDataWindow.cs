@@ -99,7 +99,7 @@ namespace SteamDirect
             {
                 var viewport = parent as ContentViewport;
                 if (viewport == null) continue;
-                viewport.RevealTop(content, UiStyle.Scale(this, 220));
+                viewport.RevealTop(this, navigation.Height + UiStyle.Scale(this, 160));
                 break;
             }
         }
@@ -156,7 +156,7 @@ namespace SteamDirect
             Configure(samples, new[] { "采样时间", "模式", "网关延迟", "外部延迟", "网卡", "DNS", "网关地址" });
             Configure(events, new[] { "异常类型", "发生时间", "恢复时间", "持续时间" });
             sections.Add("原始采样", samples); sections.Add("异常记录", events); sectionCard.Controls.Add(sections); root.Controls.Add(sectionCard, 0, 2);
-            var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1 };
+            var footer = UiStyle.Grid(3, 1);
             footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90)); footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
             state.Dock = DockStyle.Fill; state.TextAlign = ContentAlignment.MiddleLeft; state.ForeColor = AppTheme.Muted; state.AutoEllipsis = true;
@@ -188,8 +188,8 @@ namespace SteamDirect
             view.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             view.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
             view.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
-            view.ColumnHeadersDefaultCellStyle.Padding = new Padding(8, 10, 8, 10);
-            view.DefaultCellStyle.Padding = new Padding(8, 8, 8, 8);
+            view.ColumnHeadersDefaultCellStyle.Padding = new Padding(UiStyle.Space8, UiStyle.Space12, UiStyle.Space8, UiStyle.Space12);
+            view.DefaultCellStyle.Padding = new Padding(UiStyle.Space8);
             view.BorderStyle = BorderStyle.None; view.BackgroundColor = AppTheme.Surface;
             view.EnableHeadersVisualStyles = false;
             view.ColumnHeadersDefaultCellStyle.BackColor = AppTheme.Background(AppTheme.Page);
