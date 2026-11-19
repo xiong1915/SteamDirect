@@ -283,8 +283,10 @@ namespace SteamDirect
                                     var detail = (Button)Field(history, "detailData");
                                     Need(detail.Visible && detail.Enabled && !title.Bounds.IntersectsWith(detail.Bounds),
                                         "The selected history data action is unavailable or overlaps the game title.");
-                                    Need(TextRenderer.MeasureText(title.Text, title.Font).Width <= title.Width,
-                                        "Selected fixture title does not fit at DPI " + dpi);
+                                    int measured = TextRenderer.MeasureText(title.Text, title.Font, new Size(title.Width, int.MaxValue),
+                                        TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height;
+                                    Need(measured <= title.Height, "Selected fixture title does not fit at DPI " + dpi +
+                                        ": width=" + title.Width + " height=" + title.Height + " required=" + measured);
                                 }
                             }
                         }

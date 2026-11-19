@@ -39,6 +39,7 @@ namespace SteamDirect
         private readonly RichTextBox overviewText = new RichTextBox();
         private readonly Label status = new Label();
         private readonly Label detailTitle = new Label();
+        private readonly ToolTip detailTitleTip = new FluentTooltip();
         private readonly Label detailMeta = new Label();
         private readonly Button refresh = new RoundedButton();
         private readonly Button detailData = new RoundedButton { Visible = false };
@@ -214,9 +215,11 @@ namespace SteamDirect
             detailTitle.Dock = DockStyle.Fill;
             detailTitle.Margin = Padding.Empty;
             detailTitle.TextAlign = ContentAlignment.MiddleLeft;
-            detailTitle.AutoEllipsis = true;
+            detailTitle.UseMnemonic = false;
             detail.Controls.Add(detailTitle, 0, 0);
             StyleButton(detailData, "详细数据", false);
+            detailData.Dock = DockStyle.Top;
+            detailData.Height = UiStyle.ButtonHeight;
             detailData.Click += (sender, args) =>
             {
                 if (records.SelectedItems.Count == 1) OpenDetailedData(records.SelectedItems[0].Tag as HistorySession);
@@ -253,20 +256,34 @@ namespace SteamDirect
             detail.Controls.Add(tabs, 0, 3);
             detail.SetColumnSpan(tabs, 2);
             bool compactHeader = false;
-            detail.SizeChanged += (sender, args) =>
+            Action fitDetailHeader = () =>
             {
                 bool compact = detail.ClientSize.Width < UiStyle.Scale(detail, 400);
-                if (compact == compactHeader) return;
-                compactHeader = compact;
+                int width = Math.Max(1, detail.ClientSize.Width - (compact ? 0 : (int)detail.ColumnStyles[1].Width));
+                int titleHeight = DetailTitleHeight(detailTitle.Text, detailTitle.Font, width,
+                    UiStyle.Scale(detail, UiStyle.ButtonHeight));
+                if (compact == compactHeader && detail.RowStyles[0].Height == titleHeight) return;
                 detail.SuspendLayout();
                 try
                 {
-                    detail.SetCellPosition(detailData, new TableLayoutPanelCellPosition(1, compact ? 2 : 0));
-                    detail.SetColumnSpan(detailTitle, compact ? 2 : 1);
-                    detail.RowStyles[2].Height = compact ? UiStyle.Scale(detail, UiStyle.ButtonHeight) : 0;
+                    if (compact != compactHeader)
+                    {
+                        compactHeader = compact;
+                        detail.SetCellPosition(detailData, new TableLayoutPanelCellPosition(1, compact ? 2 : 0));
+                        detail.SetColumnSpan(detailTitle, compact ? 2 : 1);
+                        detail.RowStyles[2].Height = compact ? UiStyle.Scale(detail, UiStyle.ButtonHeight) : 0;
+                    }
+                    detail.RowStyles[0].Height = titleHeight;
                 }
                 finally { detail.ResumeLayout(true); }
             };
+            detail.SizeChanged += (sender, args) => fitDetailHeader();
+            detailTitle.TextChanged += (sender, args) =>
+            {
+                detailTitleTip.SetToolTip(detailTitle, detailTitle.Text);
+                fitDetailHeader();
+            };
+            detailTitle.FontChanged += (sender, args) => fitDetailHeader();
             detailCard.Controls.Add(detail);
             body.Controls.Add(detailCard, 1, 0);
             body.SizeChanged += (sender, args) => {
@@ -301,6 +318,13 @@ namespace SteamDirect
             AppTheme.Apply(this);
             while (buildingGrids.Count != 0) buildingGrids.Pop().ResumeLayout(false);
             ResumeLayout(false);
+        }
+
+        internal static int DetailTitleHeight(string text, Font font, int width, int minimum)
+        {
+            const TextFormatFlags flags = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
+            int height = TextRenderer.MeasureText(text, font, new Size(width, int.MaxValue), flags).Height;
+            return Math.Max(minimum, Math.Min(2 * minimum, height));
         }
 
         private TableLayoutPanel Grid(int columns, int rows)
@@ -522,6 +546,7 @@ namespace SteamDirect
                 if (queryWork != null) queryWork.Cancel();
                 if (selectionWork != null) selectionWork.Cancel();
                 lifetime.Dispose();
+                detailTitleTip.Dispose();
 
                 if (records.ContextMenuStrip != null) records.ContextMenuStrip.Dispose();
             }

@@ -74,6 +74,15 @@ namespace SteamDirect {
       Check(TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, RoundedButton.CaptionFlags).Width <= button.CaptionBounds.Width,
        "History tab captions must fit before choosing a column count.");
     }
+    using (var font = new Font(UiStyle.SectionTitle.FontFamily, 36, UiStyle.SectionTitle.Style, GraphicsUnit.Pixel))
+    {
+     const string title = "Counter-Strike 2 · 合成对局 · 网络报告";
+     int wrapped = TextRenderer.MeasureText(title, font, new Size(430, int.MaxValue),
+      TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height;
+     Check(wrapped > TextRenderer.MeasureText("Counter-Strike 2", font).Height &&
+      HistoryWindow.DetailTitleHeight(title, font, 430, 80) >= wrapped,
+      "The 430-pixel header must reserve the full height of a wrapped game name.");
+    }
    }
    finally { WindowEnvironment.LayoutDpi = originalDpi; }
    using(var chart=new HistoryNetworkChart()) using(var bitmap=new Bitmap(640,360)) {
