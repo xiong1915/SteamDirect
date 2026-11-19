@@ -55,8 +55,14 @@ namespace SteamDirect
         {
             HighDpi.InitializeUi();
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            MainWindow main = null;
             Application.ThreadException += (sender, args) =>
             {
+                if (main != null && main.DirectConnectRunning)
+                {
+                    SaveCrash(args.Exception);
+                    return;
+                }
                 ShowFatal(args.Exception);
                 Application.Exit();
             };
@@ -81,7 +87,11 @@ namespace SteamDirect
                             bool legacyOwned;
                             try { legacyOwned = legacy.WaitOne(0); } catch (AbandonedMutexException) { legacyOwned = true; }
                             if (!legacyOwned) { WindowMessages.PostMessage(new IntPtr(0xffff), WindowMessages.ShowMain, IntPtr.Zero, IntPtr.Zero); return; }
-                            try { Application.Run(new MainWindow(Array.IndexOf(arguments, "--background") >= 0)); }
+                            try
+                            {
+                                main = new MainWindow(Array.IndexOf(arguments, "--background") >= 0);
+                                Application.Run(main);
+                            }
                             finally { legacy.ReleaseMutex(); }
                         }
                     }
@@ -90,7 +100,8 @@ namespace SteamDirect
             }
             catch (Exception ex)
             {
-                ShowFatal(ex);
+                if (main != null && main.DirectConnectRunning) SaveCrash(ex);
+                else ShowFatal(ex);
             }
         }
     }
@@ -106,6 +117,7 @@ namespace SteamDirect
         private string logPath { get { return LogStore.CurrentPath; } }
         private DateTime lastCleanupDate = DateTime.MinValue;
         private bool running;
+        internal bool DirectConnectRunning { get { return running; } }
         private readonly StepTimeline timeline = new StepTimeline();
         private readonly Label elapsedLabel = new Label();
         private readonly System.Windows.Forms.Timer animationTimer = new System.Windows.Forms.Timer();
@@ -135,7 +147,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.18";
+            Text = "Steam 直连助手 v3.0.19";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -255,6 +267,7 @@ namespace SteamDirect
 
             logButton.Click += (s, e) =>
             {
+                if (running) return;
                 try
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(logPath));
@@ -380,7 +393,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.18", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.19", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Page };
             sidebar.Padding = new Padding(8);
@@ -594,16 +607,17 @@ namespace SteamDirect
         {
             if (running) return;
             running = true;
-            timeline.ActiveStep = 0;
-            timeline.Failed = false;
-            operationWatch.Restart();
-            UpdateOperationAnimation();
-            runButton.Enabled = false;
-            cleanupPanel.AllowCleanup(false);
-            runButton.Text = "正在执行，请稍候…";
-            Log("开始直连流程。");
             try
             {
+                timeline.ActiveStep = 0;
+                timeline.Failed = false;
+                operationWatch.Restart();
+                UpdateOperationAnimation();
+                runButton.Enabled = false;
+                logButton.Enabled = false;
+                cleanupPanel.AllowCleanup(false);
+                runButton.Text = "正在执行，请稍候…";
+                Log("开始直连流程。");
                 await Task.Run(() => RunWorkflow());
                 FinishProgress(true);
                 Status("完成 · 已提交 Steam 启动请求");
@@ -612,13 +626,14 @@ namespace SteamDirect
             catch (Exception ex)
             {
                 FinishProgress(false);
-                Status("已停止 · 请查看操作记录");
+                Status("已停止 · " + ex.Message.Split('\n')[0]);
                 Log("停止：" + ex.Message);
             }
             finally
             {
                 running = false;
                 runButton.Enabled = true;
+                logButton.Enabled = true;
                 cleanupPanel.AllowCleanup(true);
                 runButton.Text = "严格直连并重启 Steam  →";
             }
@@ -660,7 +675,7 @@ namespace SteamDirect
             ProxySession.VerifyStable(ProxySettings.CheckDirect, () => Thread.Sleep(450));
             Log("连续复检通过，准备启动 Steam。");
 
-            var start = new ProcessStartInfo(steamPath);
+            var start = new ProcessStartInfo(steamPath, "-silent");
             start.WorkingDirectory = Path.GetDirectoryName(steamPath);
             start.UseShellExecute = false;
             foreach (string name in ProxySettings.ProxyVariableNames)

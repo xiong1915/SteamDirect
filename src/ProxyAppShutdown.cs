@@ -4,7 +4,9 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
+using Microsoft.Win32.SafeHandles;
 
 namespace SteamDirect
 {
@@ -13,6 +15,9 @@ namespace SteamDirect
         internal const string YouTubeAppId = "Chrome._crx_agimnkijcamfeangaknmldooml";
         private const string OpenAiPublisher = "_2p2nqsd0c76g0";
         private const uint CloseMessage = 0x0010;
+        private const uint InspectAccess = 0x101000; // SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION
+        private const uint TerminateAccess = 0x0001;
+        private const int InvalidParameter = 87;
 
         private sealed class AppWindow
         {
@@ -108,9 +113,7 @@ namespace SteamDirect
                     using (var process = Process.GetProcessById((int)pid))
                     {
                         string name = process.ProcessName;
-                        if (string.Equals(name, "ChatGPT", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(name, "Antigravity", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(name, "chrome", StringComparison.OrdinalIgnoreCase))
+                        if (string.Equals(name, "chrome", StringComparison.OrdinalIgnoreCase))
                         {
                             path = process.MainModule.FileName;
                             started = process.StartTime.ToUniversalTime().Ticks;
@@ -151,13 +154,17 @@ namespace SteamDirect
                     {
                         try
                         {
-                            string path = process.MainModule.FileName;
-                            string app = Identify(path, null, local, programs);
-                            if (app != null && TempCleaner.NoReparseAncestors(path)) result.Add(new AppProcess { Id = process.Id, Name = app, Path = path, Started = process.StartTime.ToUniversalTime().Ticks });
+                            var info = Inspect(process.Id, null);
+                            if (info == null) continue;
+                            string app = Identify(info.Path, null, local, programs);
+                            if (app != null && TempCleaner.NoReparseAncestors(info.Path))
+                            {
+                                info.Name = app;
+                                result.Add(info);
+                            }
                             else throw new InvalidOperationException("发现身份未能确认的 " + executable + " 进程，已停止直连流程。");
                         }
                         catch (ArgumentException) { }
-                        catch (InvalidOperationException) { if (!process.HasExited) throw; }
                         catch (Win32Exception ex) { throw new InvalidOperationException("无法检查 " + executable + " 后台进程，已停止直连流程。", ex); }
                     }
             return result;
@@ -170,27 +177,66 @@ namespace SteamDirect
         }
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool TerminateProcess(IntPtr process, uint exitCode);
+        private static extern SafeProcessHandle OpenProcess(uint access, bool inherit, int processId);
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool QueryFullProcessImageName(SafeProcessHandle process, int flags, StringBuilder path, ref int size);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetProcessTimes(SafeProcessHandle process, out long created, out long exited, out long kernel, out long user);
+        [DllImport("kernel32.dll")]
+        private static extern uint WaitForSingleObject(SafeProcessHandle process, uint milliseconds);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool TerminateProcess(SafeProcessHandle process, uint exitCode);
+
+        private static AppProcess ReadIdentity(int id, SafeProcessHandle handle)
+        {
+            if (WaitForSingleObject(handle, 0) == 0) return null;
+            var path = new StringBuilder(32768);
+            int size = path.Capacity;
+            long created, exited, kernel, user;
+            if (!QueryFullProcessImageName(handle, 0, path, ref size) ||
+                !GetProcessTimes(handle, out created, out exited, out kernel, out user))
+            {
+                int error = Marshal.GetLastWin32Error();
+                if (WaitForSingleObject(handle, 0) == 0) return null;
+                throw new Win32Exception(error);
+            }
+            return exited != 0 ? null : new AppProcess { Id = id, Path = path.ToString(), Started = DateTime.FromFileTimeUtc(created).Ticks };
+        }
+
+        private static AppProcess Inspect(int id, Action<SafeProcessHandle, AppProcess> use)
+        {
+            uint access = InspectAccess | (use == null ? 0 : TerminateAccess);
+            using (var handle = OpenProcess(access, false, id))
+            {
+                if (handle.IsInvalid)
+                {
+                    int error = Marshal.GetLastWin32Error();
+                    if (error == InvalidParameter) return null;
+                    throw new Win32Exception(error);
+                }
+                var info = ReadIdentity(id, handle);
+                if (info != null && use != null) use(handle, info);
+                return info;
+            }
+        }
+
         internal static void KillVerified(AppProcess target, Func<string, bool> trusted)
         {
-            try
+            Inspect(target.Id, (handle, actual) =>
             {
-                using (var process = Process.GetProcessById(target.Id))
+                if (!SameIdentity(target.Id, target.Started, target.Path, actual.Id, actual.Started, actual.Path) ||
+                    !TempCleaner.NoReparseAncestors(actual.Path) || !trusted(actual.Path))
+                    throw new InvalidOperationException("进程身份已变化，拒绝终止。");
+                if (!TerminateProcess(handle, 0))
                 {
-                    var handle = process.Handle;
-                    if (process.HasExited) return;
-                    string path = process.MainModule.FileName;
-                    if (!SameIdentity(target.Id, target.Started, target.Path, process.Id, process.StartTime.ToUniversalTime().Ticks, path) ||
-                        !TempCleaner.NoReparseAncestors(path) || !trusted(path))
-                        throw new InvalidOperationException("进程身份已变化，拒绝终止。");
-                    if (!TerminateProcess(handle, 0) && !process.HasExited) throw new Win32Exception(Marshal.GetLastWin32Error(), "无法终止已核实的后台进程。");
+                    int error = Marshal.GetLastWin32Error();
+                    if (WaitForSingleObject(handle, 0) != 0) throw new Win32Exception(error, "无法终止已核实的后台进程。");
                 }
-            }
-            catch (ArgumentException) { }
+            });
         }
 
         internal static void FinishProcesses(Func<List<AppProcess>> find,
-            Action<int> wait, Func<long> elapsed, Action<string> log, Action<AppProcess> force = null)
+            Action<int> wait, Func<long> elapsed, Action<string> log, Action<AppProcess> force)
         {
             while (true)
             {
@@ -200,9 +246,9 @@ namespace SteamDirect
                 {
                     var names = new HashSet<string>();
                     foreach (var process in remaining) names.Add(process.Name);
-                    throw new InvalidOperationException("仍在运行：" + string.Join("、", names) + "。已停止流程，不会启动 Steam。请处理保存/退出提示或查看日志后重试。");
+                    throw new InvalidOperationException("仍在运行：" + string.Join("、", names) + "。已停止流程，不会启动 Steam。");
                 }
-                if (force != null) foreach (var process in remaining.ToArray()) force(process);
+                foreach (var process in remaining.ToArray()) force(process);
                 wait(250);
             }
         }
@@ -216,16 +262,15 @@ namespace SteamDirect
         internal static void Run(Action<string> log)
         {
             log("正在结束已核实的 ChatGPT / Antigravity 后台；未保存内容可能丢失。");
+            var processWatch = Stopwatch.StartNew();
+            FinishProcesses(FindProcesses, Thread.Sleep, () => processWatch.ElapsedMilliseconds, log, target =>
+            { KillVerified(target, path => Identify(path, null, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)) == target.Name); log("已处理 " + target.Name + " 后台（PID " + target.Id + "）。"); });
             var targets = FindWindows();
 
             foreach (var target in targets)
             {
-                if (target.Name != "YouTube") continue;
-                if (target.Name == "YouTube")
-                {
-                    try { if (!string.Equals(ReadAppId(target.Handle), YouTubeAppId, StringComparison.Ordinal)) continue; }
-                    catch (COMException) { continue; }
-                }
+                try { if (!string.Equals(ReadAppId(target.Handle), YouTubeAppId, StringComparison.Ordinal)) continue; }
+                catch (COMException) { continue; }
                 uint pid;
                 if (GetWindowThreadProcessId(target.Handle, out pid) == 0 || pid != target.ProcessId) continue;
                 try
@@ -238,15 +283,12 @@ namespace SteamDirect
                         if (GetWindowThreadProcessId(target.Handle, out pid) == 0 || pid != target.ProcessId)
                             throw new InvalidOperationException("应用窗口归属已变化，已停止关闭请求。");
                         if (PostMessage(target.Handle, CloseMessage, IntPtr.Zero, IntPtr.Zero)) log("已请求正常关闭 " + target.Name + " 窗口。");
-                else log("关闭请求未送达 " + target.Name + "，将复查窗口状态。");
+                        else log("关闭请求未送达 " + target.Name + "，将复查窗口状态。");
                     }
                 }
                 catch (ArgumentException) { }
                 catch (Win32Exception ex) { throw new InvalidOperationException("无法确认应用身份；请手动保存并退出后重试。", ex); }
             }
-            var processWatch = Stopwatch.StartNew();
-            FinishProcesses(FindProcesses, Thread.Sleep, () => processWatch.ElapsedMilliseconds, log, target =>
-            { KillVerified(target, path => Identify(path, null, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)) == target.Name); log("已结束 " + target.Name + " 后台（PID " + target.Id + "）。"); });
             var watch = Stopwatch.StartNew();
             while (true)
             {

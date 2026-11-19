@@ -27,8 +27,13 @@ namespace SteamDirect
             catch (Exception ex) { failures++; Console.WriteLine("FAIL " + name + ": " + ex.GetBaseException()); }
         }
         [STAThread]
-        private static int Main()
+        private static int Main(string[] args)
         {
+            if (args.Length == 1 && args[0] == "--process-shutdown-fixture")
+            {
+                System.Threading.Thread.Sleep(15000);
+                return 0;
+            }
             HighDpi.InitializeUi();
             System.Windows.Forms.Application.SetUnhandledExceptionMode(System.Windows.Forms.UnhandledExceptionMode.ThrowException);
             WindowEnvironment.OffscreenTests = true;
