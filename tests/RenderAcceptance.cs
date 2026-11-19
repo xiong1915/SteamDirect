@@ -166,11 +166,12 @@ namespace SteamDirect
                                     var side = (Dictionary<string, Button>)Field(main, "navigation");
                                     toggle.PerformClick();
                                     Pump(20);
-                                    Need(side.Values.All(button => ((RoundedButton)button).IconOnly && button.Text == ""),
+                                    Need(side.All(item => ((RoundedButton)item.Value).IconOnly && item.Value.Text == item.Key),
                                         "Collapsed navigation must use accessible icon buttons");
                                     toggle.PerformClick();
                                     Pump(20);
-                                    Need(side.All(item => item.Value.Text == item.Key), "Expanding navigation did not restore the captions");
+                                    Need(side.All(item => !((RoundedButton)item.Value).IconOnly && item.Value.Text == item.Key),
+                                        "Expanding navigation did not restore the captions");
                                     var open = typeof(MainWindow).GetMethod("OpenOverviewHistoryAsync", Private);
                                     Await((Task)open.Invoke(main, new object[] { "fixture-2" }));
                                     var history = (HistoryWindow)manager.GetType().GetProperty("ActivePage", Private).GetValue(manager, null);
@@ -185,7 +186,7 @@ namespace SteamDirect
                             foreach (var control in Descendants(main))
                             {
                                 var button = control as RoundedButton;
-                                if (button != null && button.Visible && !string.IsNullOrWhiteSpace(button.Text))
+                                if (button != null && button.Visible && !button.IconOnly && !string.IsNullOrWhiteSpace(button.Text))
                                 {
                                     CheckCaption(button, button.Text, button.CaptionBounds, page, dpi);
                                 }

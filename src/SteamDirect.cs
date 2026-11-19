@@ -133,7 +133,7 @@ namespace SteamDirect
         private readonly WindowDiagnostics windowDiagnostics;
         private HistoryMonitor history;
         private bool savingSettings;
-        private readonly Panel pageHost = new PageHost();
+        private readonly PageHost pageHost = new PageHost();
         private readonly Dictionary<string, Button> navigation = new Dictionary<string, Button>();
         private PageManager pages;
         private readonly OverviewHistory recentHistory;
@@ -149,7 +149,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.21";
+            Text = "Steam 直连助手 v3.0.22";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -360,6 +360,13 @@ namespace SteamDirect
         private void BuildNavigation()
         {
             var shell = UiStyle.Grid(2, 3);
+            pageHost.ContentWidthLimit = () =>
+            {
+                // A rail toggle can reposition the page without reflowing its native controls.
+                int reservedRail = shell.ClientSize.Width < UiStyle.Scale(shell, UiStyle.CompactWindowWidth)
+                    ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth;
+                return Math.Max(0, shell.DisplayRectangle.Width - UiStyle.Scale(shell, reservedRail) - pageHost.Margin.Horizontal);
+            };
             shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiStyle.SidebarWidth));
             shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             shell.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.AppHeaderHeight));
@@ -371,7 +378,8 @@ namespace SteamDirect
             for (int i = 0; i < 4; i++) rail.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48));
             rail.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             rail.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.StatusBarHeight));
-            var brand = UiStyle.Grid(2, 1);
+            var brand = UiStyle.Grid(3, 1);
+            brand.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiStyle.Space40));
             brand.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiStyle.Space40));
             brand.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             brand.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -386,10 +394,10 @@ namespace SteamDirect
                         mascot.Image = new Bitmap(source, 256, 256);
                     }
             mascot.Disposed += (sender, args) => mascot.Image.Dispose();
-            brand.Controls.Add(mascot, 0, 0);
+            brand.Controls.Add(mascot, 1, 0);
             var brandText = new Label { Text = "SteamDirect", Dock = DockStyle.Fill,
                 Margin = Padding.Empty, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.BodyStrong };
-            brand.Controls.Add(brandText, 1, 0);
+            brand.Controls.Add(brandText, 2, 0);
             rail.Controls.Add(brand, 0, 0);
             string[] pages = { "概览", "网络诊断", "游戏记录", "设置" };
             UiIcon[] icons = { UiIcon.Home, UiIcon.Network, UiIcon.History, UiIcon.Settings };
@@ -404,7 +412,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.21", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.22", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -413,21 +421,20 @@ namespace SteamDirect
             shell.Controls.Add(sidebar, 0, 0);
             shell.SetRowSpan(sidebar, 3);
 
-            var header = UiStyle.Grid(2, 1);
+            var header = UiStyle.Grid(1, 1);
             header.Padding = new Padding(UiStyle.Space24, UiStyle.Space4, UiStyle.Space24, UiStyle.Space4);
-            header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiStyle.Space40));
             header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             var toggle = new RoundedButton { Icon = UiIcon.Sidebar, IconOnly = true, Dock = DockStyle.Fill,
-                Margin = Padding.Empty, AccessibleName = "折叠侧边栏" };
+                Margin = new Padding(0, UiStyle.Space4, 0, UiStyle.Space4), AccessibleName = "折叠侧边栏" };
             AppTheme.ActionButton(toggle, false);
-            toggle.BackColor = AppTheme.Page;
-            header.Controls.Add(toggle, 0, 0);
+            toggle.BackColor = AppTheme.Rail;
+            brand.Controls.Add(toggle, 0, 0);
             pageCaption.Dock = DockStyle.Fill;
             pageCaption.TextAlign = ContentAlignment.MiddleLeft;
-            pageCaption.Margin = new Padding(UiStyle.Space12, 0, 0, 0);
+            pageCaption.Margin = Padding.Empty;
             pageCaption.ForeColor = AppTheme.Muted;
             pageCaption.Font = UiStyle.BodyStrong;
-            header.Controls.Add(pageCaption, 1, 0);
+            header.Controls.Add(pageCaption, 0, 0);
             shell.Controls.Add(header, 1, 0);
             shell.Controls.Add(pageHost, 1, 1);
 
@@ -453,24 +460,39 @@ namespace SteamDirect
                 bool collapsed = manualCollapse || constrained;
                 int width = UiStyle.Scale(shell, collapsed ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
                 toggle.Enabled = !constrained;
-                toggle.AccessibleName = collapsed ? "展开侧边栏" : "折叠侧边栏";
-                hints.SetToolTip(toggle, toggle.AccessibleName);
                 if (Math.Abs(shell.ColumnStyles[0].Width - width) < 1 && appliedCollapse == collapsed) return;
+                bool appearanceChanged = appliedCollapse != collapsed;
                 appliedCollapse = collapsed;
-                shell.SuspendLayout();
-                try
+                using (new RedrawBatch(sidebar))
                 {
-                    shell.ColumnStyles[0].Width = width;
-                    brandText.Visible = version.Visible = !collapsed;
-                    foreach (var item in navigation)
+                    shell.SuspendLayout();
+                    rail.SuspendLayout();
+                    brand.SuspendLayout();
+                    try
                     {
-                        ((RoundedButton)item.Value).IconOnly = collapsed;
-                        item.Value.Text = collapsed ? "" : item.Key;
-                        item.Value.Invalidate();
+                        shell.ColumnStyles[0].Width = width;
+                        if (appearanceChanged)
+                        {
+                            toggle.AccessibleName = collapsed ? "展开侧边栏" : "折叠侧边栏";
+                            hints.SetToolTip(toggle, toggle.AccessibleName);
+                            mascot.Visible = brandText.Visible = version.Visible = !collapsed;
+                            brand.ColumnStyles[1].Width = collapsed ? 0 : UiStyle.Scale(brand, UiStyle.Space40);
+                            foreach (var button in navigation.Values)
+                            {
+                                ((RoundedButton)button).IconOnly = collapsed;
+                                button.Invalidate();
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        brand.ResumeLayout(false);
+                        rail.ResumeLayout(false);
+                        shell.ResumeLayout(true);
                     }
                 }
-                finally { shell.ResumeLayout(true); }
             };
+            hints.SetToolTip(toggle, toggle.AccessibleName);
             toggle.Click += (sender, args) => { manualCollapse = !manualCollapse; updateRail(); };
             shell.SizeChanged += (sender, args) =>
             {

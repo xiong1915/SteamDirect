@@ -113,6 +113,10 @@ namespace SteamDirect
                         if (!baseline)
                         {
                             DragAcceptance(main);
+                            SidebarAcceptance(main, Current(main), "history");
+                            nav.Invoke(main, new object[]{"概览"});
+                            SidebarAcceptance(main, ((PageHost)Field(main, "pageHost")).ActivePage, "overview");
+                            nav.Invoke(main, new object[]{"游戏记录"});
                         }
                         GC.Collect();GC.WaitForPendingFinalizers();int finalGdi=GetGuiResources(Process.GetCurrentProcess().Handle,0);Console.WriteLine("RESOURCE gdi_before="+gdiBefore+" warmed="+gdiWarm+" after="+finalGdi+" working_set_MB="+(Process.GetCurrentProcess().WorkingSet64/1048576.0).ToString("F1")+" private_warmed_MB="+(memoryWarm/1048576.0).ToString("F1")+" private_final_MB="+(Process.GetCurrentProcess().PrivateMemorySize64/1048576.0).ToString("F1"));
                         if(!baseline)Need(finalGdi<=gdiWarm+5,"GDI growth after warmed 100 switches");
@@ -123,6 +127,50 @@ namespace SteamDirect
                 }
                 Console.WriteLine("PASS offscreen navigation harness; desktop compositor/full visible frame: BLOCKED");return 0;
             }catch(Exception ex){Console.Error.WriteLine(ex);return 1;}finally{Motion.IsGaming=null;try{Directory.Delete(temp,true);}catch(IOException){}}
+        }
+
+        private static void SidebarAcceptance(MainWindow main, Control page, string name)
+        {
+            var host = (PageHost)Field(main, "pageHost");
+            var toggle = FindSidebarToggle(main);
+            Need(toggle != null && toggle.Enabled, "Expected an available sidebar toggle");
+            Point anchor = toggle.PointToScreen(Point.Empty);
+            int resizes = 0;
+            EventHandler resized = (sender, args) => resizes++;
+            page.SizeChanged += resized;
+            double elapsed = 0;
+            try
+            {
+                for (int i = 0; i < 12; i++)
+                {
+                    using (var trace = new NavigationTrace(i == 0))
+                    {
+                        if (i == 0) trace.Observe(page);
+                        var clock = Stopwatch.StartNew();
+                        toggle.PerformClick();
+                        elapsed += clock.Elapsed.TotalMilliseconds;
+                        if (i == 0) Console.WriteLine("SIDEBAR detail " + name + " " + trace.Summary);
+                    }
+                    Need(toggle.PointToScreen(Point.Empty) == anchor, "Sidebar toggle moved with the page");
+                    Need(page.Bounds == host.PageBounds, "Sidebar toggle did not fit the active page");
+                }
+            }
+            finally { page.SizeChanged -= resized; }
+            Console.WriteLine("SIDEBAR page=" + name + " n=12 mean_ms=" + (elapsed / 12).ToString("F3") +
+                " page_resizes=" + resizes);
+            Need(resizes == 0, "Sidebar toggle must leave the active page at its existing size");
+        }
+
+        private static RoundedButton FindSidebarToggle(Control root)
+        {
+            var button = root as RoundedButton;
+            if (button != null && button.Icon == UiIcon.Sidebar) return button;
+            foreach (Control child in root.Controls)
+            {
+                var found = FindSidebarToggle(child);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         private static void DragAcceptance(MainWindow main)

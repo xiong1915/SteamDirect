@@ -15,12 +15,25 @@ namespace SteamDirect
     internal sealed class PageHost : Panel
     {
         internal Control ActivePage;
-        internal System.Drawing.Rectangle PageBounds { get { var r=DisplayRectangle;int width=Math.Min(r.Width,UiStyle.Scale(this,1160));return new System.Drawing.Rectangle(r.X+(r.Width-width)/2,r.Y,width,r.Height); } }
+        internal Func<int> ContentWidthLimit;
+        internal System.Drawing.Rectangle PageBounds
+        {
+            get
+            {
+                var area = DisplayRectangle;
+                int width = Math.Min(area.Width, UiStyle.Scale(this, 1160));
+                if (ContentWidthLimit != null) width = Math.Min(width, ContentWidthLimit());
+                return new System.Drawing.Rectangle(area.X + (area.Width - width) / 2, area.Y, width, area.Height);
+            }
+        }
         internal PageHost() { Dock = DockStyle.Fill; DoubleBuffered = true; }
         protected override void OnLayout(LayoutEventArgs args)
         {
             base.OnLayout(args);
-            if (ActivePage != null && !ActivePage.IsDisposed && ActivePage.Bounds != PageBounds) ActivePage.Bounds = PageBounds;
+            var page = ActivePage;
+            if (page == null || page.IsDisposed) return;
+            var bounds = PageBounds;
+            if (page.Bounds != bounds) page.Bounds = bounds;
         }
     }
 
