@@ -367,7 +367,8 @@ namespace SteamDirect
             if (disposing && cancellation != null) cancellation.Cancel();
             base.Dispose(disposing);
         }
-        internal NetworkWindow(Action<string> saveLog, Func<IPEndPoint, Action<DiagnosticUpdate>, Action<string>, CancellationToken, NetworkEvidence> diagnose = null)
+        internal NetworkWindow(Action<string> saveLog, Func<IPEndPoint, Action<DiagnosticUpdate>, Action<string>, CancellationToken, NetworkEvidence> diagnose = null,
+            Action openHistory = null)
         {
             log = saveLog;
             this.diagnose = diagnose ?? NetworkDiagnostics.Run;
@@ -394,14 +395,26 @@ namespace SteamDirect
                 UiStyle.Space32 + UiStyle.Space4 + UiStyle.Gap;
             int statusHeight = 2 * (UiStyle.Space24 + UiStyle.CompactHeight + UiStyle.Space32) +
                 UiStyle.DensePadding.Vertical + UiStyle.SmallGap + UiStyle.Gap;
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, actionHeight));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, statusHeight));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, actionHeight));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-            root.Controls.Add(UiStyle.Header("网络诊断", "Steam · CS2"), 0, 0);
+            var heading = UiStyle.Grid(openHistory == null ? 1 : 2, 1);
+            heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            heading.Controls.Add(UiStyle.Header("网络诊断", "Steam · CS2"), 0, 0);
+            if (openHistory != null)
+            {
+                heading.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
+                var history = new RoundedButton { Text = "查看对局趋势", Dock = DockStyle.Top, Height = UiStyle.ButtonHeight,
+                    Margin = new Padding(0, UiStyle.Space8, 0, 0) };
+                AppTheme.ActionButton(history, false);
+                history.Click += (sender, args) => openHistory();
+                heading.Controls.Add(history, 1, 0);
+            }
+            root.Controls.Add(heading, 0, 0);
 
-            root.Controls.Add(BuildControls(), 0, 1);
-            root.Controls.Add(BuildStatusCards(), 0, 2);
+            root.Controls.Add(BuildStatusCards(), 0, 1);
+            root.Controls.Add(BuildControls(), 0, 2);
 
             conclusion.Text = "等待检测。";
             root.Controls.Add(BuildReadout("诊断结论与建议", conclusion, AppTheme.Ink, new Padding(0, 0, 0, UiStyle.SmallGap)), 0, 3);

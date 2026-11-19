@@ -42,12 +42,13 @@ namespace SteamDirect
         {
             var rect = ClientRectangle;
             if (Width < 2 || Height < 2) return;
-            graphics.Clear(UiStyle.ParentSurface(this));
+            using (var background = new SolidBrush(UiStyle.ParentSurface(this)))
+                graphics.FillRectangle(background, rect);
             graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             using (var outline = UiStyle.RoundRect(new RectangleF(.5F, .5F, Width - 1, Height - 1), UiStyle.ControlRadius * UiStyle.Dpi(this) / 96F))
             {
                 using (var fill = new SolidBrush(BackColor)) graphics.FillPath(fill, outline);
-                using (var edge = new Pen(Focused ? AppTheme.Text(AppTheme.Accent) : AppTheme.Edge))
+                using (var edge = new Pen(Focused ? AppTheme.Focus : AppTheme.Edge))
                     graphics.DrawPath(edge, outline);
             }
             int arrow = UiStyle.Scale(this, 24);

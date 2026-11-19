@@ -27,6 +27,22 @@ namespace SteamDirect {
     Check(AppTheme.Contrast(AppTheme.Text(AppTheme.Accent),AppTheme.Background(AppTheme.Surface))>=4.5,"Accent text contrast.");
     Check(AppTheme.Contrast(AppTheme.AccentForeground,AppTheme.Background(AppTheme.Accent))>=4.5,"Primary button contrast.");
    }
+   AppTheme.SetTheme(true, AppTheme.DefaultAccent);
+   Check(AppTheme.ColorCode(AppTheme.Background(AppTheme.Page)) == "#0F1116" &&
+       AppTheme.ColorCode(AppTheme.Background(AppTheme.Rail)) == "#151922" &&
+       AppTheme.ColorCode(AppTheme.Background(AppTheme.Surface)) == "#1B212B" &&
+       AppTheme.ColorCode(AppTheme.Background(AppTheme.ElevatedSurface)) == "#222B38" &&
+       AppTheme.ColorCode(AppTheme.Background(AppTheme.Pill)) == "#26364A" &&
+       AppTheme.ColorCode(AppTheme.Edge) == "#303A48" &&
+       AppTheme.ColorCode(AppTheme.Focus) == "#60A5FA", "Fluent dark surface and focus tokens.");
+   Check(AppTheme.ColorCode(AppTheme.Text(AppTheme.Ink)) == "#F2F5F9" &&
+       AppTheme.ColorCode(AppTheme.Text(AppTheme.Muted)) == "#A8B3C2" &&
+       AppTheme.ColorCode(AppTheme.Text(AppTheme.Error)) == "#F87171" &&
+       AppTheme.ColorCode(AppTheme.Text(AppTheme.Warning)) == "#FBBF24" &&
+       AppTheme.ColorCode(AppTheme.Text(AppTheme.Success)) == "#4ADE80", "Fluent dark text and state tokens.");
+   Check(UiStyle.LeadTitle.SizeInPoints == 21 && UiStyle.PageTitle.SizeInPoints == 18 &&
+       UiStyle.SectionTitle.SizeInPoints == 13.5F && UiStyle.Body.SizeInPoints == 10.5F &&
+       UiStyle.Caption.SizeInPoints == 9, "Fluent typography must use logical pixels at 96 DPI.");
    WindowEnvironment.OffscreenTests=true; Motion.Reduced=true;
    using(var chart=new HistoryNetworkChart()) using(var bitmap=new Bitmap(640,360)) {
     chart.Size=bitmap.Size;

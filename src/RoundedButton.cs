@@ -27,6 +27,7 @@ namespace SteamDirect
         internal float CornerRadius = UiStyle.ControlRadius;
         internal int CaptionInset = UiStyle.Space12;
         internal bool TextOnly;
+        internal bool IconOnly;
         internal const TextFormatFlags CaptionFlags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
 
         internal Rectangle CaptionBounds
@@ -54,8 +55,8 @@ namespace SteamDirect
         private void UpdateMotion()
         {
             if (interaction == null || selection == null) return;
-            interaction.To(pressed ? 1F : hovering ? .55F : 0F, pressed ? 90 : 180);
-            if (HorizontalIndicator) selection.To(selected ? 1F : 0F, 150);
+            interaction.To(pressed ? 1F : hovering ? .55F : 0F, UiStyle.ButtonMotion);
+            if (HorizontalIndicator) selection.To(selected ? 1F : 0F, UiStyle.StatusMotion);
         }
         protected override void Dispose(bool disposing) { if (disposing) { interaction.Dispose(); selection.Dispose(); } base.Dispose(disposing); }
         protected override void OnEnabledChanged(EventArgs e) { base.OnEnabledChanged(e); if (!Enabled) hovering = pressed = false; UpdateMotion(); }
@@ -82,26 +83,27 @@ namespace SteamDirect
             Color fill = !Enabled ? AppTheme.Background(AppTheme.Page) :
                 amount <= .55F ? Motion.Blend(BackColor, hover, amount / .55F) : Motion.Blend(hover, down, (amount - .55F) / .45F);
             bool navigation=Icon==UiIcon.Home||Icon==UiIcon.Network||Icon==UiIcon.History||Icon==UiIcon.Settings;
-            if (navigation)
-                fill = selected ? AppTheme.Background(AppTheme.Accent) :
-                    Motion.Blend(background, AppTheme.ThemeColor, .16F * amount);
+            if (navigation && Enabled)
+                fill = Motion.Blend(selected ? AppTheme.Background(AppTheme.Pill) : background, AppTheme.Hover, .6F * amount);
             if (!TextOnly)
             {
                 using (var path = UiStyle.RoundRect(box, radius))
                 using (var brush = new SolidBrush(fill)) e.Graphics.FillPath(brush, path);
             }
             var bounds = CaptionBounds;
-            Color textColor = Enabled && navigation && selected ? AppTheme.AccentForeground :
+            Color textColor = Enabled && navigation && selected ? AppTheme.Text(AppTheme.Accent) :
                 Enabled ? ForeColor : AppTheme.Text(AppTheme.Disabled);
             var alignment = TextOnly ? TextFormatFlags.Left : TextFormatFlags.HorizontalCenter;
             if (Icon != UiIcon.None)
             {
                 float size = UiStyle.Space20 * scale;
-                UiStyle.DrawIcon(e.Graphics, Icon, new RectangleF(UiStyle.Space12 * scale, (Height - size) / 2, size, size), textColor);
+                float left = IconOnly ? (Width - size) / 2 : UiStyle.Space12 * scale;
+                UiStyle.DrawIcon(e.Graphics, Icon, new RectangleF(left, (Height - size) / 2, size, size), textColor);
                 alignment = TextFormatFlags.Left;
             }
-            TextRenderer.DrawText(e.Graphics, Text, Font, bounds, textColor,
-                alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | CaptionFlags);
+            if (!IconOnly)
+                TextRenderer.DrawText(e.Graphics, Text, Font, bounds, textColor,
+                    alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | CaptionFlags);
             if (selected && HorizontalIndicator && selection.Current > 0 && Width > 8 && Height > 8)
             {
                 using (var marker = new SolidBrush(AppTheme.Background(AppTheme.Accent)))
@@ -110,7 +112,9 @@ namespace SteamDirect
                 }
             }
             if (Focused && ShowFocusCues)
-                ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(ClientRectangle, -8, -6), ForeColor, fill);
+                using (var outline = UiStyle.RoundRect(RectangleF.Inflate(box, -1, -1), radius))
+                using (var focus = new Pen(AppTheme.Focus, Math.Max(1F, scale)))
+                    e.Graphics.DrawPath(focus, outline);
         }
     }
 }

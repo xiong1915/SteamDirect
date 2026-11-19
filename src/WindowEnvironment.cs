@@ -83,7 +83,11 @@ namespace SteamDirect
             try {
             var work = Screen.FromControl(this).WorkingArea;
             // MinimumSize is an outer size, and must not force a window beyond a smaller work area.
-            Size preferred = new Size(UiStyle.Scale(this, 880), UiStyle.Scale(this, 620));
+            Size preferred = this is MainWindow
+                ? new Size(UiStyle.Scale(this, UiStyle.MinimumWindowWidth), UiStyle.Scale(this, UiStyle.MinimumWindowHeight))
+                : new Size(UiStyle.Scale(this, 880), UiStyle.Scale(this, 620));
+            if (this is MainWindow && (work.Width < preferred.Width || work.Height < preferred.Height))
+                preferred = new Size(UiStyle.Scale(this, UiStyle.CompactWindowWidth), UiStyle.Scale(this, UiStyle.CompactWindowHeight));
             var minimum = new Size(Math.Min(preferred.Width, work.Width), Math.Min(preferred.Height, work.Height));
             if (MinimumSize != minimum) MinimumSize = minimum;
             if (WindowState != FormWindowState.Normal) return;

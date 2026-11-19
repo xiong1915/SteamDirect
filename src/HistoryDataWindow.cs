@@ -32,17 +32,7 @@ namespace SteamDirect
             var button = new RoundedButton { HorizontalIndicator = true, Text = title, AutoSize = false, Width = 100, Height = UiStyle.ButtonHeight, Margin = new Padding(0, 0, 8, 0), CaptionInset = UiStyle.Space8 };
             AppTheme.ActionButton(button, false);
             button.Font = UiStyle.Button;
-            button.Click += (sender, args) =>
-            {
-                SelectPage(index);
-                for (Control parent = Parent; parent != null; parent = parent.Parent)
-                {
-                    var viewport = parent as ContentViewport;
-                    if (viewport == null) continue;
-                    viewport.RevealTop(content, UiStyle.Scale(this, 220));
-                    break;
-                }
-            };
+            button.Click += (sender, args) => RevealPage(index);
             navigation.Controls.Add(button);
             buttons.Add(button);
             page.Dock = DockStyle.Fill;
@@ -100,6 +90,18 @@ namespace SteamDirect
                 SetPageSelected(index, true);
             }
             finally { content.ResumeLayout(true); }
+        }
+
+        internal void RevealPage(int index)
+        {
+            SelectPage(index);
+            for (Control parent = Parent; parent != null; parent = parent.Parent)
+            {
+                var viewport = parent as ContentViewport;
+                if (viewport == null) continue;
+                viewport.RevealTop(content, UiStyle.Scale(this, 220));
+                break;
+            }
         }
 
         private void SetPageSelected(int index, bool selected)

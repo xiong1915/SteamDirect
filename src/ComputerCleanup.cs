@@ -254,7 +254,7 @@ namespace SteamDirect
     {
         private readonly Label memory = new Label(), files = new Label(), note = new Label();
         private readonly Button clean = new RoundedButton();
-        private readonly ToolTip details = new ToolTip();
+        private readonly ToolTip details = new FluentTooltip();
         private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
         private readonly Action<string> log;

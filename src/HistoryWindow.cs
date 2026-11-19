@@ -57,6 +57,7 @@ namespace SteamDirect
         private bool selectionPending;
         private bool initialScopeResolved;
         private string selectionHint;
+        private readonly HistorySections reportSections;
         private readonly Stack<TableLayoutPanel> buildingGrids = new Stack<TableLayoutPanel>();
         internal double LastDataLoadMilliseconds { get; private set; }
         internal double LastQueryMilliseconds { get; private set; }
@@ -200,8 +201,9 @@ namespace SteamDirect
 
             var detailCard = UiStyle.Card(true);
             detailCard.Margin = Padding.Empty;
-            var detail = Grid(1, 3);
+            var detail = Grid(2, 3);
             detail.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            detail.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0));
             detail.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
             detail.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
             detail.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -219,7 +221,7 @@ namespace SteamDirect
             detailMeta.ForeColor = Muted;
             detailMeta.AutoEllipsis = true;
             detail.Controls.Add(detailMeta, 0, 1);
-            var tabs = new HistorySections();
+            var tabs = reportSections = new HistorySections();
             SetupText(comparisonText, "模式对比结果");
             SetupList(incidents, "网络异常时间线");
             incidents.Columns.Add("异常", 146);
@@ -240,6 +242,28 @@ namespace SteamDirect
             tabs.Add("异常时间线", timeline);
             tabs.Add("历史参考", new NativeScrollFrame(comparisonText));
             detail.Controls.Add(tabs, 0, 2);
+            bool splitDetail = false;
+            detail.SizeChanged += (sender, args) =>
+            {
+                bool wide = detail.Width >= UiStyle.Scale(detail, 700);
+                if (splitDetail == wide) return;
+                splitDetail = wide;
+                detail.SuspendLayout();
+                try
+                {
+                    detail.ColumnStyles[0].SizeType = wide ? SizeType.Absolute : SizeType.Percent;
+                    detail.ColumnStyles[0].Width = wide ? UiStyle.Scale(detail, 200) : 100;
+                    detail.ColumnStyles[1].Width = wide ? 100 : 0;
+                    detail.RowStyles[0].Height = UiStyle.Scale(detail, wide ? UiStyle.Space48 : UiStyle.Space32);
+                    detailTitle.Margin = wide ? new Padding(0, 0, UiStyle.Scale(detail, UiStyle.Space12), 0) : Padding.Empty;
+                    detailMeta.Margin = detailTitle.Margin;
+                    detailTitle.TextAlign = wide ? ContentAlignment.TopLeft : ContentAlignment.MiddleLeft;
+                    detailTitle.UseCompatibleTextRendering = wide;
+                    detail.SetCellPosition(tabs, new TableLayoutPanelCellPosition(wide ? 1 : 0, wide ? 0 : 2));
+                    detail.SetRowSpan(tabs, wide ? 3 : 1);
+                }
+                finally { detail.ResumeLayout(true); }
+            };
             detailCard.Controls.Add(detail);
             body.Controls.Add(detailCard, 1, 0);
             body.SizeChanged += (sender, args) => {
@@ -528,6 +552,11 @@ namespace SteamDirect
         internal Task OpenOverviewSessionAsync(string id)
         {
             return QueryAsync(0, false, id, true);
+        }
+
+        internal void ShowNetworkTrend()
+        {
+            reportSections.RevealPage(1);
         }
 
         private async Task QueryAsync(int requestedPage, bool showLatestIfTodayEmpty, string preferredId = null, bool fromOverview = false)

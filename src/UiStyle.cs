@@ -5,7 +5,34 @@ using System.Windows.Forms;
 
 namespace SteamDirect
 {
-    internal enum UiIcon { None, Home, Network, History, Settings, External }
+    internal enum UiIcon { None, Home, Network, History, Settings, External, Sidebar }
+
+    internal sealed class FluentTooltip : ToolTip
+    {
+        internal FluentTooltip()
+        {
+            InitialDelay = 400;
+            ReshowDelay = 150;
+            OwnerDraw = true;
+            Popup += (sender, args) =>
+            {
+                string text = GetToolTip(args.AssociatedControl);
+                if (string.IsNullOrWhiteSpace(text)) return;
+                Size size = TextRenderer.MeasureText(text, UiStyle.Caption);
+                args.ToolTipSize = size + new Size(UiStyle.Scale(args.AssociatedControl, UiStyle.Space16),
+                    UiStyle.Scale(args.AssociatedControl, UiStyle.Space12));
+            };
+            Draw += (sender, args) =>
+            {
+                using (var background = new SolidBrush(AppTheme.Background(AppTheme.ElevatedSurface)))
+                    args.Graphics.FillRectangle(background, args.Bounds);
+                using (var border = new Pen(AppTheme.Edge))
+                    args.Graphics.DrawRectangle(border, args.Bounds.X, args.Bounds.Y, args.Bounds.Width - 1, args.Bounds.Height - 1);
+                TextRenderer.DrawText(args.Graphics, args.ToolTipText, UiStyle.Caption, args.Bounds, AppTheme.Text(AppTheme.Ink),
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            };
+        }
+    }
 
     // Explicit content bounds avoid AutoScroll/Dock feedback and preserve readable minimum heights.
     internal sealed class ContentViewport : Panel
@@ -74,23 +101,41 @@ namespace SteamDirect
         internal const int Space4 = 4, Space8 = 8, Space12 = 12, Space16 = 16, Space20 = 20,
             Space24 = 24, Space32 = 32, Space40 = 40, Space48 = 48;
         internal const int HeaderHeight = 80, ButtonHeight = 40, CompactHeight = 32, Gap = Space16, SmallGap = Space8;
-        internal const float Radius = 16;
-        internal const float CardRadius = Radius, ControlRadius = Radius, NavigationRadius = Radius;
+        internal const int LargeButtonHeight = 44, AppHeaderHeight = Space48, StatusBarHeight = Space32,
+            SidebarWidth = 216, CollapsedSidebarWidth = 64, MinimumWindowWidth = 1100, MinimumWindowHeight = 700,
+            CompactWindowWidth = 880, CompactWindowHeight = 540;
+        internal const int ButtonMotion = 100, DialogMotion = 180, StatusMotion = 180;
+        internal const float SmallRadius = 6, ControlRadius = 8, CardRadius = 12, DialogRadius = 16, NavigationRadius = ControlRadius;
         internal const int MotionTick = 40, SpinnerStep = 9; // Continuous motion is reserved for active operations; controls animate only on interaction.
-        private const string Family = "Microsoft YaHei UI";
-        internal static readonly Font Body = new Font(Family, 11F);
-        internal static readonly Font BodyStrong = new Font(Family, 11F, FontStyle.Bold);
-        internal static readonly Font Caption = new Font(Family, 10F);
+        private static readonly string Family = PickFont("Segoe UI Variable Text", "Segoe UI");
+        private static readonly string Semibold = PickFont("Segoe UI Variable Text Semibold", "Segoe UI Semibold");
+        internal static readonly Font Body = FontAt(14);
+        internal static readonly Font BodyStrong = FontAt(14, true);
+        internal static readonly Font Caption = FontAt(12);
         internal static readonly Font Button = BodyStrong;
-        internal static readonly Font PageTitle = new Font(Family, 24F, FontStyle.Bold);
-        internal static readonly Font LeadTitle = new Font(Family, 27F, FontStyle.Bold);
-        internal static readonly Font SectionTitle = new Font(Family, 12F, FontStyle.Bold);
-        internal static readonly Font HeroTitle = new Font(Family, 18F, FontStyle.Bold);
+        internal static readonly Font PageTitle = FontAt(24, true);
+        internal static readonly Font LeadTitle = FontAt(28, true);
+        internal static readonly Font SectionTitle = FontAt(18, true);
+        internal static readonly Font HeroTitle = SectionTitle;
+        internal static readonly Font Subtitle = FontAt(16, true);
         internal static readonly Font DiagramCaption = new Font(Family, 13.5F, FontStyle.Regular, GraphicsUnit.Pixel);
         internal static readonly Font DiagramTitle = new Font(Family, 15.5F, FontStyle.Bold, GraphicsUnit.Pixel);
         internal static Padding PagePadding { get { return new Padding(Space24); } }
         internal static Padding CardPadding { get { return new Padding(Space20); } }
         internal static Padding DensePadding { get { return new Padding(Space16); } }
+
+        private static Font FontAt(int logicalPixels, bool semibold = false)
+        {
+            return new Font(semibold ? Semibold : Family, logicalPixels * .75F);
+        }
+
+        private static string PickFont(params string[] names)
+        {
+            foreach (string name in names)
+                using (var font = new Font(name, 10F))
+                    if (string.Equals(font.Name, name, StringComparison.OrdinalIgnoreCase)) return name;
+            return "Microsoft YaHei UI";
+        }
 
         private static int NativeDpi(Control control) { Control root = control; while (root.Parent != null) root = root.Parent; return root.DeviceDpi; }
         internal static int Dpi(Control control) { return WindowEnvironment.OffscreenTests && WindowEnvironment.LayoutDpi > 0 ? WindowEnvironment.LayoutDpi : NativeDpi(control); }
@@ -230,6 +275,10 @@ namespace SteamDirect
                             graphics.DrawEllipse(pen, x - 3, y - 3, 6, 6);
                         }
                         break;
+                    case UiIcon.Sidebar:
+                        graphics.DrawRectangle(pen, 3, 4, 14, 12);
+                        graphics.DrawLine(pen, 8, 4, 8, 16);
+                        break;
                     case UiIcon.External:
                         graphics.DrawLines(pen, new[] { new PointF(10, 4), new PointF(4, 4), new PointF(4, 20), new PointF(20, 20), new PointF(20, 14) });
                         graphics.DrawLines(pen, new[] { new PointF(14, 3), new PointF(21, 3), new PointF(21, 10) });
@@ -266,8 +315,8 @@ namespace SteamDirect
             if (text != null) text.BorderStyle = BorderStyle.None;
             var number = input as NumericUpDown;
             if (number != null) number.BorderStyle = BorderStyle.None;
-            input.Enter += (sender, args) => focus.To(1F, 160);
-            input.Leave += (sender, args) => focus.To(0F, 160);
+            input.Enter += (sender, args) => focus.To(1F, UiStyle.StatusMotion);
+            input.Leave += (sender, args) => focus.To(0F, UiStyle.StatusMotion);
             Controls.Add(input);
         }
         protected override void Dispose(bool disposing) { if (disposing && focus != null) focus.Dispose(); base.Dispose(disposing); }
@@ -286,7 +335,7 @@ namespace SteamDirect
             base.OnPaint(e);
             if (Width < 2 || Height < 2) return;
             using (var path = UiStyle.RoundRect(new RectangleF(.5F, .5F, Width - 1, Height - 1), CornerRadius * UiStyle.Dpi(this) / 96F))
-            using (var pen = new Pen(Motion.Blend(AppTheme.Edge, AppTheme.Text(AppTheme.Accent), focus.Current)))
+            using (var pen = new Pen(Motion.Blend(AppTheme.Edge, AppTheme.Focus, focus.Current)))
                 e.Graphics.DrawPath(pen, path);
         }
     }

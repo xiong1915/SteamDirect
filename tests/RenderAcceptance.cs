@@ -130,7 +130,7 @@ namespace SteamDirect
             int[,] sizes={{1280,800,96},{1920,1080,96},{1920,1080,120},{1920,1080,144},{1920,1080,168},{1920,1080,192},{3840,2160,168},{3840,2160,192}};
             for (int index = 0; index < sizes.GetLength(0); index++) {
                 bool lightOverview = sizes[index,0] == 1920 && sizes[index,2] == 168;
-                using(var main=new MainWindow(false,monitor,new UserPreferences{NightMode=!lightOverview,ThemeColor=lightOverview?"#6750A4":"#3269C7",NetworkRecording=false})){
+                using(var main=new MainWindow(false,monitor,new UserPreferences{NightMode=!lightOverview,ThemeColor=lightOverview?"#6750A4":AppTheme.DefaultAccent,NetworkRecording=false})){
                     main.ShowInTaskbar=false;main.FormBorderStyle=FormBorderStyle.None;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.Show();
                     var navigate=typeof(MainWindow).GetMethod("NavigateTo",Private);var manager=Field(main,"pages");
                     foreach(string page in new[]{"网络诊断","游戏记录","设置","概览"}){navigate.Invoke(main,new object[]{page});Pump(40);}
@@ -156,8 +156,21 @@ namespace SteamDirect
                                 Need(recent.RecordCount == 5, "Overview did not load its five latest records");
                                 Need(Descendants(recent).OfType<Label>().Any(label => label.Visible && label.Text.Contains("有异常")),
                                     "Overview did not mark the session with an incident");
+                                var status = (Control)Field(main, "overviewStatus");
+                                foreach (var value in Descendants(status).OfType<Label>())
+                                    Need(status.RectangleToScreen(status.ClientRectangle).Contains(value.RectangleToScreen(value.ClientRectangle)),
+                                        "Overview metric text extends outside the status row: " + value.Text);
                                 if (index == 0)
                                 {
+                                    var toggle = Descendants(main).OfType<RoundedButton>().Single(button => button.Icon == UiIcon.Sidebar);
+                                    var side = (Dictionary<string, Button>)Field(main, "navigation");
+                                    toggle.PerformClick();
+                                    Pump(20);
+                                    Need(side.Values.All(button => ((RoundedButton)button).IconOnly && button.Text == ""),
+                                        "Collapsed navigation must use accessible icon buttons");
+                                    toggle.PerformClick();
+                                    Pump(20);
+                                    Need(side.All(item => item.Value.Text == item.Key), "Expanding navigation did not restore the captions");
                                     var open = typeof(MainWindow).GetMethod("OpenOverviewHistoryAsync", Private);
                                     Await((Task)open.Invoke(main, new object[] { "fixture-2" }));
                                     var history = (HistoryWindow)manager.GetType().GetProperty("ActivePage", Private).GetValue(manager, null);

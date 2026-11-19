@@ -31,7 +31,8 @@ namespace SteamDirect
                     view.SetSaving(true);Need(!view.Enabled,"Settings editable during asynchronous recorder transition");
                     view.SetSaving(false);Need(view.Enabled,"Settings did not recover after save");
                 }
-                Need(UiStyle.CardRadius==UiStyle.ControlRadius&&UiStyle.ControlRadius==UiStyle.NavigationRadius,"Inconsistent component radii");
+                Need(UiStyle.SmallRadius == 6 && UiStyle.ControlRadius == 8 && UiStyle.CardRadius == 12 &&
+                    UiStyle.DialogRadius == 16 && UiStyle.NavigationRadius == UiStyle.ControlRadius, "Fluent radius tokens changed");
                 using (var query = new Button { Dock = DockStyle.Fill })
                 using (var export = new Button { Dock = DockStyle.Fill })
                 using (var filters = new ReportFilters(new TextBox(), new DarkComboBox(), new DarkComboBox(), query, export))

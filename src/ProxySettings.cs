@@ -163,6 +163,14 @@ namespace SteamDirect
             finally { Marshal.FreeHGlobal(optionPointer); }
         }
 
+        internal static string ObserveWindowsProxy()
+        {
+            int flags = ReadConnFlags();
+            if ((flags & 6) != 0) return "代理已配置";
+            if ((flags & 8) != 0) return "已启用自动检测";
+            return flags == 1 ? "未配置代理" : "未知";
+        }
+
         internal static string ObserveHistoryMode(bool tunnel, bool route, bool knownProxy)
         {
             if (tunnel) return "代理";

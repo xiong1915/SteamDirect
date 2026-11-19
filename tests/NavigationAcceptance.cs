@@ -34,6 +34,23 @@ namespace SteamDirect
             }else{HighDpi.EnablePerMonitorContext();Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);}
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException+=(s,e)=>{Console.Error.WriteLine(e.Exception);Environment.Exit(1);};
+            using (var context = new ApplicationContext())
+            using (var dispatcher = new Control())
+            {
+                var handle = dispatcher.Handle;
+                int exitCode = 1;
+                dispatcher.BeginInvoke((Action)(() =>
+                {
+                    try { exitCode = Run(args); }
+                    finally { context.ExitThread(); }
+                }));
+                Application.Run(context);
+                return exitCode;
+            }
+        }
+
+        private static int Run(string[] args)
+        {
             string temp=Path.Combine(Path.GetTempPath(),"SteamDirect-navigation-"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(temp); LogStore.DirectoryPath=Path.Combine(temp,"Logs");
             try {
                 bool baseline=args.Length>1&&args[1]=="baseline",fourK=args.Length>2&&args[2]=="4k";
@@ -63,7 +80,16 @@ namespace SteamDirect
                             if(i>=4&&!baseline)Need(reused,"Revisited page was reconstructed");
                             Pump(i<8?60:2);
                             if(i==7){GC.Collect();GC.WaitForPendingFinalizers();gdiWarm=GetGuiResources(Process.GetCurrentProcess().Handle,0);memoryWarm=Process.GetCurrentProcess().PrivateMemorySize64;}
-                            if(i==1&&!baseline){Console.WriteLine("DATA pipeline_elapsed_ms="+typeof(HistoryWindow).GetProperty("LastDataLoadMilliseconds",Private).GetValue(current,null)+" sqlite_worker_ms="+typeof(HistoryWindow).GetProperty("LastQueryMilliseconds",Private).GetValue(current,null)+" report_worker_ms="+typeof(HistoryWindow).GetProperty("LastAnalysisMilliseconds",Private).GetValue(current,null));CaptureCurrent(main,args[0],"history-loaded.png");Need(((Control)Field(current,"overviewText")).Height>=UiStyle.Scale(current,80),"Report body collapsed at constrained height");}
+                            if(i==1&&!baseline)
+                            {
+                                var load = Stopwatch.StartNew();
+                                var history = (HistoryWindow)current;
+                                while (history.LastDataLoadMilliseconds == 0 && load.ElapsedMilliseconds < 3000) Pump(20);
+                                Need(history.LastDataLoadMilliseconds > 0, "History did not finish loading before the cached navigation benchmark");
+                                Console.WriteLine("DATA pipeline_elapsed_ms="+history.LastDataLoadMilliseconds+" sqlite_worker_ms="+history.LastQueryMilliseconds+" report_worker_ms="+history.LastAnalysisMilliseconds);
+                                CaptureCurrent(main,args[0],"history-loaded.png");
+                                Need(((Control)Field(current,"overviewText")).Height>=UiStyle.Scale(current,80),"Report body collapsed at constrained height");
+                            }
                             if(i==3&&!baseline)
                             {
                                 var log = (TextBox)Field(main, "logBox");

@@ -17,7 +17,7 @@ namespace SteamDirect
                 window.AutoScaleDimensions = new SizeF(96, 96);
                 window.AutoScaleMode = AutoScaleMode.Dpi;
                 window.Font = UiStyle.Body;
-                window.BackColor = AppTheme.Page;
+                window.BackColor = AppTheme.ElevatedSurface;
                 window.ForeColor = AppTheme.Ink;
                 window.FormBorderStyle = FormBorderStyle.FixedDialog;
                 window.MaximizeBox = window.MinimizeBox = false;
@@ -35,6 +35,7 @@ namespace SteamDirect
                     ForeColor = icon == MessageBoxIcon.Error ? AppTheme.Error :
                         icon == MessageBoxIcon.Warning ? AppTheme.Warning : AppTheme.Ink }, 0, 0);
                 var card = UiStyle.Card(true);
+                card.CornerRadius = UiStyle.DialogRadius;
                 card.Margin = new Padding(0, 0, 0, UiStyle.Gap);
                 var body = new TextBox { Text = message, TabStop = false };
                 UiStyle.ReadOnlyText(body, title + "提示内容");
@@ -54,7 +55,7 @@ namespace SteamDirect
                 var control = owner as Control;
                 Motion.Value fade = null;
                 fade = new Motion.Value(window, 0, () => { if (!window.IsDisposed && fade != null) window.Opacity = .9 + .1 * fade.Current; });
-                window.Shown += (sender, args) => fade.To(1, 140);
+                window.Shown += (sender, args) => fade.To(1, UiStyle.DialogMotion);
                 try { return window.ShowDialog(control == null ? owner : control.TopLevelControl); } finally { fade.Dispose(); }
             }
         }
