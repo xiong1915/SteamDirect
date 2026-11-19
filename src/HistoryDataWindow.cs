@@ -167,10 +167,11 @@ namespace SteamDirect
             AppTheme.Apply(this);
             ResumeLayout(true);
         }
-        private void Guard(CancellationToken token)
+        private void Guard(CancellationToken token, bool checkProcesses = false)
         {
             token.ThrowIfCancellationRequested();
-            if (isGaming != null && isGaming()) throw new OperationCanceledException("游戏运行中，已暂停数据读取。");
+            if ((isGaming != null && isGaming()) || (checkProcesses && SteamGameDiscovery.IsSteamGameActive()))
+                throw new OperationCanceledException("游戏运行中，已暂停数据读取。");
         }
         private static void Configure(DataGridView view, string[] columns)
         {
@@ -210,7 +211,7 @@ namespace SteamDirect
                 var token = lifetime.Token;
                 var result = await Task.Run(() =>
                 {
-                    Guard(token);
+                    Guard(token, true);
                     var all = store.ReadSamples(session.Id);
                     Guard(token);
                     var metrics = HistoryStatistics.Calculate(Checked(all, token));
@@ -244,7 +245,7 @@ namespace SteamDirect
             try
             {
                 var token = lifetime.Token;
-                var rows = await Task.Run(() => { Guard(token); var loaded = store.ReadSamplePage(session.Id, requested * PageSize, PageSize + 1); Guard(token); return loaded; }, token);
+                var rows = await Task.Run(() => { Guard(token, true); var loaded = store.ReadSamplePage(session.Id, requested * PageSize, PageSize + 1); Guard(token); return loaded; }, token);
                 if (closed) return; Guard(token);
                 samples.SuspendLayout(); events.SuspendLayout();
                 try

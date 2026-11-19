@@ -24,7 +24,7 @@ namespace SteamDirect
     // Steam tools installed as apps may therefore be recorded. Very short launches between polls can be missed.
     internal sealed class SteamGameDiscovery
     {
-        internal static bool IsSteamGameActive()
+        internal static bool IsSteamGameReported()
         {
             if (WindowEnvironment.OffscreenTests) return false;
             try {
@@ -34,6 +34,13 @@ namespace SteamDirect
                     if(key != null && long.TryParse(Convert.ToString(key.GetValue("RunningAppID")), out app) && app > 0)return true;
                 }
             } catch (System.Security.SecurityException) { return true; } catch (UnauthorizedAccessException) { return true; }
+            return false;
+        }
+
+        internal static bool IsSteamGameActive()
+        {
+            if (WindowEnvironment.OffscreenTests) return false;
+            if (IsSteamGameReported()) return true;
             // Steam can report RunningAppID=0 while CS2 is still running. This snapshot
             // is only requested before manual expensive work, never by an idle timer.
             using(var snapshot=CreateToolhelp32Snapshot(ProcessSnapshot,0)){

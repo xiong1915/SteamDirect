@@ -135,7 +135,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.17";
+            Text = "Steam 直连助手 v3.0.18";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -359,7 +359,8 @@ namespace SteamDirect
                     using (var source = Image.FromStream(stream))
                     {
                         mascot.Image.Dispose();
-                        mascot.Image = new Bitmap(source);
+                        // The rail shows a 52-DIP icon. Keep enough pixels for high DPI without retaining the source raster.
+                        mascot.Image = new Bitmap(source, 256, 256);
                     }
             mascot.Disposed += (sender, args) => mascot.Image.Dispose();
             brand.Controls.Add(mascot, 0, 0);
@@ -379,7 +380,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v3.0.17", ForeColor = AppTheme.Muted,
+            rail.Controls.Add(new Label { Text = "v3.0.18", ForeColor = AppTheme.Muted,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Page };
             sidebar.Padding = new Padding(8);
@@ -418,7 +419,7 @@ namespace SteamDirect
                 Status("请等待直连流程完成后再切换页面。");
                 return;
             }
-            if (page == "游戏记录" && (history.IsPlaying || SteamGameDiscovery.IsSteamGameActive()))
+            if (page == "游戏记录" && (history.IsPlaying || SteamGameDiscovery.IsSteamGameReported()))
             {
                 Status("游戏进行中，报告已暂停。");
                 return;
@@ -436,7 +437,7 @@ namespace SteamDirect
             if (page == "网络诊断") return new NetworkWindow(Log);
             if (page == "游戏记录") return new HistoryWindow(history.Store, () => history.IsPlaying,
                 () => !preferences.NetworkRecording ? "自动记录已关闭，可在设置中开启。" :
-                    string.IsNullOrEmpty(history.Error) ? "自动记录已开启。" : "自动记录遇到错误，请查看日志或重启应用。");
+                    string.IsNullOrEmpty(history.Error) ? "自动记录已开启。" : "自动记录遇到错误，请查看日志或重启应用。", true);
             var settings = new SettingsWindow(preferences.TrayEnabled, StartupSettings.IsEnabled(),
                 preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor, preferences.LogDirectory, preferences.ReduceMotion, preferences.WindowDiagnostics, preferences.NetworkRecording);
             settings.Synchronize = () => settings.Reload(preferences, StartupSettings.IsEnabled());

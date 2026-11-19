@@ -32,6 +32,23 @@ namespace SteamDirect
                     view.SetSaving(false);Need(view.Enabled,"Settings did not recover after save");
                 }
                 Need(UiStyle.CardRadius==UiStyle.ControlRadius&&UiStyle.ControlRadius==UiStyle.NavigationRadius,"Inconsistent component radii");
+                using (var query = new Button { Dock = DockStyle.Fill })
+                using (var export = new Button { Dock = DockStyle.Fill })
+                using (var filters = new ReportFilters(new TextBox(), new DarkComboBox(), new DarkComboBox(), query, export))
+                {
+                    int fits = 0;
+                    filters.HeightRequired += height => fits++;
+                    filters.Size = new Size(UiStyle.Scale(filters, 900), UiStyle.Scale(filters, 110));
+                    Rectangle queryBounds = query.Bounds, exportBounds = export.Bounds;
+                    int initialFits = fits;
+                    for (int i = 0; i < 25; i++) filters.PerformLayout();
+                    Need(initialFits > 0 && fits == initialFits, "Unchanged report filters repeated text and geometry work");
+                    Need(queryBounds == query.Bounds && exportBounds == export.Bounds && query.Right <= export.Left,
+                        "Default docking overwrote custom report filter geometry");
+                    filters.Width = UiStyle.Scale(filters, 650);
+                    Need(fits > initialFits && query.Top > queryBounds.Top && query.Right <= export.Left,
+                        "Report filters did not reflow when the viewport became narrow");
+                }
                 using (var list = new HistoryRecordList())
                 {
                     var item = list.Items.Add("Synthetic");

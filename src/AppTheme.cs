@@ -222,9 +222,9 @@ namespace SteamDirect
         private static void Paint(Control control)
         {
             var original = originals.GetValue(control, c => new Original(c));
-            control.BackColor = Background(original.Back);
+            bool transparent = control is Label || control is PictureBox || control is TableLayoutPanel || control is FlowLayoutPanel;
+            control.BackColor = transparent ? Color.Transparent : Background(original.Back);
             control.ForeColor = Text(original.Fore);
-            if(control is Label||control is PictureBox||control is TableLayoutPanel||control is FlowLayoutPanel)control.BackColor=Color.Transparent;
             if (control is ListView || control is TextBoxBase || control is ComboBox || control is DataGridView || control is ScrollableControl)
             {
                 control.HandleCreated -= NativeThemeCreated;

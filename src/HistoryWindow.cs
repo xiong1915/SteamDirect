@@ -54,9 +54,10 @@ namespace SteamDirect
         private int queryGeneration;
         private long loadedRevision = -1;
         private DateTime loadedDay;
-        private bool selectionPending, gameAtRequest;
+        private bool selectionPending;
         private bool initialScopeResolved;
         private string selectionHint;
+        private readonly Stack<TableLayoutPanel> buildingGrids = new Stack<TableLayoutPanel>();
         internal double LastDataLoadMilliseconds { get; private set; }
         internal double LastQueryMilliseconds { get; private set; }
         internal double LastAnalysisMilliseconds { get; private set; }
@@ -74,20 +75,28 @@ namespace SteamDirect
             if (selectionWork != null) { selectionPending = true; selectionWork.Cancel(); }
         }
 
-        internal HistoryWindow(HistoryStore store, Func<bool> isGaming = null, Func<string> recordingStatus = null)
+        internal HistoryWindow(HistoryStore store, Func<bool> isGaming = null, Func<string> recordingStatus = null, bool embedded = false)
         {
             this.store = store;
             this.recordingStatus = recordingStatus;
             this.isGaming = isGaming;
             SuspendLayout();
             Text = "游戏网络报告";
-            var ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-            Icon = ownedIcon;
-            Disposed += (sender, args) => { if (ownedIcon != null) ownedIcon.Dispose(); };
+            if (embedded)
+            {
+                TopLevel = false;
+                FormBorderStyle = FormBorderStyle.None;
+            }
+            else
+            {
+                var ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                Icon = ownedIcon;
+                Disposed += (sender, args) => { if (ownedIcon != null) ownedIcon.Dispose(); };
+                MinimumSize = new Size(980, 650);
+            }
             AutoScaleDimensions = new SizeF(96, 96);
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(1100, 720);
-            MinimumSize = new Size(980, 650);
             StartPosition = FormStartPosition.CenterParent;
             Font = UiStyle.Body;
             BackColor = Page;
@@ -101,7 +110,6 @@ namespace SteamDirect
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-            Controls.Add(new ContentViewport(root, 690));
 
             root.Controls.Add(UiStyle.Header("游戏记录", "选择对局查看报告"), 0, 0);
 
@@ -267,13 +275,18 @@ namespace SteamDirect
             export.Click += async (sender, args) => await ExportAsync();
             Shown += (sender, args) => { if (TopLevel) EnterPage(); };
             ParentChanged += (sender, args) => { if (!TopLevel) MinimumSize = Size.Empty; };
+            Controls.Add(new ContentViewport(root, 690));
             AppTheme.Apply(this);
-            ResumeLayout(true);
+            while (buildingGrids.Count != 0) buildingGrids.Pop().ResumeLayout(false);
+            ResumeLayout(false);
         }
 
-        private static TableLayoutPanel Grid(int columns, int rows)
+        private TableLayoutPanel Grid(int columns, int rows)
         {
-            return UiStyle.Grid(columns, rows);
+            var grid = UiStyle.Grid(columns, rows);
+            grid.SuspendLayout();
+            buildingGrids.Push(grid);
+            return grid;
         }
 
         private Control BuildOverview()
@@ -482,13 +495,19 @@ namespace SteamDirect
             if (session == null || Gaming || session.End == 0) { status.Text = "请在游戏结束后查看详细数据。"; return; }
             new HistoryDataWindow(store, session, isGaming).Show(TopLevelControl as Form ?? this);
         }
-        private bool Gaming { get { return gameAtRequest || isGaming != null && isGaming(); } }
+        private bool Gaming { get { return isGaming != null && isGaming() || SteamGameDiscovery.IsSteamGameReported(); } }
         private bool Available { get { return !shuttingDown && !IsDisposed && !Disposing; } }
 
         private void CheckAnalysis(CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
-            if (Gaming) throw new OperationCanceledException("游戏运行中，已暂停报告计算。");
+            if (isGaming != null && isGaming()) throw new OperationCanceledException("游戏运行中，已暂停报告计算。");
+        }
+
+        private void BeginAnalysis(CancellationToken token)
+        {
+            CheckAnalysis(token);
+            if (SteamGameDiscovery.IsSteamGameActive()) throw new OperationCanceledException("游戏运行中，已暂停报告计算。");
         }
 
         protected override void Dispose(bool disposing)
@@ -519,7 +538,6 @@ namespace SteamDirect
         private async Task QueryAsync(int requestedPage, bool showLatestIfTodayEmpty, string preferredId = null, bool fromOverview = false)
         {
             if (!Available) return;
-            gameAtRequest = SteamGameDiscovery.IsSteamGameActive();
             if (Gaming) { status.Text = "游戏运行中，请在退出游戏后刷新。"; return; }
             if (queryWork != null) queryWork.Cancel();
             if (selectionWork != null) selectionWork.Cancel();
@@ -551,7 +569,7 @@ namespace SteamDirect
             {
                 var result = await Task.Run(() =>
                 {
-                    CheckAnalysis(token);
+                    BeginAnalysis(token);
                     store.Initialize();
                     var queryClock = System.Diagnostics.Stopwatch.StartNew();
                     var loaded = store.ListSessions(RecordLimit + 1, requestedPage * RecordLimit, name, mode == "全部" ? null : mode, from, before);
@@ -584,7 +602,11 @@ namespace SteamDirect
                     }
                 }
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+                if (Available && !token.IsCancellationRequested && generation == queryGeneration)
+                    status.Text = "游戏运行中，请在退出游戏后刷新。";
+            }
             catch (Exception ex)
             {
                 if (Available && !token.IsCancellationRequested && generation == queryGeneration)
@@ -654,7 +676,6 @@ namespace SteamDirect
         private async Task LoadSelectionAsync()
         {
             selectionPending = true;
-            gameAtRequest = SteamGameDiscovery.IsSteamGameActive();
             if (selectionWork != null) selectionWork.Cancel();
             if (!Available) return;
             var selected = Selected();
@@ -693,7 +714,7 @@ namespace SteamDirect
                 var result = await Task.Run(() =>
                 {
                     var analysisClock = System.Diagnostics.Stopwatch.StartNew();
-                    CheckAnalysis(token);
+                    BeginAnalysis(token);
                     var previous = store.ListComparisonSessions(selected, "直连", ComparisonLimit);
                     CheckAnalysis(token);
                     previous.AddRange(store.ListComparisonSessions(selected, "代理", ComparisonLimit));
@@ -1047,7 +1068,11 @@ namespace SteamDirect
             try
             {
                 var token = lifetime.Token;
-                await Task.Run(() => WriteCsv(destination, session, token), token);
+                await Task.Run(() =>
+                {
+                    BeginAnalysis(token);
+                    WriteCsv(destination, session, token);
+                }, token);
                 if (Available) status.Text = "已导出会话、探测样本和异常时间线。";
             }
             catch (OperationCanceledException) { if (Available) status.Text = "导出已取消。"; }

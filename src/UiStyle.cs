@@ -261,7 +261,6 @@ namespace SteamDirect
             input.Dock = DockStyle.None;
             input.Margin = Padding.Empty;
             input.FontChanged += (sender, args) => PerformLayout();
-            input.SizeChanged += (sender, args) => PerformLayout();
             var text = input as TextBox;
             if (text != null) text.BorderStyle = BorderStyle.None;
             var number = input as NumericUpDown;

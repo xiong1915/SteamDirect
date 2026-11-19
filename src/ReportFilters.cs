@@ -8,6 +8,8 @@ namespace SteamDirect
         private readonly Control[] inputs;
         private readonly Label[] labels;
         private readonly Button query, export;
+        private int arrangedWidth = -1, arrangedDpi;
+        private Font arrangedLabelFont, arrangedButtonFont;
         internal event Action<int> HeightRequired;
         internal ReportFilters(Control search, Control mode, Control scope, Button query, Button export)
         {
@@ -15,13 +17,30 @@ namespace SteamDirect
             inputs = new[] { UiStyle.Entry(search, "按游戏名称筛选"), UiStyle.Entry(mode, "按网络模式筛选"), UiStyle.Entry(scope, "查看当天或历史对局记录") };
             labels = new[] { Label("游戏名称"), Label("网络模式"), Label("记录范围") };
             this.query = query; this.export = export;
-            for (int i = 0; i < 3; i++) { Controls.Add(labels[i]); Controls.Add(inputs[i]); }
+            SuspendLayout();
+            for (int i = 0; i < 3; i++)
+            {
+                inputs[i].Dock = DockStyle.None;
+                Controls.Add(labels[i]);
+                Controls.Add(inputs[i]);
+            }
+            query.Dock = export.Dock = DockStyle.None;
             Controls.Add(query); Controls.Add(export);
+            labels[0].FontChanged += (sender, args) => PerformLayout();
+            query.FontChanged += (sender, args) => PerformLayout();
+            ResumeLayout(false);
         }
         private static Label Label(string text) { return new Label { Text = text, Font = UiStyle.Caption, ForeColor = AppTheme.Muted, Margin = Padding.Empty }; }
         protected override void OnLayout(LayoutEventArgs e)
         {
             base.OnLayout(e); if (inputs == null) return;
+            int dpi = UiStyle.Dpi(this);
+            if (arrangedWidth == Width && arrangedDpi == dpi &&
+                ReferenceEquals(arrangedLabelFont, labels[0].Font) && ReferenceEquals(arrangedButtonFont, query.Font)) return;
+            arrangedWidth = Width;
+            arrangedDpi = dpi;
+            arrangedLabelFont = labels[0].Font;
+            arrangedButtonFont = query.Font;
             int gap = UiStyle.Scale(this, 12), label = Math.Max(UiStyle.Scale(this, 24), UiStyle.TextHeight(labels[0]) + UiStyle.Scale(this, 4));
             int height = Math.Max(UiStyle.Scale(this, 40), UiStyle.TextHeight(query) + UiStyle.Scale(this, 16));
             bool compact = Width < UiStyle.Scale(this, 790);

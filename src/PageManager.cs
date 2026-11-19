@@ -75,6 +75,7 @@ namespace SteamDirect
             var total = diagnostic ? Stopwatch.StartNew() : null;
             var stage = diagnostic ? Stopwatch.StartNew() : null;
             double construct = 0, handles = 0, layout = 0, paint = 0;
+            double showMs = 0, hideMs = 0;
             int createdHandles = 0; bool fresh = false, committed = false;
             Control next = overview;
             using (var trace = new NavigationTrace(diagnostic))
@@ -117,11 +118,16 @@ namespace SteamDirect
                 host.SuspendLayout();
                 try
                 {
-                    next.Show(); next.BringToFront();
+                    // Only the active page remains visible, so cached pages do not need a z-order change.
+                    long stamp = Stopwatch.GetTimestamp();
+                    next.Show();
+                    if (diagnostic) showMs = (Stopwatch.GetTimestamp() - stamp) * 1000.0 / Stopwatch.Frequency;
                     var surface = host as PageHost; if (surface != null) surface.ActivePage = next;
                     var outgoing = current as IManagedPage;
                     if (outgoing != null) outgoing.LeavePage();
+                    stamp = Stopwatch.GetTimestamp();
                     if (current != next) { current.Hide(); current.Dock = DockStyle.None; }
+                    if (diagnostic) hideMs = (Stopwatch.GetTimestamp() - stamp) * 1000.0 / Stopwatch.Frequency;
                     current = next; currentName = name; committed = true;
                 }
                 finally { host.ResumeLayout(false); }
@@ -132,6 +138,7 @@ namespace SteamDirect
                     LastMeasurement = "page=" + name + " fresh=" + fresh + " total_ms=" + total.Elapsed.TotalMilliseconds.ToString("F3") +
                         " construct_ms=" + construct.ToString("F3") + " native_init_ms=" + handles.ToString("F3") +
                         " prepare_layout_ms=" + layout.ToString("F3") + " commit_paint_dispatch_ms=" + paint.ToString("F3") +
+                        " show_ms=" + showMs.ToString("F3") + " hide_ms=" + hideMs.ToString("F3") +
                         " handles_created=" + createdHandles + " " + trace.Summary;
                     if (DiagnosticsEnabled) WindowDiagnostics.Record(LastMeasurement);
                 }
