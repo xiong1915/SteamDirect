@@ -101,6 +101,11 @@ namespace SteamDirect
                         Need(beforeEnd==0 && layouts==1,"A corner drag must defer full layout until release");
                         Need(host.Bounds==form.ClientRectangle,"Resize end did not flush final layout");
                         OffscreenGeometry.Resize(form,new Size(3760,2060));Application.DoEvents();Need(form.ClientSize==new Size(3760,2060),"4K fixture was constrained to the physical desktop: "+form.ClientSize);
+                        int tallHeight = SystemInformation.MaxWindowTrackSize.Height + 64;
+                        OffscreenGeometry.Resize(form, new Size(900, tallHeight));
+                        Need(form.ClientSize.Height == tallHeight && b.Bounds == host.PageBounds,
+                            "An embedded page must follow the host above the native desktop tracking limit: " +
+                            "host=" + host.PageBounds + " page=" + b.Bounds + " client=" + form.ClientSize);
                     }
                 }
                 using (var form = new ResizeForm { StartPosition = FormStartPosition.Manual, Location = new Point(-24000, -24000), ShowInTaskbar = false })

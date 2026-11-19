@@ -149,7 +149,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.26";
+            Text = "Steam 直连助手 v3.0.27";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -423,7 +423,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.26", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.27", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };

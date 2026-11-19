@@ -26,14 +26,37 @@ namespace SteamDirect
                 return new System.Drawing.Rectangle(area.X + (area.Width - width) / 2, area.Y, width, area.Height);
             }
         }
+        private const uint KeepWindowOrderAndFocus = 0x0004 | 0x0010 | 0x0200; // SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
         internal PageHost() { Dock = DockStyle.Fill; DoubleBuffered = true; }
+
+        internal void FitPage(Control page)
+        {
+            if (page == null || page.IsDisposed) return;
+            var bounds = PageBounds;
+            if (page.Bounds == bounds) return;
+
+            var form = page as Form;
+            if (form != null && !form.TopLevel && form.Parent == this && form.IsHandleCreated)
+            {
+                // Form.SetBoundsCore applies desktop tracking limits even to embedded pages.
+                // Position the child HWND directly when the host needs more space.
+                var limit = SystemInformation.MaxWindowTrackSize;
+                if ((bounds.Width > limit.Width || bounds.Height > limit.Height) &&
+                    SetWindowPos(form.Handle, IntPtr.Zero, bounds.X, bounds.Y, bounds.Width, bounds.Height, KeepWindowOrderAndFocus))
+                    return;
+            }
+            page.Bounds = bounds;
+        }
+
         protected override void OnLayout(LayoutEventArgs args)
         {
             base.OnLayout(args);
-            var page = ActivePage;
-            if (page == null || page.IsDisposed) return;
-            var bounds = PageBounds;
-            if (page.Bounds != bounds) page.Bounds = bounds;
+            FitPage(ActivePage);
         }
     }
 
@@ -117,8 +140,13 @@ namespace SteamDirect
                     }
                     next = page;
                 }
-                if (next.Bounds != PageArea) next.Bounds = PageArea;
-                if (!(host is PageHost)) next.Dock = DockStyle.Fill;
+                var pageHost = host as PageHost;
+                if (pageHost != null) pageHost.FitPage(next);
+                else
+                {
+                    if (next.Bounds != PageArea) next.Bounds = PageArea;
+                    next.Dock = DockStyle.Fill;
+                }
                 trace.Observe(next);
                 // Hidden cached pages still synchronize configuration/data before presentation.
                 var incoming = next as IManagedPage;
