@@ -145,8 +145,9 @@ namespace SteamDirect
         private HistoryWindow preparedHistory;
         private bool historyCreated;
         private bool startHidden;
+        private bool presented;
 
-        private void PrepareHistoryAfterShow()
+        private void PrepareHistoryForNavigation()
         {
 
             if (IsDisposed || !Visible || WindowState == FormWindowState.Minimized ||
@@ -163,7 +164,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.29";
+            Text = "Steam 直连助手 v3.0.30";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -365,7 +366,7 @@ namespace SteamDirect
                     Status("操作正在进行，请等待完成后退出。");
                 }
             };
-            Shown += (sender, args) => BeginInvoke((Action)PrepareHistoryAfterShow);
+
             Disposed += (sender, args) =>
             {
                 if (preparedHistory != null) preparedHistory.Dispose();
@@ -441,11 +442,16 @@ namespace SteamDirect
                     AccessibleName = page + "页面", TabIndex = i, Icon = icons[i], CornerRadius = UiStyle.NavigationRadius };
                 AppTheme.ActionButton(button, false);
                 button.Font = UiStyle.Body;
+                if (page == "游戏记录")
+                {
+                    button.MouseEnter += (sender, args) => PrepareHistoryForNavigation();
+                    button.Enter += (sender, args) => PrepareHistoryForNavigation();
+                }
                 button.Click += (sender, args) => NavigateTo(page);
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.29", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.30", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -626,6 +632,13 @@ namespace SteamDirect
             base.WndProc(ref message);
         }
 
+        protected override void OnLoad(EventArgs args)
+        {
+            // WinForms raises Load after creating child handles and before showing the form.
+            CheckWorkArea();
+            base.OnLoad(args);
+        }
+
         protected override void SetVisibleCore(bool value)
         {
             if (value && startHidden)
@@ -636,7 +649,14 @@ namespace SteamDirect
                 PerformLayout();
                 return;
             }
+            bool firstPresentation = value && !presented && TopLevel;
             base.SetVisibleCore(value);
+            if (firstPresentation && Visible)
+            {
+                presented = true;
+                // Finish pending child paints before queued history/status updates get the UI thread.
+                RedrawBatch.FlushPendingPaint(this);
+            }
         }
 
         internal void ShowMainWindow()

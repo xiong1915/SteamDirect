@@ -63,9 +63,15 @@ namespace SteamDirect
                     using(var main=new MainWindow(false,monitor,new UserPreferences{NightMode=true,ThemeColor="#3269C7",NetworkRecording=false})) {
                         main.ShowInTaskbar=false;main.StartPosition=FormStartPosition.Manual;main.Location=new Point(-24000,-24000);main.MinimumSize=Size.Empty;
                         if(fourK)main.FormBorderStyle=FormBorderStyle.None; // Avoid host-monitor tracking limits in the synthetic 4K fixture.
-                        main.Show();OffscreenGeometry.Resize(main,fourK?new Size(3760,2060):new Size(1840,980));Pump(20);
+                        var firstShow = Stopwatch.StartNew();
+                        main.Show();
+                        Console.WriteLine("FIRST_SHOW request_ms=" + firstShow.Elapsed.TotalMilliseconds.ToString("F3"));
+                        OffscreenGeometry.Resize(main,fourK?new Size(3760,2060):new Size(1840,980));Pump(20);
                         Need(main.ClientSize==(fourK?new Size(3760,2060):new Size(1840,980)),"Requested synthetic client geometry was constrained by host: "+main.ClientSize);
                         Console.WriteLine("ENV client="+main.ClientSize+" native_dpi="+main.DeviceDpi+" awareness="+HighDpi.Awareness+" reduced="+Motion.Reduced+" baseline="+baseline);
+                        var prepared = typeof(MainWindow).GetField("preparedHistory", Private);
+                        if (!baseline && prepared != null)
+                            Need(prepared.GetValue(main) == null, "Home startup constructed the history page before navigation intent");
                         FontMetrics(main);
                         var nav=typeof(MainWindow).GetMethod("NavigateTo",Private);
                         string[] pages={"网络诊断","游戏记录","设置","概览"};

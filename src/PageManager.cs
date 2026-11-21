@@ -66,6 +66,12 @@ namespace SteamDirect
         private IntPtr handle;
         [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr h, int m, IntPtr w, IntPtr l);
         [DllImport("user32.dll")] private static extern bool RedrawWindow(IntPtr h, IntPtr r, IntPtr region, uint flags);
+        internal static void FlushPendingPaint(Control control)
+        {
+            const uint UpdateNow = 0x0100, AllChildren = 0x0080;
+            RedrawWindow(control.Handle, IntPtr.Zero, IntPtr.Zero, UpdateNow | AllChildren);
+        }
+
         internal RedrawBatch(Control control)
         {
             this.control = control;

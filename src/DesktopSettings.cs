@@ -175,15 +175,15 @@ namespace SteamDirect
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
             layout.Controls.Add(UiStyle.Header("设置", ""), 0, 0);
 
             var viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Margin = Padding.Empty };
-            var cards = UiStyle.Grid(1, 4);
+            var cards = UiStyle.Grid(1, 5);
             cards.Dock = DockStyle.Top;
-            cards.Height = 584;
+            cards.Height = 644;
             cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 176, 108, 132, 168 }) cards.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
+            foreach (int height in new[] { 160, 108, 124, 168, 84 }) cards.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             viewport.Controls.Add(cards);
             layout.Controls.Add(viewport, 0, 1);
 
@@ -246,9 +246,9 @@ namespace SteamDirect
             };
             logs.Controls.Add(cleanup, 0, 2);
 
-            var footer = UiStyle.Grid(1, 3);
+            var footer = UiStyle.Grid(2, 1);
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 48, 24, 40 }) footer.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 256)); footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); footer.Padding = new Padding(0, UiStyle.Space12, 0, 0);
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft,
                 Margin = Padding.Empty, WrapContents = false };
             save.Text = "保存设置"; save.Width = 120; save.Height = UiStyle.ButtonHeight; save.Margin = new Padding(UiStyle.SmallGap, 0, 0, 0);
@@ -265,19 +265,19 @@ namespace SteamDirect
             AppTheme.ActionButton(cancel, false);
             buttons.Controls.Add(save);
             buttons.Controls.Add(cancel);
-            footer.Controls.Add(buttons, 0, 0);
+            footer.Controls.Add(buttons, 1, 0);
             feedback.Text = "更改后点击保存设置";
             feedback.Dock = DockStyle.Fill;
             feedback.Font = UiStyle.Caption;
             feedback.ForeColor = AppTheme.Muted;
-            feedback.TextAlign = ContentAlignment.MiddleRight;
-            footer.Controls.Add(feedback, 0, 1);
+            feedback.TextAlign = ContentAlignment.MiddleLeft;
+            footer.Controls.Add(feedback, 0, 0);
 
             var about = UiStyle.Grid(2, 1);
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
             about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.29", Dock = DockStyle.Fill,
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.30", Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true, Font = UiStyle.Caption }, 0, 0);
             const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
             var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill,
@@ -290,7 +290,7 @@ namespace SteamDirect
                 catch (Exception ex) { NoticeDialog.Show(this, "无法打开浏览器，请访问 " + repositoryUrl + Environment.NewLine + ex.Message, "GitHub 项目"); }
             };
             about.Controls.Add(github, 1, 0);
-            footer.Controls.Add(about, 0, 2);
+            Section(cards, 4, "关于").Controls.Add(about, 0, 0);
             layout.Controls.Add(footer, 0, 2);
             foreach (var toggle in new[] { night, tray, startup, reduce, diagnostic, recording })
                 toggle.CheckedChanged += (sender, args) => feedback.Text = "有更改尚未保存";

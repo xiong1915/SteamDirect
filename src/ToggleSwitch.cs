@@ -29,19 +29,20 @@ namespace SteamDirect
             float scale = UiStyle.Dpi(this) / 96f;
             float width = 36 * scale, height = 20 * scale;
             float top = (Height - height) / 2;
+            float left = Math.Max(0, Width - width - 4 * scale);
             Color track = Motion.Blend(AppTheme.Edge, AppTheme.Text(AppTheme.Accent), Enabled ? position.Current : 0);
             using (var brush = new SolidBrush(track))
             using (var path = new GraphicsPath())
             {
-                path.AddArc(0, top, height, height, 90, 180);
-                path.AddArc(width - height, top, height, height, 270, 180);
+                path.AddArc(left, top, height, height, 90, 180);
+                path.AddArc(left + width - height, top, height, height, 270, 180);
                 path.CloseFigure();
                 e.Graphics.FillPath(brush, path);
             }
             float thumb = 14 * scale;
-            using (var brush = new SolidBrush(Motion.Blend(AppTheme.Text(AppTheme.Muted), Color.White, position.Current)))
-                e.Graphics.FillEllipse(brush, (3 + (36 - 14 - 6) * position.Current) * scale, top + 3 * scale, thumb, thumb);
-            var textBounds = Rectangle.FromLTRB((int)(width + 12 * scale), 0, Width, Height);
+            using (var brush = new SolidBrush(Motion.Blend(AppTheme.Text(AppTheme.Muted), AppTheme.AccentForeground, position.Current)))
+                e.Graphics.FillEllipse(brush, left + (3 + (36 - 14 - 6) * position.Current) * scale, top + 3 * scale, thumb, thumb);
+            var textBounds = Rectangle.FromLTRB(0, 0, Math.Max(0, (int)(left - 12 * scale)), Height);
             TextRenderer.DrawText(e.Graphics, Text, Font, textBounds,
                 Enabled ? ForeColor : AppTheme.Text(AppTheme.Muted),
                 TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
