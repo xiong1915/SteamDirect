@@ -106,7 +106,7 @@ namespace SteamDirect
             CompactWindowWidth = 880, CompactWindowHeight = 540;
         internal const int ButtonMotion = 100, DialogMotion = 180, StatusMotion = 180;
         internal const float SmallRadius = 6, ControlRadius = 8, CardRadius = 12, DialogRadius = 16, NavigationRadius = ControlRadius;
-        internal const int MotionTick = 40, SpinnerStep = 9; // Continuous motion is reserved for active operations; controls animate only on interaction.
+        internal const int MotionTick = 16, SpinnerPeriodMs = 1600; // Continuous motion is reserved for active operations; controls animate only on interaction.
         private static readonly string Family = PickFont("Segoe UI Variable Text", "Segoe UI");
         private static readonly string Semibold = PickFont("Segoe UI Variable Text Semibold", "Segoe UI Semibold");
         internal static readonly Font Body = FontAt(14);

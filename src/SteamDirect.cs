@@ -121,6 +121,8 @@ namespace SteamDirect
         private readonly StepTimeline timeline = new StepTimeline();
         private readonly Label elapsedLabel = new Label();
         private readonly System.Windows.Forms.Timer animationTimer = new System.Windows.Forms.Timer();
+        private long displayedSecond = -1;
+        private int displayedStep = -1;
         private readonly Stopwatch operationWatch = new Stopwatch();
 
         private readonly Icon ownedMainIcon;
@@ -140,6 +142,7 @@ namespace SteamDirect
         private readonly Label operationResult = new Label();
         private readonly OverviewStatus overviewStatus;
 
+        private bool startHidden;
         internal MainWindow(bool background = false, HistoryMonitor historyOverride = null, UserPreferences preferencesOverride = null)
         {
             preferences = preferencesOverride ?? UserPreferences.Load(UserPreferences.DefaultPath);
@@ -149,7 +152,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.27";
+            Text = "Steam 直连助手 v3.0.28";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -314,8 +317,11 @@ namespace SteamDirect
             animationTimer.Tick += (sender, args) =>
             {
                 if (!Visible || WindowState == FormWindowState.Minimized || !Motion.Allowed) { animationTimer.Stop(); return; }
-                timeline.Angle = (timeline.Angle + UiStyle.SpinnerStep) % 360;
-                if (timeline.Visible) timeline.Invalidate();
+                long elapsed = operationWatch.ElapsedMilliseconds;
+                if (timeline.Visible) timeline.AdvanceSpinner(elapsed);
+                if (displayedSecond == elapsed / 1000 && displayedStep == timeline.ActiveStep) return;
+                displayedSecond = elapsed / 1000;
+                displayedStep = timeline.ActiveStep;
                 if (timeline.ActiveStep >= 0 && timeline.ActiveStep < timeline.StepCount)
                     elapsedLabel.Text = "第 " + (timeline.ActiveStep + 1) + " / " + timeline.StepCount + " 步  ·  " + operationWatch.Elapsed.ToString(@"mm\:ss");
             };
@@ -348,9 +354,9 @@ namespace SteamDirect
                     Status("操作正在进行，请等待完成后退出。");
                 }
             };
-            Shown += (sender, args) => { if (background && preferences.TrayEnabled) Hide(); };
+            startHidden = background && preferences.TrayEnabled;
             Log("就绪，请先退出游戏。");
-            Shown += (sender, args) => { if (preferences.NetworkRecording) history.Start(); };
+            if (preferences.NetworkRecording) history.Start();
             Shown += (sender, args) => recentHistory.RequestRefresh(history, preferences.NetworkRecording);
             Shown += (sender, args) => overviewStatus.RequestRefresh();
             AppTheme.Apply(this);
@@ -423,7 +429,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.27", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.28", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -593,15 +599,29 @@ namespace SteamDirect
             base.WndProc(ref message);
         }
 
+        protected override void SetVisibleCore(bool value)
+        {
+            if (value && startHidden)
+            {
+                startHidden = false;
+                // Keep a message target for tray and single-instance activation.
+                if (!IsHandleCreated) CreateHandle();
+                PerformLayout();
+                return;
+            }
+            base.SetVisibleCore(value);
+        }
+
         internal void ShowMainWindow()
         {
             if (IsDisposed || restoring) return;
             restoring = true;
             try {
                 windowDiagnostics.Begin();
-                if (!Visible) Show();
+                bool opening = !Visible;
                 if (WindowState == FormWindowState.Minimized) WindowState = lastVisibleState;
                 CheckWorkArea();
+                if (opening) { PerformLayout(); Show(); }
                 windowDiagnostics.Displayed();
                 if (!WindowEnvironment.OffscreenTests) Activate();
             } finally { restoring = false; }
@@ -730,6 +750,7 @@ namespace SteamDirect
             {
                 timeline.ActiveStep = 0;
                 timeline.Failed = false;
+                displayedSecond = -1;
                 operationWatch.Restart();
                 UpdateOperationAnimation();
                 runButton.Enabled = false;
@@ -955,7 +976,16 @@ namespace SteamDirect
     {
         internal int ActiveStep = -1;
         internal bool Failed;
-        internal int Angle;
+        private int Angle;
+        internal void AdvanceSpinner(long elapsed)
+        {
+            if (ActiveStep < 0 || ActiveStep >= StepCount || Failed) return;
+            Angle = (int)(elapsed % UiStyle.SpinnerPeriodMs * 360 / UiStyle.SpinnerPeriodMs);
+            float scale = UiStyle.Dpi(this) / 96F;
+            float gap = Math.Min(76, (Height / scale - 16) / StepCount);
+            float y = 18 + ActiveStep * gap;
+            Invalidate(Rectangle.Ceiling(new RectangleF(8 * scale, (y - 10) * scale, 20 * scale, 20 * scale)));
+        }
         private readonly string[] titles = { "准备检查", "关闭应用与代理", "核验本机代理", "退出 Steam", "复检并启动", "完成检查" };
         private readonly string[] descriptions = { "路径与游戏状态", "关闭应用和代理", "系统代理与内核", "等待正常退出", "再次核验后启动", "临时文件单独清理" };
         internal int StepCount { get { return titles.Length; } }

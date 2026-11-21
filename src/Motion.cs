@@ -11,7 +11,7 @@ namespace SteamDirect
     internal static class Motion
     {
         private static readonly List<Value> active = new List<Value>();
-        private static readonly Timer timer = new Timer { Interval = 16 };
+        private static readonly Timer timer = new Timer { Interval = UiStyle.MotionTick };
         private static bool reduced;
         internal static Func<bool> IsGaming;
 
