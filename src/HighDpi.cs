@@ -5,8 +5,43 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 namespace SteamDirect {
+ public sealed class DpiEntry : MarshalByRefObject { public void Run(string[] args) { Program.RunApplication(args); } public override object InitializeLifetimeService() { return null; } }
  internal static class HighDpi {
+  internal static void InitializeUi() {
+   EnablePerMonitorContext();
+   System.Windows.Forms.Application.EnableVisualStyles();
+   System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+  }
   [DllImport("user32.dll")] private static extern bool SetProcessDPIAware();
+  internal static string ConfigureUserFallback(string directory = null) {
+   string folder=directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"SteamDirect");
+   Directory.CreateDirectory(folder);string path=Path.Combine(folder,"high-dpi-v3.config");
+   using(var source=Assembly.GetExecutingAssembly().GetManifestResourceStream("SteamDirect.HighDpiConfig")) {
+    if(source==null)throw new InvalidOperationException("缺少高 DPI 配置资源。");
+    string content;using(var reader=new StreamReader(source))content=reader.ReadToEnd();
+    if(!File.Exists(path)||File.ReadAllText(path)!=content){string stage=path+".new-"+Guid.NewGuid().ToString("N");try{File.WriteAllText(stage,content);if(File.Exists(path))File.Replace(stage,path,null);else File.Move(stage,path);}finally{if(File.Exists(stage))File.Delete(stage);}}
+   }
+   return path;
+  }
+  [DllImport("user32.dll")]private static extern bool SetProcessDpiAwarenessContext(IntPtr context);
+  internal static void EnablePerMonitorContext() { try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch(EntryPointNotFoundException) { SetProcessDPIAware(); } }
+  private static void RunUserConfigured(string[] args) {
+   EnablePerMonitorContext();
+   var setup=new AppDomainSetup { ApplicationBase=Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location),ConfigurationFile=SafeFallbackConfiguration(),TargetFrameworkName=".NETFramework,Version=v4.8" };
+   var domain=AppDomain.CreateDomain("SteamDirect.HighDpi.UI",null,setup);
+   try { var entry=(DpiEntry)domain.CreateInstanceAndUnwrap(typeof(DpiEntry).Assembly.FullName,typeof(DpiEntry).FullName);entry.Run(args); }
+   finally { AppDomain.Unload(domain); }
+  }
+  private static string SafeFallbackConfiguration() {
+   try { return ConfigureUserFallback(); }
+   catch(IOException) { return null; }
+   catch(UnauthorizedAccessException) { return null; }
+  }
+  [DllImport("user32.dll")] private static extern IntPtr GetThreadDpiAwarenessContext();
+  [DllImport("user32.dll")] private static extern bool AreDpiAwarenessContextsEqual(IntPtr first,IntPtr second);
+  internal static string Awareness {
+   get { try { var context=GetThreadDpiAwarenessContext(); if(AreDpiAwarenessContextsEqual(context,new IntPtr(-4)))return "PerMonitorV2";if(AreDpiAwarenessContextsEqual(context,new IntPtr(-3)))return "PerMonitor";if(AreDpiAwarenessContextsEqual(context,new IntPtr(-2)))return "SystemAware";return "Unaware/other"; } catch(EntryPointNotFoundException) { return "Unavailable"; } }
+  }
   internal static bool EnsureConfiguration(string[] args) {
    string executable=Assembly.GetExecutingAssembly().Location;
    string path=executable+".config";
@@ -20,8 +55,8 @@ namespace SteamDirect {
     File.Move(stage,path);
     var start=new ProcessStartInfo(executable,Array.IndexOf(args,"--background")>=0?"--background":"") {UseShellExecute=false,CreateNoWindow=true};
     using(var process=Process.Start(start))return process!=null;
-   }catch(IOException){if(!File.Exists(path))SetProcessDPIAware();return false;}
-    catch(UnauthorizedAccessException){SetProcessDPIAware();return false;}
+   }catch(IOException){if(!File.Exists(path)){RunUserConfigured(args);return true;}return false;}
+    catch(UnauthorizedAccessException){RunUserConfigured(args);return true;}
     catch(Win32Exception){return false;}
    finally{try{if(File.Exists(stage))File.Delete(stage);}catch(IOException){}catch(UnauthorizedAccessException){}}
   }

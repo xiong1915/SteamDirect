@@ -18,7 +18,7 @@ namespace SteamDirect
 {
     internal static class Program
     {
-        private static string CrashLog { get { return Path.Combine(LogStore.DirectoryPath, DateTime.Today.ToString("yyyy-MM-dd") + "-crash.log"); } }
+        private static string CrashLog { get { return Path.Combine(LogStore.DirectoryPath, "SteamDirect-" + DateTime.Today.ToString("yyyy-MM-dd") + "-crash.log"); } }
 
         private static void SaveCrash(Exception ex)
         {
@@ -49,11 +49,20 @@ namespace SteamDirect
         private static void Main(string[] arguments)
         {
             if (HighDpi.EnsureConfiguration(arguments)) return;
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
+            RunApplication(arguments);
+        }
+        internal static void RunApplication(string[] arguments)
+        {
+            HighDpi.InitializeUi();
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            MainWindow main = null;
             Application.ThreadException += (sender, args) =>
             {
+                if (main != null && main.DirectConnectRunning)
+                {
+                    SaveCrash(args.Exception);
+                    return;
+                }
                 ShowFatal(args.Exception);
                 Application.Exit();
             };
@@ -61,7 +70,7 @@ namespace SteamDirect
                 SaveCrash(args.ExceptionObject as Exception);
             try
             {
-                using (var singleInstance = new Mutex(false, @"Local\SteamDirect.Desktop"))
+                using (var singleInstance = new Mutex(false, @"Global\SteamDirect.Desktop." + System.Security.Principal.WindowsIdentity.GetCurrent().User.Value))
                 {
                     bool owned;
                     try { owned = singleInstance.WaitOne(0); }
@@ -71,150 +80,228 @@ namespace SteamDirect
                         WindowMessages.PostMessage(new IntPtr(0xffff), WindowMessages.ShowMain, IntPtr.Zero, IntPtr.Zero);
                         return;
                     }
-                    try { Application.Run(new MainWindow(Array.IndexOf(arguments, "--background") >= 0)); }
+                    try
+                    {
+                        using (var legacy = new Mutex(false, @"Local\SteamDirect.Desktop"))
+                        {
+                            bool legacyOwned;
+                            try { legacyOwned = legacy.WaitOne(0); } catch (AbandonedMutexException) { legacyOwned = true; }
+                            if (!legacyOwned) { WindowMessages.PostMessage(new IntPtr(0xffff), WindowMessages.ShowMain, IntPtr.Zero, IntPtr.Zero); return; }
+                            try
+                            {
+                                main = new MainWindow(Array.IndexOf(arguments, "--background") >= 0);
+                                Application.Run(main);
+                            }
+                            finally { legacy.ReleaseMutex(); }
+                        }
+                    }
                     finally { singleInstance.ReleaseMutex(); }
                 }
             }
             catch (Exception ex)
             {
-                ShowFatal(ex);
+                if (main != null && main.DirectConnectRunning) SaveCrash(ex);
+                else ShowFatal(ex);
             }
         }
     }
 
-    internal sealed class MainWindow : Form
+    internal sealed class MainWindow : DesktopForm
     {
         private readonly Button runButton = new RoundedButton();
         private readonly Button logButton = new RoundedButton();
-        private readonly Button restoreButton = new RoundedButton();
+        private readonly Button flowToggle, logToggle;
         private readonly CleanupPanel cleanupPanel;
         private readonly Label statusLabel = new Label();
         private readonly TextBox logBox = new TextBox();
         private string logPath { get { return LogStore.CurrentPath; } }
         private DateTime lastCleanupDate = DateTime.MinValue;
         private bool running;
+        internal bool DirectConnectRunning { get { return running; } }
         private readonly StepTimeline timeline = new StepTimeline();
         private readonly Label elapsedLabel = new Label();
         private readonly System.Windows.Forms.Timer animationTimer = new System.Windows.Forms.Timer();
+        private long displayedSecond = -1;
+        private int displayedStep = -1;
         private readonly Stopwatch operationWatch = new Stopwatch();
 
+        private readonly Icon ownedMainIcon;
         private readonly NotifyIcon trayIcon = new NotifyIcon();
         private readonly ContextMenuStrip trayMenu = new ContextMenuStrip();
-        private readonly UserPreferences preferences = UserPreferences.Load(UserPreferences.DefaultPath);
+        private readonly UserPreferences preferences;
         private bool exitRequested;
-        private readonly HistoryMonitor history;
-        private readonly Panel pageHost = new Panel { Dock = DockStyle.Fill };
+        private bool restoring;
+        private FormWindowState lastVisibleState = FormWindowState.Normal;
+        private readonly WindowDiagnostics windowDiagnostics;
+        private HistoryMonitor history;
+        private bool savingSettings;
+        private readonly PageHost pageHost = new PageHost();
         private readonly Dictionary<string, Button> navigation = new Dictionary<string, Button>();
-        private Control dashboard;
-        private Form activePage;
+        private PageManager pages;
+        private readonly OverviewHistory recentHistory;
+        private readonly Label operationResult = new Label();
+        private readonly OverviewStatus overviewStatus;
 
-        internal MainWindow(bool background = false, HistoryMonitor historyOverride = null)
+        private HistoryWindow preparedHistory;
+        private bool historyCreated;
+        private bool startHidden;
+        private bool presented;
+
+        private void PrepareHistoryForNavigation()
         {
+
+            if (IsDisposed || !Visible || WindowState == FormWindowState.Minimized ||
+                running || historyCreated || history.IsPlaying || SteamGameDiscovery.IsSteamGameReported()) return;
+            preparedHistory = CreateHistoryWindow();
+            historyCreated = true;
+        }
+        internal MainWindow(bool background = false, HistoryMonitor historyOverride = null, UserPreferences preferencesOverride = null)
+        {
+            preferences = preferencesOverride ?? UserPreferences.Load(UserPreferences.DefaultPath);
+            windowDiagnostics = new WindowDiagnostics(this) { Enabled = preferences.WindowDiagnostics };
             history = historyOverride ?? new HistoryMonitor(HistoryMonitor.DefaultPath);
+            Motion.Reduced = preferences.ReduceMotion; Motion.IsGaming = () => history.IsPlaying;
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v2.7.1";
-            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            Text = "Steam 直连助手 v3.0.31";
+            ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
             Font = UiStyle.Body;
             BackColor = AppTheme.Page;
             ForeColor = AppTheme.Ink;
             ClientSize = new Size(1180, 780);
-            MinimumSize = new Size(1080, 800);
+            MinimumSize = new Size(UiStyle.MinimumWindowWidth, UiStyle.MinimumWindowHeight);
             StartPosition = FormStartPosition.CenterScreen;
             DoubleBuffered = true;
 
             BuildNavigation();
-            var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = UiStyle.PagePadding, ColumnCount = 1, RowCount = 3 };
+            const int actionHeight = 180, metricsHeight = 84, maintenanceHeight = 132;
+            int overviewHeight = UiStyle.HeaderHeight + actionHeight + metricsHeight + maintenanceHeight +
+                2 * UiStyle.ButtonHeight + UiStyle.PagePadding.Vertical;
+            recentHistory = new OverviewHistory(OpenOverviewHistoryAsync);
+            overviewStatus = new OverviewStatus();
+            var root = UiStyle.Grid(1, 10);
+            root.Padding = UiStyle.PagePadding;
+            root.BackColor = AppTheme.Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 448));
+            foreach (int height in new[] { UiStyle.HeaderHeight, actionHeight, metricsHeight,
+                recentHistory.NaturalHeight + UiStyle.Space12, maintenanceHeight, UiStyle.ButtonHeight,
+                0, UiStyle.ButtonHeight, 0 })
+                root.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            dashboard = root;
-            pageHost.Controls.Add(root);
-            var header = UiStyle.Header("概览", "准备好网络，再开始游戏。");
-            root.Controls.Add(header, 0, 0);
-
-            var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 238));
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.Controls.Add(body, 0, 1);
-            var left = UiStyle.Card();
-            left.Margin = new Padding(0, 0, UiStyle.Gap, 0);
-            timeline.Dock = DockStyle.Fill;
-            left.Controls.Add(timeline);
-            body.Controls.Add(left, 0, 0);
-
-            var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
-            content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 272));
-            content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            body.Controls.Add(content, 1, 0);
+            var overview = new ContentViewport(root, overviewHeight + recentHistory.NaturalHeight + UiStyle.Space12);
+            pageHost.Controls.Add(overview);
+            pages = new PageManager(pageHost, overview);
+            root.Controls.Add(UiStyle.Header("概览", "直连控制与本机状态"), 0, 0);
             var action = UiStyle.Card();
-            var actionLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
+            action.Margin = new Padding(0, 0, 0, UiStyle.Space20);
+            var actionLayout = UiStyle.Grid(1, 4);
             actionLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
-            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32 + UiStyle.Space24));
+            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.LargeButtonHeight));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
-            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
-            elapsedLabel.Text = "●  等待执行";
+            actionLayout.Controls.Add(new Label
+            {
+                Text = "Steam 直连", Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.SectionTitle,
+                ForeColor = AppTheme.Ink, TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 0);
+            runButton.Text = "严格直连并重启 Steam";
+            runButton.Dock = DockStyle.Left;
+            runButton.MinimumSize = new Size(224, 0);
+            runButton.Width = 244;
+            runButton.Margin = Padding.Empty;
+            AppTheme.ActionButton(runButton, true);
+            runButton.Font = UiStyle.Button;
+            runButton.Click += async (sender, args) => await RunAsync();
+            actionLayout.Controls.Add(runButton, 0, 2);
+
+            statusLabel.Text = "退出游戏后开始";
+            statusLabel.Dock = DockStyle.Fill;
+            statusLabel.Margin = new Padding(0, UiStyle.Space4, 0, 0);
+            statusLabel.AutoEllipsis = true;
+            statusLabel.Font = UiStyle.Caption;
+            actionLayout.Controls.Add(statusLabel, 0, 1);
+            elapsedLabel.Text = "";
             elapsedLabel.ForeColor = AppTheme.Muted;
             elapsedLabel.Font = UiStyle.Caption;
             elapsedLabel.Dock = DockStyle.Fill;
             elapsedLabel.Margin = Padding.Empty;
-            actionLayout.Controls.Add(elapsedLabel, 0, 0);
-            statusLabel.Text = "准备开始直连";
-            statusLabel.Dock = DockStyle.Fill;
-            statusLabel.Margin = Padding.Empty;
-            statusLabel.AutoEllipsis = true;
-            statusLabel.Font = UiStyle.HeroTitle;
-            actionLayout.Controls.Add(statusLabel, 0, 1);
-            actionLayout.Controls.Add(new Label { Text = "先保存 ChatGPT 草稿与编辑器文件并退出游戏。检查通过后重启 Steam。", Dock = DockStyle.Fill, ForeColor = AppTheme.Muted }, 0, 2);
-            runButton.Text = "严格直连并重启 Steam";
-            runButton.Dock = DockStyle.Fill;
-            runButton.Margin = Padding.Empty;
-            AppTheme.ActionButton(runButton, true);
-            runButton.Font = UiStyle.SectionTitle;
-            runButton.Cursor = Cursors.Hand;
-            runButton.TabIndex = 0;
-            runButton.Click += async (sender, args) => await RunAsync();
-            actionLayout.Controls.Add(runButton, 0, 3);
-            restoreButton.Text = "恢复原代理设置";
-            restoreButton.Dock = DockStyle.Fill;
-            restoreButton.Margin = new Padding(0, UiStyle.SmallGap, 0, 0);
-            AppTheme.ActionButton(restoreButton, false);
-            restoreButton.FlatAppearance.BorderSize = 0;
-            restoreButton.Enabled = File.Exists(ProxySession.BackupPath);
-            restoreButton.Click += async (sender, args) => await RestoreProxyAsync();
-            actionLayout.Controls.Add(restoreButton, 0, 4);
+            actionLayout.Controls.Add(elapsedLabel, 0, 3);
             action.Controls.Add(actionLayout);
-            content.Controls.Add(action, 0, 0);
-            cleanupPanel = new CleanupPanel(Log);
-            content.Controls.Add(cleanupPanel, 0, 1);
+            root.Controls.Add(action, 0, 1);
+            root.Controls.Add(overviewStatus, 0, 2);
 
-            var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 12, 0, 0) };
-            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            footer.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48));
-            footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.Controls.Add(footer, 0, 2);
-            var logHeader = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 0, 0, 6) };
-            logHeader.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108));
-            logHeader.Controls.Add(new Label { Text = "操作记录", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.SectionTitle }, 0, 0);
-            logButton.Text = "打开日志";
-            logButton.Dock = DockStyle.Fill;
+            cleanupPanel = new CleanupPanel(Log) { Margin = Padding.Empty };
+            var maintenance = UiStyle.Card(true);
+            maintenance.Margin = new Padding(0, UiStyle.Space8, 0, UiStyle.Space8);
+            var utility = UiStyle.Grid(1, 2);
+            utility.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
+            utility.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            utility.Controls.Add(new Label { Text = "系统维护", Dock = DockStyle.Fill, Margin = Padding.Empty,
+                Font = UiStyle.Subtitle, ForeColor = AppTheme.Ink }, 0, 0);
+            utility.Controls.Add(cleanupPanel, 0, 1);
+            maintenance.Controls.Add(utility);
+            root.Controls.Add(maintenance, 0, 4);
+
+            var flowHeader = CreateDisclosure("直连流程", out flowToggle);
+            var logHeader = CreateDisclosure("操作日志", out logToggle);
+            root.Controls.Add(flowHeader, 0, 5);
+            root.Controls.Add(logHeader, 0, 7);
+            timeline.Dock = DockStyle.Fill;
+            timeline.BackColor = AppTheme.Page;
+            timeline.Visible = false;
+            root.Controls.Add(timeline, 0, 6);
+
+            var logArea = UiStyle.Grid(1, 2);
+            logArea.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space40));
+            logArea.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            logArea.Visible = false;
+            root.Controls.Add(logArea, 0, 8);
+            logButton.Text = "打开日志文件";
+            logButton.Dock = DockStyle.Left;
+            logButton.Width = 132;
+            logButton.Margin = Padding.Empty;
             AppTheme.ActionButton(logButton, false);
-            logButton.Cursor = Cursors.Hand;
-            logButton.TabIndex = 1;
-            logHeader.Controls.Add(logButton, 1, 0);
-            footer.Controls.Add(logHeader, 0, 0);
+            ((RoundedButton)logButton).TextOnly = true;
+            logArea.Controls.Add(logButton, 0, 0);
+            root.Controls.Add(recentHistory, 0, 3);
+            Action updateOverviewHeight = () => overview.SetMinimumHeight(overviewHeight + recentHistory.NaturalHeight +
+                UiStyle.Space12 + (root.RowStyles[6].Height > 0 ? 300 : 0) + (root.RowStyles[8].Height > 0 ? 192 : 0));
+            recentHistory.HeightChanged += () =>
+            {
+                root.SuspendLayout();
+                try
+                {
+                    root.RowStyles[3].Height = UiStyle.Scale(root, recentHistory.NaturalHeight + UiStyle.Space12);
+                    updateOverviewHeight();
+                }
+                finally { root.ResumeLayout(true); }
+            };
+
+            Action<string, Button, Control, int, int> toggleSection = (title, button, section, row, height) =>
+            {
+                bool expand = !section.Visible;
+                root.SuspendLayout();
+                try
+                {
+                    section.Visible = expand;
+                    root.RowStyles[row].Height = expand ? UiStyle.Scale(root, height) : 0;
+                    button.Text = (expand ? "−  " : "+  ") + title;
+                    button.AccessibleDescription = expand ? "已展开" : "已收起";
+                    updateOverviewHeight();
+                }
+                finally { root.ResumeLayout(true); }
+                if (expand) overview.RevealTop(section, UiStyle.Scale(root, 125));
+            };
+            flowToggle.Click += (sender, args) => toggleSection("直连流程", flowToggle, timeline, 6, 300);
+            logToggle.Click += (sender, args) => toggleSection("操作日志", logToggle, logArea, 8, 192);
+
             logButton.Click += (s, e) =>
             {
+                if (running) return;
                 try
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(logPath));
@@ -228,32 +315,32 @@ namespace SteamDirect
                 }
             };
 
-            var logFrame = UiStyle.Card(true);
             logBox.Dock = DockStyle.Fill;
             logBox.Multiline = true;
             logBox.ReadOnly = true;
             logBox.ScrollBars = ScrollBars.Vertical;
-            logBox.BackColor = Color.White;
+            logBox.BackColor = AppTheme.Page;
             logBox.ForeColor = AppTheme.Muted;
-            logBox.Font = UiStyle.Caption;
+            logBox.Font = UiStyle.Body;
             logBox.BorderStyle = BorderStyle.None;
             logBox.AccessibleName = "操作记录";
-            logFrame.Controls.Add(logBox);
-            footer.Controls.Add(logFrame, 0, 1);
+            logArea.Controls.Add(new NativeScrollFrame(logBox) { BackColor = AppTheme.Page }, 0, 1);
             animationTimer.Interval = UiStyle.MotionTick;
             animationTimer.Tick += (sender, args) =>
             {
-                timeline.Angle = (timeline.Angle + UiStyle.SpinnerStep) % 360;
-                timeline.Invalidate();
+                if (!Visible || WindowState == FormWindowState.Minimized || !Motion.Allowed) { animationTimer.Stop(); return; }
+                long elapsed = operationWatch.ElapsedMilliseconds;
+                if (timeline.Visible) timeline.AdvanceSpinner(elapsed);
+                if (displayedSecond == elapsed / 1000 && displayedStep == timeline.ActiveStep) return;
+                displayedSecond = elapsed / 1000;
+                displayedStep = timeline.ActiveStep;
                 if (timeline.ActiveStep >= 0 && timeline.ActiveStep < timeline.StepCount)
                     elapsedLabel.Text = "第 " + (timeline.ActiveStep + 1) + " / " + timeline.StepCount + " 步  ·  " + operationWatch.Elapsed.ToString(@"mm\:ss");
             };
             trayMenu.Items.Add("打开主窗口", null, (sender, args) => ShowMainWindow());
             trayMenu.Items.Add("设置", null, (sender, args) => OpenSettings());
-            var restoreMenu = trayMenu.Items.Add("恢复原代理设置", null, async (sender, args) => { ShowMainWindow(); await RestoreProxyAsync(); });
             trayMenu.Opening += (sender, args) =>
             {
-                restoreMenu.Enabled = !running && File.Exists(ProxySession.BackupPath);
                 AppTheme.ApplyTray(trayMenu);
             };
             trayMenu.Items.Add(new ToolStripSeparator());
@@ -262,9 +349,10 @@ namespace SteamDirect
             trayIcon.Icon = Icon;
             trayIcon.ContextMenuStrip = trayMenu;
             trayIcon.DoubleClick += (sender, args) => ShowMainWindow();
-            trayIcon.Visible = preferences.TrayEnabled;
+            trayIcon.Visible = preferences.TrayEnabled && !WindowEnvironment.OffscreenTests;
             FormClosing += (sender, args) =>
             {
+                if (savingSettings && args.CloseReason == CloseReason.UserClosing) { args.Cancel = true; exitRequested = false; return; }
                 if (args.CloseReason == CloseReason.UserClosing && !exitRequested && preferences.TrayEnabled)
                 {
                     args.Cancel = true;
@@ -275,64 +363,177 @@ namespace SteamDirect
                 {
                     args.Cancel = true;
                     exitRequested = false;
-                    NoticeDialog.Show(this, "操作正在进行，请等待完成后退出。", "提示");
+                    Status("操作正在进行，请等待完成后退出。");
                 }
             };
-            Shown += (sender, args) => { if (background && preferences.TrayEnabled) Hide(); };
+
+            Disposed += (sender, args) =>
+            {
+                if (preparedHistory != null) preparedHistory.Dispose();
+            };
+            startHidden = background && preferences.TrayEnabled;
             Log("就绪，请先退出游戏。");
-            Shown += (sender, args) => history.Start();
+            if (preferences.NetworkRecording) history.Start();
+            Shown += (sender, args) => recentHistory.RequestRefresh(history, preferences.NetworkRecording);
+            Shown += (sender, args) => overviewStatus.RequestRefresh();
             AppTheme.Apply(this);
             ResumeLayout(true);
         }
 
+        private static Control CreateDisclosure(string title, out Button toggle)
+        {
+            var header = new SectionRule { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = new Padding(0, 1, 0, 0) };
+            toggle = new RoundedButton { Text = "+  " + title, Dock = DockStyle.Fill, Margin = Padding.Empty,
+                CaptionInset = 0, TextOnly = true, AccessibleName = title, AccessibleDescription = "已收起" };
+            AppTheme.ActionButton(toggle, false);
+            toggle.ForeColor = AppTheme.Ink;
+            toggle.Font = UiStyle.Body;
+            header.Controls.Add(toggle);
+            return header;
+        }
+
         private void BuildNavigation()
         {
-            var shell = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
-            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 172));
+            var shell = UiStyle.Grid(2, 2);
+            pageHost.ContentWidthLimit = () =>
+            {
+                // A rail toggle can reposition the page without reflowing its native controls.
+                int reservedRail = shell.ClientSize.Width < UiStyle.Scale(shell, UiStyle.CompactWindowWidth)
+                    ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth;
+                return Math.Max(0, shell.DisplayRectangle.Width - UiStyle.Scale(shell, reservedRail) - pageHost.Margin.Horizontal);
+            };
+            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiStyle.SidebarWidth));
             shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var rail = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7,
-                Padding = new Padding(12, 24, 12, 16), Margin = Padding.Empty };
+            shell.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.StatusBarHeight));
+            var rail = UiStyle.Grid(1, 7);
             rail.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
-            for (int i = 0; i < 4; i++) rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
+            rail.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.AppHeaderHeight));
+            for (int i = 0; i < 4; i++) rail.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48));
             rail.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            rail.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-            var brand = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
+            rail.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.StatusBarHeight));
+            var brand = UiStyle.Grid(3, 1);
+            brand.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiStyle.Space40));
+            brand.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiStyle.Space40));
             brand.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            brand.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
             brand.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             var mascot = new PictureBox { Image = Icon.ToBitmap(), Dock = DockStyle.Fill,
-                SizeMode = PictureBoxSizeMode.Zoom, TabStop = false, Margin = new Padding(40, 0, 40, 0) };
+                SizeMode = PictureBoxSizeMode.Zoom, TabStop = false, Margin = new Padding(0, UiStyle.Space8, UiStyle.Space8, UiStyle.Space8) };
             using (var stream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("SteamDirect.Mascot"))
                 if (stream != null)
                     using (var source = Image.FromStream(stream))
                     {
                         mascot.Image.Dispose();
-                        mascot.Image = new Bitmap(source);
+                        // Retain a small, high-DPI-sized raster for the navigation.
+                        mascot.Image = new Bitmap(source, 256, 256);
                     }
             mascot.Disposed += (sender, args) => mascot.Image.Dispose();
-            brand.Controls.Add(mascot, 0, 0);
-            brand.Controls.Add(new Label { Text = "SteamDirect", Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter, Font = UiStyle.SectionTitle }, 0, 1);
+            brand.Controls.Add(mascot, 1, 0);
+            var brandText = new Label { Text = "SteamDirect", Dock = DockStyle.Fill,
+                Margin = Padding.Empty, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.BodyStrong };
+            brand.Controls.Add(brandText, 2, 0);
             rail.Controls.Add(brand, 0, 0);
             string[] pages = { "概览", "网络诊断", "游戏记录", "设置" };
             UiIcon[] icons = { UiIcon.Home, UiIcon.Network, UiIcon.History, UiIcon.Settings };
             for (int i = 0; i < pages.Length; i++)
             {
                 string page = pages[i];
-                var button = new RoundedButton { Text = page, Dock = DockStyle.Fill, Margin = new Padding(0, 5, 0, 5),
+                var button = new RoundedButton { Text = page, Dock = DockStyle.Fill, Margin = new Padding(0, UiStyle.Space4, 0, UiStyle.Space4),
                     AccessibleName = page + "页面", TabIndex = i, Icon = icons[i], CornerRadius = UiStyle.NavigationRadius };
                 AppTheme.ActionButton(button, false);
                 button.Font = UiStyle.Body;
+                if (page == "游戏记录")
+                {
+                    button.MouseEnter += (sender, args) => PrepareHistoryForNavigation();
+                    button.Enter += (sender, args) => PrepareHistoryForNavigation();
+                }
                 button.Click += (sender, args) => NavigateTo(page);
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            rail.Controls.Add(new Label { Text = "v2.7.1 · 游戏网络助手", ForeColor = AppTheme.Muted,
-                Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Font = UiStyle.Caption }, 0, 6);
-            shell.Controls.Add(rail, 0, 0);
+            var version = new Label { Text = "v3.0.31", ForeColor = AppTheme.Subtle,
+                Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
+            rail.Controls.Add(version, 0, 6);
+            var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
+            sidebar.Padding = new Padding(UiStyle.Space12, 0, UiStyle.Space12, 0);
+            sidebar.Controls.Add(rail);
+            shell.Controls.Add(sidebar, 0, 0);
+            shell.SetRowSpan(sidebar, 2);
+
+            var toggle = new RoundedButton { Icon = UiIcon.Sidebar, IconOnly = true, Dock = DockStyle.Fill,
+                Margin = new Padding(0, UiStyle.Space4, 0, UiStyle.Space4), AccessibleName = "折叠侧边栏" };
+            AppTheme.ActionButton(toggle, false);
+            toggle.BackColor = AppTheme.Rail;
+            brand.Controls.Add(toggle, 0, 0);
             shell.Controls.Add(pageHost, 1, 0);
+
+            var footer = new SectionRule { Dock = DockStyle.Fill, BackColor = AppTheme.Page,
+                Margin = Padding.Empty, Padding = new Padding(UiStyle.Space24, 1, UiStyle.Space24, 0) };
+            operationResult.Text = "就绪";
+            operationResult.Dock = DockStyle.Fill;
+            operationResult.AutoEllipsis = true;
+            operationResult.TextAlign = ContentAlignment.MiddleLeft;
+            operationResult.Font = UiStyle.Caption;
+            operationResult.ForeColor = AppTheme.Muted;
+            operationResult.AccessibleName = "最近一次直连结果";
+            footer.Controls.Add(operationResult);
+            shell.Controls.Add(footer, 1, 1);
+
+            var hints = new FluentTooltip();
+            sidebar.Disposed += (sender, args) => hints.Dispose();
+            foreach (var item in navigation) hints.SetToolTip(item.Value, item.Key);
+            bool manualCollapse = false, appliedCollapse = false, railLayoutPending = false;
+            Action updateRail = () =>
+            {
+                bool constrained = shell.Width > 0 && shell.Width < UiStyle.Scale(shell, UiStyle.CompactWindowWidth);
+                bool collapsed = manualCollapse || constrained;
+                int width = UiStyle.Scale(shell, collapsed ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
+                toggle.Enabled = !constrained;
+                if (Math.Abs(shell.ColumnStyles[0].Width - width) < 1 && appliedCollapse == collapsed) return;
+                bool appearanceChanged = appliedCollapse != collapsed;
+                appliedCollapse = collapsed;
+                using (new RedrawBatch(sidebar))
+                {
+                    shell.SuspendLayout();
+                    rail.SuspendLayout();
+                    brand.SuspendLayout();
+                    try
+                    {
+                        shell.ColumnStyles[0].Width = width;
+                        if (appearanceChanged)
+                        {
+                            toggle.AccessibleName = collapsed ? "展开侧边栏" : "折叠侧边栏";
+                            hints.SetToolTip(toggle, toggle.AccessibleName);
+                            mascot.Visible = brandText.Visible = version.Visible = !collapsed;
+                            brand.ColumnStyles[1].Width = collapsed ? 0 : UiStyle.Scale(brand, UiStyle.Space40);
+                            foreach (var button in navigation.Values)
+                            {
+                                ((RoundedButton)button).IconOnly = collapsed;
+                                button.Invalidate();
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        brand.ResumeLayout(false);
+                        rail.ResumeLayout(false);
+                        shell.ResumeLayout(true);
+                    }
+                }
+            };
+            hints.SetToolTip(toggle, toggle.AccessibleName);
+            toggle.Click += (sender, args) => { manualCollapse = !manualCollapse; updateRail(); };
+            shell.SizeChanged += (sender, args) =>
+            {
+                if (!IsHandleCreated || railLayoutPending) return;
+                railLayoutPending = true;
+                BeginInvoke((Action)(() =>
+                {
+                    railLayoutPending = false;
+                    if (!IsDisposed) updateRail();
+                }));
+            };
+            Shown += (sender, args) => updateRail();
             Controls.Add(shell);
             SelectNavigation("概览");
         }
@@ -343,65 +544,84 @@ namespace SteamDirect
             {
                 AppTheme.SetBackground(entry.Value, entry.Key == page ? AppTheme.Pill : AppTheme.Page);
                 AppTheme.SetForeground(entry.Value, entry.Key == page ? AppTheme.Accent : AppTheme.Muted);
+                var nav = entry.Value as RoundedButton;
+                if (nav != null) nav.SelectedNavigation = entry.Key == page;
             }
+        }
+
+        private async Task OpenOverviewHistoryAsync(string id)
+        {
+            NavigateTo("游戏记录");
+            var view = pages.ActivePage as HistoryWindow;
+            if (view != null) await view.OpenOverviewSessionAsync(id);
         }
 
         private void NavigateTo(string page)
         {
+            if (savingSettings) return;
             if (page != "概览" && running)
             {
-                NoticeDialog.Show(this, "请等待直连流程完成后再切换页面。", "正在执行");
+                Status("请等待直连流程完成后再切换页面。");
                 return;
             }
-            if (page == "游戏记录" && history.IsPlaying)
+            if (page == "游戏记录" && (history.IsPlaying || SteamGameDiscovery.IsSteamGameReported()))
             {
-                NoticeDialog.Show(this, "游戏结束后可查看报告。", "游戏记录");
+                Status("游戏进行中，报告已暂停。");
                 return;
             }
-            if (activePage != null && activePage.Tag as string == page) return;
-            if (activePage != null)
+            pages.DiagnosticsEnabled = preferences.WindowDiagnostics;
+            if (pages.Navigate(page, () => CreatePage(page)))
             {
-                activePage.Close();
-                activePage.Dispose();
-                activePage = null;
+                SelectNavigation(page);
+                if (page == "概览")
+                {
+                    recentHistory.RequestRefresh(history, preferences.NetworkRecording);
+                    overviewStatus.RequestRefresh();
+                }
             }
-            dashboard.Visible = page == "概览";
-            SelectNavigation(page);
-            if (page == "概览") return;
-            if (page == "网络诊断") activePage = new NetworkWindow(Log);
-            else if (page == "游戏记录") activePage = new HistoryWindow(history.Store, () => history.IsPlaying);
-            else
+        }
+
+        private HistoryWindow CreateHistoryWindow()
+        {
+            return new HistoryWindow(history.Store, () => history.IsPlaying,
+                () => !preferences.NetworkRecording ? "自动记录已关闭，可在设置中开启。" :
+                    string.IsNullOrEmpty(history.Error) ? "自动记录已开启。" : "自动记录遇到错误，请查看日志或重启应用。", true);
+        }
+
+        private Form CreatePage(string page)
+        {
+            if (page == "网络诊断") return new NetworkWindow(Log, openHistory: () =>
             {
-                var settings = new SettingsWindow(preferences.TrayEnabled, StartupSettings.IsEnabled(),
-                    preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor);
-                settings.SaveRequested += () => SaveSettings(settings);
-                settings.CancelRequested += () => NavigateTo("概览");
-                activePage = settings;
+                NavigateTo("游戏记录");
+                var report = pages.ActivePage as HistoryWindow;
+                if (report != null) report.ShowNetworkTrend();
+            });
+            if (page == "游戏记录")
+            {
+                historyCreated = true;
+                var report = preparedHistory;
+                preparedHistory = null;
+                return report ?? CreateHistoryWindow();
             }
-            activePage.Tag = page;
-            activePage.TopLevel = false;
-            activePage.FormBorderStyle = FormBorderStyle.None;
-            activePage.MinimumSize = Size.Empty;
-            activePage.Dock = DockStyle.Fill;
-            pageHost.Controls.Add(activePage);
-            activePage.Show();
-            activePage.BringToFront();
+            var settings = new SettingsWindow(preferences.TrayEnabled, StartupSettings.IsEnabled(),
+                preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor, preferences.LogDirectory, preferences.ReduceMotion, preferences.WindowDiagnostics, preferences.NetworkRecording);
+            settings.Synchronize = () => settings.Reload(preferences, StartupSettings.IsEnabled());
+            settings.SaveRequested += () => SaveSettings(settings);
+            settings.CancelRequested += () => NavigateTo("概览");
+            return settings;
         }
 
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
-                if (activePage != null)
-                {
-                    activePage.Close();
-                    activePage.Dispose();
-                    activePage = null;
-                }
+                if (pages != null) pages.Dispose();
                 history.Dispose();
+                windowDiagnostics.Dispose();
                 animationTimer.Dispose();
                 trayIcon.Dispose();
                 trayMenu.Dispose();
+                if (ownedMainIcon != null) ownedMainIcon.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -412,11 +632,48 @@ namespace SteamDirect
             base.WndProc(ref message);
         }
 
+        protected override void OnLoad(EventArgs args)
+        {
+            // WinForms raises Load after creating child handles and before showing the form.
+            CheckWorkArea();
+            base.OnLoad(args);
+        }
+
+        protected override void SetVisibleCore(bool value)
+        {
+            if (value && startHidden)
+            {
+                startHidden = false;
+                // Keep a message target for tray and single-instance activation.
+                if (!IsHandleCreated) CreateHandle();
+                PerformLayout();
+                return;
+            }
+            bool firstPresentation = value && !presented && TopLevel;
+            base.SetVisibleCore(value);
+            if (firstPresentation && Visible)
+            {
+                presented = true;
+                // Finish pending child paints before queued history/status updates get the UI thread.
+                RedrawBatch.FlushPendingPaint(this);
+            }
+        }
+
         internal void ShowMainWindow()
         {
-            Show();
-            WindowState = FormWindowState.Normal;
-            Activate();
+            if (IsDisposed || restoring) return;
+            restoring = true;
+            try {
+                windowDiagnostics.Begin();
+                bool opening = !Visible;
+                if (WindowState == FormWindowState.Minimized) WindowState = lastVisibleState;
+                CheckWorkArea();
+                if (opening) { PerformLayout(); Show(); }
+                windowDiagnostics.Displayed();
+                if (!WindowEnvironment.OffscreenTests) Activate();
+            } finally { restoring = false; }
+            recentHistory.RequestRefresh(history, preferences.NetworkRecording);
+            overviewStatus.RequestRefresh();
         }
 
         internal void RequestExit()
@@ -425,30 +682,54 @@ namespace SteamDirect
             Close();
         }
 
+        protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); UpdateOperationAnimation(); }
+        protected override void OnResize(EventArgs e) { base.OnResize(e); if (Visible && WindowState != FormWindowState.Minimized) lastVisibleState = WindowState; UpdateOperationAnimation(); }
+        private void UpdateOperationAnimation()
+        {
+            if (animationTimer == null) return;
+            if (running && Visible && WindowState != FormWindowState.Minimized && Motion.Allowed) animationTimer.Start(); else animationTimer.Stop();
+        }
+
         private void OpenSettings()
         {
             ShowMainWindow();
             NavigateTo("设置");
         }
 
-        private void SaveSettings(SettingsWindow dialog)
+        private async void SaveSettings(SettingsWindow dialog)
         {
+                if (savingSettings) return;
+                savingSettings = true; dialog.SetSaving(true);
                 try
                 {
                     if (!dialog.ValidateThemeColor()) return;
+                    Directory.CreateDirectory(dialog.LogDirectory);
                     if (dialog.AutoStart != StartupSettings.IsEnabled()) StartupSettings.SetEnabled(dialog.AutoStart);
-                    UserPreferences.Save(UserPreferences.DefaultPath, dialog.TrayEnabled, dialog.RetentionDays, dialog.NightMode, dialog.ThemeColor);
+                    UserPreferences.Save(UserPreferences.DefaultPath, dialog.TrayEnabled, dialog.RetentionDays, dialog.NightMode, dialog.ThemeColor, dialog.LogDirectory, dialog.ReduceMotion, dialog.DiagnosticsEnabled, dialog.RecordingEnabled);
+                    if (preferences.NetworkRecording != dialog.RecordingEnabled)
+                    {
+                        var previous = history;
+                        await System.Threading.Tasks.Task.Run(() => previous.Dispose());
+                        await previous.Completion;
+                        if (IsDisposed || Disposing) return;
+                        if (dialog.RecordingEnabled) { history = previous.CreateRestart(); history.Start(); }
+                        preferences.NetworkRecording = dialog.RecordingEnabled;
+                    }
+                    preferences.LogDirectory = dialog.LogDirectory; LogStore.DirectoryPath = preferences.LogDirectory;
+                    preferences.WindowDiagnostics = dialog.DiagnosticsEnabled; windowDiagnostics.Enabled = preferences.WindowDiagnostics;
+                    preferences.ReduceMotion = dialog.ReduceMotion; Motion.Reduced = preferences.ReduceMotion;
                     preferences.NightMode = dialog.NightMode;
                     preferences.ThemeColor = dialog.ThemeColor;
                     AppTheme.SetTheme(preferences.NightMode, preferences.ThemeColor);
                     preferences.RetentionDays = dialog.RetentionDays;
                     lastCleanupDate = DateTime.MinValue;
                     preferences.TrayEnabled = dialog.TrayEnabled;
-                    trayIcon.Visible = preferences.TrayEnabled;
+                    trayIcon.Visible = preferences.TrayEnabled && !WindowEnvironment.OffscreenTests;
                     Log("设置已保存：托盘" + (preferences.TrayEnabled ? "开启" : "关闭") + "，开机自启" + (dialog.AutoStart ? "开启" : "关闭") + "。");
                     dialog.ShowSaved();
                 }
                 catch (Exception ex) { NoticeDialog.Show(this, "设置未能全部保存：" + ex.Message, "设置", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+                finally { savingSettings = false; if (!dialog.IsDisposed) dialog.SetSaving(false); }
         }
 
         private void Log(string message)
@@ -478,6 +759,11 @@ namespace SteamDirect
             statusLabel.Text = message;
             AppTheme.SetForeground(statusLabel, message.StartsWith("已停止") ? AppTheme.Error :
                 message.StartsWith("完成") ? AppTheme.Success : AppTheme.Ink);
+            if (message.StartsWith("完成") || message.StartsWith("已停止"))
+            {
+                operationResult.Text = message;
+                AppTheme.SetForeground(operationResult, message.StartsWith("完成") ? AppTheme.Success : AppTheme.Error);
+            }
 
         }
 
@@ -487,7 +773,8 @@ namespace SteamDirect
             timeline.ActiveStep = index;
             timeline.Failed = false;
             timeline.AccessibleDescription = "第 " + (index + 1) + " 步，" + message;
-            timeline.Invalidate();
+            if (timeline.Visible) timeline.Invalidate();
+            elapsedLabel.Text = "第 " + (index + 1) + " / " + timeline.StepCount + " 步";
             Status(message);
         }
 
@@ -502,64 +789,41 @@ namespace SteamDirect
             elapsedLabel.Text = (success ? "已完成" : "已停止") + "  ·  耗时 " + operationWatch.Elapsed.ToString(@"mm\:ss");
         }
 
-        private async Task RestoreProxyAsync()
-        {
-            if (running) return;
-            if (!File.Exists(ProxySession.BackupPath)) { NoticeDialog.Show(this, "当前没有待恢复的代理备份。", "恢复代理"); return; }
-            if (IsProcessRunning("cs2") || IsProcessRunning("csgo") || IsProcessRunning("GameOverlayUI"))
-            { NoticeDialog.Show(this, "请先退出游戏，再恢复代理设置。", "恢复代理"); return; }
-            running = true; runButton.Enabled = false; restoreButton.Enabled = false; cleanupPanel.AllowCleanup(false);
-            Status("正在检查代理并恢复设置…");
-            try
-            {
-                await Task.Run(() => ProxySession.RestoreOriginal(ProxySession.BackupPath, new WindowsProxyAccess()));
-                Status("已恢复原代理设置");
-                Log("原代理设置已恢复并核验。");
-                NoticeDialog.Show(this, "原代理设置已恢复，并已核对写入结果。", "恢复完成");
-            }
-            catch (Exception ex)
-            {
-                Status("恢复未完成 · 备份已保留"); Log("恢复未完成：" + ex.Message);
-                NoticeDialog.Show(this, ex.Message + "\n恢复备份仍保留，可重试恢复。", "恢复未完成", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-            finally { running = false; runButton.Enabled = true; restoreButton.Enabled = File.Exists(ProxySession.BackupPath); cleanupPanel.AllowCleanup(true); }
-        }
-
         private async Task RunAsync()
         {
             if (running) return;
             running = true;
-            timeline.ActiveStep = 0;
-            timeline.Failed = false;
-            operationWatch.Restart();
-            animationTimer.Start();
-            runButton.Enabled = false;
-            restoreButton.Enabled = false;
-            cleanupPanel.AllowCleanup(false);
-            runButton.Text = "正在执行，请稍候…";
-            Log("开始直连流程。");
             try
             {
+                timeline.ActiveStep = 0;
+                timeline.Failed = false;
+                displayedSecond = -1;
+                operationWatch.Restart();
+                UpdateOperationAnimation();
+                runButton.Enabled = false;
+                logButton.Enabled = false;
+                cleanupPanel.AllowCleanup(false);
+                runButton.Text = "正在执行，请稍候…";
+                Log("开始直连流程。");
                 await Task.Run(() => RunWorkflow());
                 FinishProgress(true);
                 Status("完成 · 已提交 Steam 启动请求");
                 Log("成功：本机代理检查通过，已提交 Steam 启动请求。");
-                NoticeDialog.Show(this, "Steam 启动请求已提交，已通过本机严格检查。\n原代理设置已备份，可使用恢复按钮。不能保证排除网络侧透明代理。", "操作完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
                 FinishProgress(false);
-                Status("已停止 · 请查看操作记录");
+                Status("已停止 · " + ex.Message.Split('\n')[0]);
                 Log("停止：" + ex.Message);
-                NoticeDialog.Show(this, ex.Message + "\n\n为避免误用代理或中断游戏，已停止流程。可查看日志定位问题。", "未能完成", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             finally
             {
                 running = false;
                 runButton.Enabled = true;
-                restoreButton.Enabled = File.Exists(ProxySession.BackupPath);
+                logButton.Enabled = true;
                 cleanupPanel.AllowCleanup(true);
                 runButton.Text = "严格直连并重启 Steam  →";
+                overviewStatus.RequestRefresh();
             }
         }
 
@@ -573,6 +837,7 @@ namespace SteamDirect
                 throw new InvalidOperationException("未找到 Steam 安装路径。请先正常打开一次 Steam，确认注册表安装路径。软件不会启动未知文件。");
             Log("找到 Steam：" + steamPath);
 
+            using (SteamTrust.OpenVerified(steamPath)) { }
             ProxySettings.CheckPrerequisites();
             var session = new ProxySession(ProxySession.BackupPath, new WindowsProxyAccess());
             Log("已保存恢复点，开始本机严格直连检查。");
@@ -598,19 +863,20 @@ namespace SteamDirect
             ProxySession.VerifyStable(ProxySettings.CheckDirect, () => Thread.Sleep(450));
             Log("连续复检通过，准备启动 Steam。");
 
-            var start = new ProcessStartInfo(steamPath);
+            var start = new ProcessStartInfo(steamPath, "-silent");
             start.WorkingDirectory = Path.GetDirectoryName(steamPath);
             start.UseShellExecute = false;
             foreach (string name in ProxySettings.ProxyVariableNames)
                 start.EnvironmentVariables.Remove(name);
-            ProxySession.VerifyAndLaunch(() => { ProxyAppShutdown.CheckStopped(); ProxySettings.CheckDirect(); }, () =>
-            {
-                using (Process launched = Process.Start(start))
+            using (SteamTrust.OpenVerified(steamPath))
+                ProxySession.VerifyAndLaunch(() => { ProxyAppShutdown.CheckStopped(); ProxySettings.CheckDirect(); }, () =>
                 {
-                    if (launched == null) throw new InvalidOperationException("Steam 启动请求失败。");
-                    Log("Steam 进程启动请求已提交，PID=" + launched.Id);
-                }
-            });
+                    using (Process launched = Process.Start(start))
+                    {
+                        if (launched == null) throw new InvalidOperationException("Steam 启动请求失败。");
+                        Log("Steam 进程启动请求已提交，PID=" + launched.Id);
+                    }
+                });
             session.Complete();
             }
             catch (Exception failure)
@@ -618,22 +884,11 @@ namespace SteamDirect
                 try { session.Rollback(); Log("已恢复到本次操作前的代理设置；如 FlClash 已退出，请重新打开。"); }
                 catch (Exception recovery)
                 {
-                    throw new InvalidOperationException("流程停止：" + failure.Message + "\n自动恢复未完成：" + recovery.Message + "\n恢复备份已保留，请使用恢复按钮重试。", new AggregateException(failure, recovery));
+                    throw new InvalidOperationException("流程停止：" + failure.Message + "\n自动回滚未完成：" + recovery.Message + "\n备份已保留，请查看日志并重新打开代理软件。", new AggregateException(failure, recovery));
                 }
                 throw;
             }
-            AdvanceStep(5, "正在清理过期临时文件…");
-            try { var cleanup = TempCleaner.CleanDefault();
-                Log(cleanup.Describe() + cleanup.Details());
-                RefreshCleanupStats(); }
-            catch (Exception ex) { Log("过期临时文件清理未完成：" + ex.Message + "；Steam 启动不受影响。"); }
-        }
-
-        private async void RefreshCleanupStats()
-        {
-            if (IsDisposed) return;
-            if (InvokeRequired) { BeginInvoke(new Action(RefreshCleanupStats)); return; }
-            await cleanupPanel.RefreshEstimateAsync();
+            AdvanceStep(5, "已完成；文件清理仅由手动触发。");
         }
 
         private void ExitFlClash()
@@ -670,7 +925,8 @@ namespace SteamDirect
             Log("通过 Steam 的 -shutdown 参数请求正常退出。");
             try
             {
-                using (Process p = Process.Start(new ProcessStartInfo(steamPath, "-shutdown")
+                using (SteamTrust.OpenVerified(steamPath))
+            using (Process p = Process.Start(new ProcessStartInfo(steamPath, "-shutdown")
                 {
                     WorkingDirectory = Path.GetDirectoryName(steamPath),
                     UseShellExecute = false,
@@ -680,15 +936,6 @@ namespace SteamDirect
             catch (Exception ex) { throw new InvalidOperationException("无法发送 Steam 退出请求：" + ex.Message, ex); }
             WaitForProcessesToExit("steam", 16000);
             if (IsProcessRunning("steam"))
-            {
-                Log("等待 Steam 正常退出超时，再尝试关闭其窗口。");
-                foreach (Process p in Process.GetProcessesByName("steam"))
-                {
-                    try { p.CloseMainWindow(); } catch { }
-                }
-                WaitForProcessesToExit("steam", 5000);
-            }
-            if (IsProcessRunning("steam"))
                 throw new InvalidOperationException("Steam 未能正常退出。请在任务栏托盘中右键 Steam → 退出，然后重新点击按钮（不会强杀 Steam 或游戏）。");
             Thread.Sleep(1200);
             Log("Steam 已退出。");
@@ -696,10 +943,23 @@ namespace SteamDirect
 
         private static string FindSteamExecutable()
         {
-            foreach (Process p in Process.GetProcessesByName("steam"))
+            var running = Process.GetProcessesByName("steam");
+            try
             {
-                try { string live = p.MainModule.FileName; if (File.Exists(live) && string.Equals(Path.GetFileName(live), "steam.exe", StringComparison.OrdinalIgnoreCase)) return Path.GetFullPath(live); } catch { }
+                foreach (Process process in running)
+                {
+                    try
+                    {
+                        var module = process.MainModule;
+                        string live = module == null ? null : module.FileName;
+                        if (File.Exists(live) && string.Equals(Path.GetFileName(live), "steam.exe", StringComparison.OrdinalIgnoreCase))
+                            return Path.GetFullPath(live);
+                    }
+                    catch (System.ComponentModel.Win32Exception) { }
+                    catch (InvalidOperationException) { }
+                }
             }
+            finally { foreach (Process process in running) process.Dispose(); }
             var candidates = new List<string>();
             try
             {
@@ -736,427 +996,25 @@ namespace SteamDirect
         }
     }
 
-    internal static class ProxySettings
-    {
-        // Proxy environment variables commonly honored by Steam/embedded libraries.
-        internal static readonly string[] ProxyVariableNames = {
-            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "FTP_PROXY", "WS_PROXY", "WSS_PROXY"
-        };
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct ConnOption { public int Option; public IntPtr Value; }
-        [StructLayout(LayoutKind.Sequential)]
-        private struct ConnOptionList
-        {
-            public int Size;
-            public IntPtr Connection;
-            public int OptionCount;
-            public int OptionError;
-            public IntPtr Options;
-        }
-        [StructLayout(LayoutKind.Sequential)]
-        private struct WinHttpProxyInfo
-        {
-            public int AccessType;
-            public IntPtr Proxy;
-            public IntPtr ProxyBypass;
-        }
-        [DllImport("wininet.dll", EntryPoint = "InternetSetOptionW", SetLastError = true)]
-        private static extern bool SetConnOption(IntPtr handle, int option, ref ConnOptionList data, int length);
-        [DllImport("wininet.dll", EntryPoint = "InternetQueryOptionW", SetLastError = true)]
-        private static extern bool QueryConnOption(IntPtr handle, int option, ref ConnOptionList data, ref int length);
-        [DllImport("wininet.dll", EntryPoint = "InternetSetOptionW", SetLastError = true)]
-        private static extern bool NotifyOption(IntPtr handle, int option, IntPtr data, int length);
-        [DllImport("winhttp.dll", SetLastError = true)]
-        private static extern bool WinHttpGetDefaultProxyConfiguration(out WinHttpProxyInfo info);
-        [DllImport("kernel32.dll")]
-        private static extern IntPtr GlobalFree(IntPtr memory);
-
-        internal static void SetWinInetDirect()
-        {
-            // WinINet supported API; don't edit undocumented DefaultConnectionSettings bytes.
-            ApplyConnFlags(1); // PROXY_TYPE_DIRECT; clears manual/PAC/WPAD active flags.
-            RefreshConnection();
-        }
-
-        private static void RefreshConnection()
-        {
-            if (!NotifyOption(IntPtr.Zero, 39, IntPtr.Zero, 0) || !NotifyOption(IntPtr.Zero, 37, IntPtr.Zero, 0))
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "Windows 未能刷新系统代理设置。");
-            Thread.Sleep(350);
-        }
-
-        private static void ApplyConnFlags(int flags)
-        {
-            int itemSize = Marshal.SizeOf(typeof(ConnOption));
-            IntPtr optionPointer = Marshal.AllocHGlobal(itemSize);
-            try
-            {
-                Marshal.StructureToPtr(new ConnOption { Option = 1, Value = new IntPtr(flags) }, optionPointer, false);
-                ConnOptionList options = new ConnOptionList {
-                    Size = Marshal.SizeOf(typeof(ConnOptionList)), Connection = IntPtr.Zero,
-                    OptionCount = 1, OptionError = 0, Options = optionPointer
-                };
-                if (!SetConnOption(IntPtr.Zero, 75, ref options, options.Size))
-                    throw new Win32Exception(Marshal.GetLastWin32Error(), "无法修改当前用户 Windows 系统代理（可能被组织策略管理）。");
-            }
-            finally { Marshal.FreeHGlobal(optionPointer); }
-        }
-
-        internal static ProxySnapshot CaptureConnection()
-        {
-            int itemSize = Marshal.SizeOf(typeof(ConnOption));
-            IntPtr memory = Marshal.AllocHGlobal(itemSize * 4);
-            int[] options = { 10, 2, 3, 4 };
-            for (int i = 0; i < 4; i++) Marshal.StructureToPtr(new ConnOption { Option = options[i], Value = IntPtr.Zero }, IntPtr.Add(memory, i * itemSize), false);
-            try
-            {
-                var list = new ConnOptionList { Size = Marshal.SizeOf(typeof(ConnOptionList)), OptionCount = 4, Options = memory };
-                int length = list.Size;
-                if (!QueryConnOption(IntPtr.Zero, 75, ref list, ref length)) throw new Win32Exception(Marshal.GetLastWin32Error(), "无法完整备份系统代理；未执行切换。");
-                var result = new ProxySnapshot();
-                for (int i = 0; i < 4; i++)
-                {
-                    var option = (ConnOption)Marshal.PtrToStructure(IntPtr.Add(memory, i * itemSize), typeof(ConnOption));
-                    if (i == 0) { result.Flags = (int)option.Value.ToInt64(); continue; }
-                    string value = option.Value == IntPtr.Zero ? "" : Marshal.PtrToStringUni(option.Value);
-                    if (i == 1) result.Server = value;
-                    if (i == 2) result.Bypass = value;
-                    if (i == 3) result.AutoConfigUrl = value;
-                }
-                return result;
-            }
-            finally
-            {
-                for (int i = 1; i < 4; i++)
-                {
-                    var option = (ConnOption)Marshal.PtrToStructure(IntPtr.Add(memory, i * itemSize), typeof(ConnOption));
-                    if (option.Value != IntPtr.Zero) GlobalFree(option.Value);
-                }
-                Marshal.FreeHGlobal(memory);
-            }
-        }
-
-        internal static void RestoreConnection(ProxySnapshot snapshot)
-        {
-            snapshot.Validate();
-            int itemSize = Marshal.SizeOf(typeof(ConnOption));
-            IntPtr memory = Marshal.AllocHGlobal(itemSize * 4);
-            IntPtr[] values = new IntPtr[3];
-            try
-            {
-                string[] strings = { snapshot.Server, snapshot.Bypass, snapshot.AutoConfigUrl };
-                Marshal.StructureToPtr(new ConnOption { Option = 1, Value = new IntPtr(snapshot.Flags) }, memory, false);
-                for (int i = 0; i < 3; i++)
-                {
-                    values[i] = Marshal.StringToHGlobalUni(strings[i]);
-                    Marshal.StructureToPtr(new ConnOption { Option = i + 2, Value = values[i] }, IntPtr.Add(memory, (i + 1) * itemSize), false);
-                }
-                var list = new ConnOptionList { Size = Marshal.SizeOf(typeof(ConnOptionList)), OptionCount = 4, Options = memory };
-                if (!SetConnOption(IntPtr.Zero, 75, ref list, list.Size)) throw new Win32Exception(Marshal.GetLastWin32Error(), "无法恢复系统代理，备份已保留。");
-                RefreshConnection();
-            }
-            finally
-            {
-                foreach (IntPtr value in values) if (value != IntPtr.Zero) Marshal.FreeHGlobal(value);
-                Marshal.FreeHGlobal(memory);
-            }
-        }
-
-        private static int ReadConnFlags()
-        {
-            int itemSize = Marshal.SizeOf(typeof(ConnOption));
-            IntPtr optionPointer = Marshal.AllocHGlobal(itemSize);
-            try
-            {
-                Marshal.StructureToPtr(new ConnOption { Option = 10, Value = IntPtr.Zero }, optionPointer, false);
-                ConnOptionList options = new ConnOptionList {
-                    Size = Marshal.SizeOf(typeof(ConnOptionList)), Connection = IntPtr.Zero,
-                    OptionCount = 1, OptionError = 0, Options = optionPointer
-                };
-                int length = options.Size;
-                if (!QueryConnOption(IntPtr.Zero, 75, ref options, ref length))
-                    throw new Win32Exception(Marshal.GetLastWin32Error(), "无法读取系统代理有效状态。");
-                ConnOption result = (ConnOption)Marshal.PtrToStructure(optionPointer, typeof(ConnOption));
-                return unchecked((int)result.Value.ToInt64());
-            }
-            finally { Marshal.FreeHGlobal(optionPointer); }
-        }
-
-        internal static string ObserveHistoryMode(bool tunnel, bool route, bool knownProxy)
-        {
-            if (tunnel) return "代理";
-            try
-            {
-                int flags = ReadConnFlags();
-                if ((flags & 6) != 0) return "代理";
-                foreach (string variable in ProxyVariableNames)
-                {
-                    foreach (var level in new[] { EnvironmentVariableTarget.Process, EnvironmentVariableTarget.User, EnvironmentVariableTarget.Machine })
-                        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(variable, level))) return "代理";
-                }
-                WinHttpProxyInfo info;
-                if (!WinHttpGetDefaultProxyConfiguration(out info)) return "未知";
-                try
-                {
-                    if (info.Proxy != IntPtr.Zero && !string.IsNullOrWhiteSpace(Marshal.PtrToStringUni(info.Proxy))) return "代理";
-                    return route && flags == 1 && !knownProxy && info.AccessType == 1 ? "直连" : "未知";
-                }
-                finally
-                {
-                    if (info.Proxy != IntPtr.Zero) GlobalFree(info.Proxy);
-                    if (info.ProxyBypass != IntPtr.Zero) GlobalFree(info.ProxyBypass);
-                }
-            }
-            catch (Exception) { return "未知"; }
-        }
-
-        private static void CheckWinHttp()
-        {
-            WinHttpProxyInfo info;
-            if (!WinHttpGetDefaultProxyConfiguration(out info))
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "无法读取 WinHTTP 代理配置。");
-            try
-            {
-                if (info.AccessType != 1 || info.Proxy != IntPtr.Zero)
-                    throw new InvalidOperationException("检测到 WinHTTP 系统级代理仍生效。未修改系统级配置；请使用管理员终端核实 netsh winhttp show proxy 后手动处理。");
-            }
-            finally
-            {
-                if (info.Proxy != IntPtr.Zero) GlobalFree(info.Proxy);
-                if (info.ProxyBypass != IntPtr.Zero) GlobalFree(info.ProxyBypass);
-            }
-            // Newer Windows versions also have advanced WinHTTP proxy settings.
-            try
-            {
-                var psi = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "netsh.exe"), "winhttp show advproxy") {
-                    UseShellExecute = false, CreateNoWindow = true,
-                    RedirectStandardOutput = true, RedirectStandardError = true
-                };
-                using (Process p = Process.Start(psi))
-                {
-                    string result = ReadProcessOutput(p, 3500);
-                    if (p.ExitCode != 0) throw new InvalidOperationException("高级代理查询未成功，无法确认直连；已停止检查。");
-                    ValidateAdvancedProxy(result);
-                }
-            }
-            catch (Win32Exception ex) { throw new InvalidOperationException("无法运行高级代理检查，不能确认直连状态。", ex); }
-        }
-
-        internal static void ValidateAdvancedProxy(string result)
-        {
-            Match proxy = Regex.Match(result, "\"Proxy\"\\s*:\\s*\"([^\"]*)\"", RegexOptions.IgnoreCase);
-            Match pac = Regex.Match(result, "\"AutoconfigUrl\"\\s*:\\s*\"([^\"]*)\"", RegexOptions.IgnoreCase);
-            Match proxyEnabled = Regex.Match(result, "\"ProxyIsEnabled\"\\s*:\\s*(true|false)", RegexOptions.IgnoreCase);
-            Match pacEnabled = Regex.Match(result, "\"AutoConfigIsEnabled\"\\s*:\\s*(true|false)", RegexOptions.IgnoreCase);
-            Match auto = Regex.Match(result, "\"AutoDetect\"\\s*:\\s*(true|false)", RegexOptions.IgnoreCase);
-            bool activeProxy = proxyEnabled.Success ? string.Equals(proxyEnabled.Groups[1].Value, "true", StringComparison.OrdinalIgnoreCase) :
-                proxy.Success && !string.IsNullOrWhiteSpace(proxy.Groups[1].Value);
-            bool activePac = pacEnabled.Success ? string.Equals(pacEnabled.Groups[1].Value, "true", StringComparison.OrdinalIgnoreCase) :
-                pac.Success && !string.IsNullOrWhiteSpace(pac.Groups[1].Value);
-            bool activeAuto = auto.Success && string.Equals(auto.Groups[1].Value, "true", StringComparison.OrdinalIgnoreCase);
-            if (activeProxy || activePac || activeAuto)
-                throw new InvalidOperationException("WinHTTP 高级代理仍启用（代理/PAC/自动检测）。请检查其他代理程序或系统策略。");
-            bool complete = (proxyEnabled.Success && pacEnabled.Success && auto.Success) || (proxy.Success && pac.Success && auto.Success);
-            if (!complete &&
-                !Regex.IsMatch(result, "Direct access|直接访问|直连|直接存取", RegexOptions.IgnoreCase))
-                throw new InvalidOperationException("无法识别 WinHTTP 高级代理状态，请先核实配置。");
-        }
-
-        internal static string ReadProcessOutput(Process process, int timeoutMs)
-        {
-            Task<string> output = process.StandardOutput.ReadToEndAsync();
-            Task<string> error = process.StandardError.ReadToEndAsync();
-            var watch = Stopwatch.StartNew();
-            if (!process.WaitForExit(timeoutMs) ||
-                !Task.WaitAll(new Task[] { output, error }, Math.Max(0, timeoutMs - (int)watch.ElapsedMilliseconds)))
-            {
-                try { process.Kill(); } catch { }
-                throw new System.TimeoutException("WinHTTP 高级代理查询超时，已停止查询。");
-            }
-            return output.Result + error.Result;
-        }
-
-        internal static void CheckPrerequisites()
-        {
-            // Proxy absence is verified after FlClash exits and user settings are cleared.
-            foreach (string name in ProxyVariableNames)
-            {
-                if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Machine)))
-                    throw new InvalidOperationException("机器级环境变量 " + name + " 设置了代理；未修改网络，请先核实。");
-                string user = Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User);
-                if (!string.IsNullOrWhiteSpace(user) && !IsFlClashLocalProxy(user))
-                    throw new InvalidOperationException("用户环境变量 " + name + " 指向其他代理；未修改网络，请先核实。");
-            }
-        }
-        private static bool IsFlClashLocalProxy(string value)
-        {
-            // Never remove remote/corporate proxy values silently.
-            return Regex.IsMatch(value.Trim(), @"^(?:(?:http|https|socks|socks5)://)?(?:127\.0\.0\.1|localhost|\[::1\]):\d+/?$", RegexOptions.IgnoreCase);
-        }
-
-        internal static void CleanLocalEnvironmentProxy(Action<string> log)
-        {
-            foreach (string name in ProxyVariableNames)
-            {
-                string machine = Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Machine);
-                if (!string.IsNullOrWhiteSpace(machine))
-                    throw new InvalidOperationException("机器级环境变量 " + name + " 设置了代理。未覆盖其他配置，请先人工核实清除。");
-                string user = Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User);
-                if (!string.IsNullOrWhiteSpace(user))
-                {
-                    if (!IsFlClashLocalProxy(user))
-                        throw new InvalidOperationException("用户环境变量 " + name + " 仍指向其他代理。请检查该变量的配置。");
-                    Environment.SetEnvironmentVariable(name, null, EnvironmentVariableTarget.User);
-                    log("已清除用户级本地代理环境变量：" + name);
-                }
-                // This process may itself have inherited stale environment variables.
-                Environment.SetEnvironmentVariable(name, null, EnvironmentVariableTarget.Process);
-            }
-        }
-
-        private static void CheckEnvironment()
-        {
-            foreach (string name in ProxyVariableNames)
-            {
-                foreach (EnvironmentVariableTarget level in new[] {
-                    EnvironmentVariableTarget.Process, EnvironmentVariableTarget.User, EnvironmentVariableTarget.Machine })
-                {
-                    string current = Environment.GetEnvironmentVariable(name, level);
-                    if (!string.IsNullOrWhiteSpace(current))
-                        throw new InvalidOperationException("检测到 " + level + " 环境变量 " + name + " 仍指向代理，已停止。");
-                }
-            }
-        }
-
-        private static void CheckTunnels()
-        {
-            foreach (NetworkInterface adapter in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (adapter.OperationalStatus != OperationalStatus.Up) continue;
-                string text = adapter.Name + " " + adapter.Description;
-                if (adapter.NetworkInterfaceType == NetworkInterfaceType.Tunnel ||
-                    adapter.NetworkInterfaceType == NetworkInterfaceType.Ppp ||
-                    Regex.IsMatch(text, @"(?i)Wintun|WireGuard|Tailscale|OpenVPN|Clash|Mihomo|ZeroTier|SoftEther|TAP-Windows|NordLynx"))
-                    throw new InvalidOperationException("发现活跃 VPN/TUN 网卡：" + adapter.Name + "。未自动禁用网卡，请先关闭对应 VPN/TUN，再重试。");
-            }
-        }
-
-        internal static string DiagnoseProxyState()
-        {
-            var issues = new List<string>();
-            Action[] checks = {
-                () => { int flags = ReadConnFlags(); if (flags != 1) throw new InvalidOperationException("Windows 系统代理/PAC/自动检测仍启用（标志 " + flags + "）"); },
-                CheckWinHttp, CheckEnvironment, CheckTunnels, CheckProxyProcesses, CheckProxyPorts
-            };
-            foreach (var check in checks)
-            {
-                try { check(); }
-                catch (Exception ex) { issues.Add(ex.Message); }
-            }
-            return issues.Count == 0 ? null : string.Join("；", issues);
-        }
-
-        internal static void CheckDirect()
-        {
-            int flags = ReadConnFlags();
-            if (flags != 1)
-                throw new InvalidOperationException("Windows WinINet 当前未处于纯直连模式（标志：" + flags + "）。");
-            CheckWinHttp();
-            CheckEnvironment();
-            CheckTunnels();
-            CheckProxyProcesses();
-            CheckProxyPorts();
-        }
-
-        private static readonly HashSet<string> ProxyComponents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "FlClash", "FlClashCore", "clash", "clashmeta", "clashpremium", "clashwin64", "ClashforWindows",
-            "clashverge", "clashvergeservice", "vergemihomo", "vergemihomoalpha", "mihomo", "mihomoparty", "mihomoservice",
-            "singbox", "v2rayN", "v2ray", "xray", "Shadowsocks", "ShadowsocksR", "sslocal", "ssrlocal",
-            "trojan", "hysteria", "hysteria2", "naive", "naiveproxy", "nekoray", "nekobox",
-            "Proxifier", "ProxyCap", "tun2socks", "OpenVPN", "openvpnserv", "openvpnserv2", "OpenVPNService",
-            "WireGuard", "Tailscale", "tailscaled", "ZeroTierOne", "vpnclient", "vpnclientx64"
-        };
-
-        internal static bool IsProxyComponent(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) return false;
-            if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) name = name.Substring(0, name.Length - 4);
-            return ProxyComponents.Contains(name.Replace("-", "").Replace("_", "").Replace(" ", ""));
-        }
-
-        internal static void CheckProxyProcesses()
-        {
-            var found = new List<string>();
-            Process[] processes = Process.GetProcesses();
-            try
-            {
-                foreach (Process process in processes)
-                {
-                    try
-                    {
-                        string name = process.ProcessName;
-                        if (IsProxyComponent(name)) found.Add(name + " (PID " + process.Id + ")");
-                    }
-                    catch (InvalidOperationException) { } // Process exited during the snapshot.
-                }
-            }
-            finally { foreach (Process process in processes) process.Dispose(); }
-            if (found.Count > 0)
-                throw new InvalidOperationException("仍有代理/VPN 程序或内核运行：" + string.Join("、", found) + "。请正常退出后重试。");
-            CheckProxyServices();
-        }
-
-        private static void CheckProxyServices()
-        {
-            var found = new List<string>();
-            ServiceController[] services = ServiceController.GetServices();
-            try
-            {
-                foreach (ServiceController service in services)
-                {
-                    string name = service.ServiceName;
-                    if (!IsProxyComponent(name) && !IsProxyComponent(service.DisplayName) &&
-                        !name.StartsWith("WireGuardTunnel$", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (service.Status != ServiceControllerStatus.Stopped)
-                        found.Add(service.DisplayName + " [" + name + "]");
-                }
-            }
-            finally { foreach (ServiceController service in services) service.Dispose(); }
-            if (found.Count > 0)
-                throw new InvalidOperationException("代理/VPN 后台服务尚未停止：" + string.Join("、", found) + "。请通过对应软件退出服务模式。");
-        }
-
-        private static void CheckProxyPorts()
-        {
-            // A still-listening Clash core can remain after the Flutter GUI exits.
-            // FlClash standard HTTP/mixed ports; do not kill whichever program owns the port.
-            foreach (System.Net.IPEndPoint ep in System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners())
-            {
-                if (ep.Port == 7890 || ep.Port == 7891)
-                    throw new InvalidOperationException("本地端口 " + ep.Port + " 仍有程序监听，可能是代理程序。请检查 FlClash/其他代理程序后重试。");
-            }
-        }
-    }
-}
-
-namespace SteamDirect
-{
     internal class RoundedPanel : Panel
     {
         internal float CornerRadius = UiStyle.CardRadius;
-        internal RoundedPanel() { DoubleBuffered = true; }
+        internal RoundedPanel()
+        {
+            DoubleBuffered = true;
+            ResizeRedraw = true;
+        }
+
         protected override void OnPaintBackground(PaintEventArgs e)
         {
+            e.Graphics.Clear(UiStyle.ParentSurface(this));
             if (Width < 2 || Height < 2) return;
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            e.Graphics.Clear(Parent == null ? BackColor : Parent.BackColor);
-            float radius = Math.Min(CornerRadius * DeviceDpi / 96F, (Math.Min(Width, Height) - 1) / 2F);
-            var rect = new RectangleF(0, 0, Width - 1, Height - 1);
-            using (var path = UiStyle.RoundRect(rect, radius))
+
+            using (var outline = UiStyle.RoundRect(new RectangleF(.5F, .5F, Width - 1, Height - 1), CornerRadius * UiStyle.Dpi(this) / 96F))
             {
-                using (var brush = new SolidBrush(BackColor)) e.Graphics.FillPath(brush, path);
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using (var fill = new SolidBrush(BackColor)) e.Graphics.FillPath(fill, outline);
+                using (var border = new Pen(AppTheme.Edge)) e.Graphics.DrawPath(border, outline);
             }
         }
     }
@@ -1165,30 +1023,36 @@ namespace SteamDirect
     {
         internal int ActiveStep = -1;
         internal bool Failed;
-        internal int Angle;
-        private readonly string[] titles = { "准备检查", "关闭应用与代理", "核验本机代理", "退出 Steam", "复检并启动", "清理临时文件" };
-        private readonly string[] descriptions = { "安装路径与游戏状态", "关闭指定应用和 FlClash", "系统代理 / VPN / 内核", "等待客户端正常退出", "再次核验后提交启动", "仅过期文件，跳过占用" };
+        private int Angle;
+        internal void AdvanceSpinner(long elapsed)
+        {
+            if (ActiveStep < 0 || ActiveStep >= StepCount || Failed) return;
+            Angle = (int)(elapsed % UiStyle.SpinnerPeriodMs * 360 / UiStyle.SpinnerPeriodMs);
+            float scale = UiStyle.Dpi(this) / 96F;
+            float gap = Math.Min(76, (Height / scale - 16) / StepCount);
+            float y = 18 + ActiveStep * gap;
+            Invalidate(Rectangle.Ceiling(new RectangleF(8 * scale, (y - 10) * scale, 20 * scale, 20 * scale)));
+        }
+        private readonly string[] titles = { "准备检查", "关闭应用与代理", "核验本机代理", "退出 Steam", "复检并启动", "完成检查" };
+        private readonly string[] descriptions = { "路径与游戏状态", "关闭应用和代理", "系统代理与内核", "等待正常退出", "再次核验后启动", "临时文件单独清理" };
         internal int StepCount { get { return titles.Length; } }
-        internal StepTimeline() { DoubleBuffered = true; BackColor = Color.White; TabStop = false; AccessibleName = "直连执行步骤"; }
+        internal StepTimeline() { DoubleBuffered = true; BackColor = AppTheme.Page; TabStop = false; AccessibleName = "直连执行步骤"; }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
             var g = e.Graphics;
-            float scale = DeviceDpi / 96F;
+            float scale = UiStyle.Dpi(this) / 96F;
             g.ScaleTransform(scale, scale);
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-            float gap = Math.Min(76, (Height / scale - 60) / titles.Length);
+            float gap = Math.Min(76, (Height / scale - 16) / titles.Length);
             var small = UiStyle.DiagramCaption;
             var normal = UiStyle.DiagramTitle;
             using (var muted = new SolidBrush(AppTheme.Text(AppTheme.Muted)))
-            using (var ink = new SolidBrush(AppTheme.Text(AppTheme.Ink)))
             {
-                g.DrawString("直连流程", normal, ink, 4, 4);
-                g.DrawString("共 " + StepCount + " 步", small, muted, 4, 23);
                 for (int i = 0; i < titles.Length; i++)
                 {
-                    float y = 56 + i * gap;
+                    float y = 18 + i * gap;
                     bool done = ActiveStep > i;
                     bool active = ActiveStep == i;
                     Color accent = active && Failed ? AppTheme.Error : done ? AppTheme.Success : AppTheme.Accent;
@@ -1212,328 +1076,12 @@ namespace SteamDirect
                     }
                     using (var titleBrush = new SolidBrush(AppTheme.Text(active || done ? accent : AppTheme.Ink)))
                         g.DrawString(titles[i], normal, titleBrush, 42, y - 15);
-                    g.DrawString(active ? (Failed ? "已停止 · 查看右侧原因" : "正在处理…") : done ? (i == titles.Length - 1 ? "已结束，结果见日志" : "已完成") : descriptions[i], small, muted, 42, y + 7);
+                    g.DrawString(active ? (Failed ? "已停止 · 查看原因" : "正在处理…") : done ? (i == titles.Length - 1 ? "已结束，结果见日志" : "已完成") : descriptions[i], small, muted, 42, y + 7);
                 }
             }
         }
     }
 }
-
-
-
-
-namespace SteamDirect
-{
-    internal static class WindowMessages
-    {
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-        private static extern int RegisterWindowMessage(string name);
-        [DllImport("user32.dll", SetLastError = true)]
-        internal static extern bool PostMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
-        internal static readonly int ShowMain = RegisterWindowMessage("SteamDirect.ShowMain.v1");
-    }
-
-    internal sealed class UserPreferences
-    {
-        internal static readonly string DefaultPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamDirect", "settings.ini");
-        internal bool TrayEnabled = true;
-        internal int RetentionDays = 7;
-        internal bool NightMode;
-        internal string ThemeColor = "#6750A4";
-        internal static UserPreferences Load(string path)
-        {
-            var result = new UserPreferences();
-            if (!File.Exists(path)) return result;
-            foreach (string line in File.ReadAllLines(path))
-            {
-                bool tray;
-                int days;
-                bool night;
-                if (line.StartsWith("TrayEnabled=", StringComparison.Ordinal) && bool.TryParse(line.Substring(12), out tray)) result.TrayEnabled = tray;
-                if (line.StartsWith("NightMode=", StringComparison.Ordinal) && bool.TryParse(line.Substring(10), out night)) result.NightMode = night;
-                if (line.StartsWith("RetentionDays=", StringComparison.Ordinal) && int.TryParse(line.Substring(14), out days) && days >= 1 && days <= 365) result.RetentionDays = days;
-                Color color;
-                if (line.StartsWith("ThemeColor=", StringComparison.Ordinal) && AppTheme.TryColor(line.Substring(11), out color))
-                    result.ThemeColor = AppTheme.ColorCode(color);
-            }
-            return result;
-        }
-        internal static void Save(string path, bool trayEnabled, int retentionDays, bool nightMode = false, string themeColor = "#6750A4")
-        {
-            if (retentionDays < 1 || retentionDays > 365) throw new ArgumentOutOfRangeException("retentionDays");
-            Color color;
-            if (!AppTheme.TryColor(themeColor, out color)) throw new ArgumentException("主题色格式应为 #RRGGBB。", "themeColor");
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.WriteAllLines(path, new[] { "TrayEnabled=" + trayEnabled, "RetentionDays=" + retentionDays, "NightMode=" + nightMode,
-                "ThemeColor=" + AppTheme.ColorCode(color) }, Encoding.UTF8);
-        }
-    }
-
-    internal static class StartupSettings
-    {
-        private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        private const string ValueName = "SteamDirect";
-        internal static bool IsEnabled()
-        {
-            using (var key = Registry.CurrentUser.OpenSubKey(RunKey))
-                return key != null && string.Equals(key.GetValue(ValueName) as string, Command, StringComparison.OrdinalIgnoreCase);
-        }
-        private static string Command { get { return "\"" + Application.ExecutablePath + "\" --background"; } }
-        internal static void SetEnabled(bool enabled)
-        {
-            using (var key = Registry.CurrentUser.CreateSubKey(RunKey))
-            {
-                if (enabled) key.SetValue(ValueName, Command, RegistryValueKind.String);
-                else key.DeleteValue(ValueName, false);
-            }
-        }
-    }
-
-    internal static class LogStore
-    {
-        internal const string DirectoryPath = @"D:\SteamDirect\Logs";
-        internal static string CurrentPath { get { return Path.Combine(DirectoryPath, DateTime.Today.ToString("yyyy-MM-dd") + ".log"); } }
-        internal static int Cleanup(string directory, int retentionDays, DateTime today)
-        {
-            if (retentionDays < 1 || retentionDays > 365) throw new ArgumentOutOfRangeException("retentionDays");
-            if (!Directory.Exists(directory)) return 0;
-            int removed = 0;
-            foreach (string path in Directory.GetFiles(directory, "*.log", SearchOption.TopDirectoryOnly))
-            {
-                string name = Path.GetFileNameWithoutExtension(path);
-                if (name.EndsWith("-crash", StringComparison.Ordinal)) name = name.Substring(0, name.Length - 6);
-                DateTime date;
-                if (!DateTime.TryParseExact(name, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out date)) continue;
-                if (date.Date < today.Date.AddDays(1 - retentionDays)) { File.Delete(path); removed++; }
-            }
-            return removed;
-        }
-    }
-
-    internal sealed class SettingsWindow : Form
-    {
-        internal event Action SaveRequested;
-        internal event Action CancelRequested;
-        private readonly Label feedback = new Label();
-        private readonly CheckBox tray = new ToggleSwitch();
-        private readonly CheckBox startup = new ToggleSwitch();
-        private readonly CheckBox night = new ToggleSwitch();
-        private readonly NumericUpDown days = new NumericUpDown();
-        private readonly TextBox colorCode = new TextBox();
-        private Color selectedColor;
-        internal bool TrayEnabled { get { return tray.Checked; } }
-        internal bool AutoStart { get { return startup.Checked; } }
-        internal bool NightMode { get { return night.Checked; } }
-        internal int RetentionDays { get { return (int)days.Value; } }
-        internal string ThemeColor { get { return colorCode.Text.Trim().ToUpperInvariant(); } }
-        internal SettingsWindow(bool trayEnabled, bool autoStart, int retentionDays, bool nightMode = false, string themeColor = "#6750A4")
-        {
-            SuspendLayout();
-            Text = "设置";
-            AutoScaleDimensions = new SizeF(96, 96);
-            AutoScaleMode = AutoScaleMode.Dpi;
-            Font = UiStyle.Body;
-            BackColor = AppTheme.Page;
-            ForeColor = AppTheme.Ink;
-            ClientSize = new Size(640, 780);
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = MinimizeBox = false;
-            StartPosition = FormStartPosition.CenterParent;
-            ShowInTaskbar = false;
-
-            var layout = UiStyle.Grid(1, 3);
-            layout.Padding = UiStyle.PagePadding;
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
-            layout.Controls.Add(UiStyle.Header("设置", "外观、启动行为与日志管理"), 0, 0);
-
-            var viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Margin = Padding.Empty };
-            var cards = UiStyle.Grid(1, 3);
-            cards.Dock = DockStyle.Top;
-            cards.Height = 528;
-            cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 176, 152, 200 }) cards.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
-            viewport.Controls.Add(cards);
-            layout.Controls.Add(viewport, 0, 1);
-
-            var appearance = Section(cards, 0, "外观", 32, 32, 40);
-            night.Text = "启用夜间模式";
-            night.Checked = nightMode;
-            night.Dock = DockStyle.Fill;
-            appearance.Controls.Add(night, 0, 1);
-            appearance.Controls.Add(BuildColorPicker(themeColor), 0, 2);
-            appearance.Controls.Add(new Label { Text = "选择主题色或输入 #RRGGBB，保存后生效。", Dock = DockStyle.Fill,
-                ForeColor = AppTheme.Muted, AutoEllipsis = true, Margin = Padding.Empty, Font = UiStyle.Caption }, 0, 3);
-
-            var behavior = Section(cards, 1, "启动与托盘", 32, 40);
-            tray.Text = "关闭窗口后留在托盘";
-            tray.Checked = trayEnabled;
-            tray.Dock = DockStyle.Fill;
-            startup.Text = "登录 Windows 时自动启动";
-            startup.Checked = autoStart;
-            startup.Dock = DockStyle.Fill;
-            behavior.Controls.Add(tray, 0, 1);
-            behavior.Controls.Add(startup, 0, 2);
-
-            var logs = Section(cards, 2, "日志管理", 32, 32, 40);
-            logs.Controls.Add(new Label { Text = LogStore.DirectoryPath, AccessibleName = "日志目录 " + LogStore.DirectoryPath,
-                Dock = DockStyle.Fill, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft,
-                ForeColor = AppTheme.Muted, Font = UiStyle.Caption }, 0, 1);
-            var retention = UiStyle.Grid(2, 1);
-            retention.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            retention.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 124));
-            retention.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            retention.Controls.Add(new Label { Text = "日志保留天数（1–365）", Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
-            days.Minimum = 1;
-            days.Maximum = 365;
-            days.Value = retentionDays;
-            retention.Controls.Add(UiStyle.Entry(days, "日志保留天数"), 1, 0);
-            logs.Controls.Add(retention, 0, 2);
-            var cleanup = new RoundedButton { Text = "清理过期日志", Width = 160, Height = UiStyle.ButtonHeight,
-                Margin = new Padding(0, UiStyle.SmallGap, 0, 0), Anchor = AnchorStyles.Left | AnchorStyles.Top };
-            AppTheme.ActionButton(cleanup, false);
-            cleanup.Click += (sender, args) =>
-            {
-                try
-                {
-                    int count = LogStore.Cleanup(LogStore.DirectoryPath, RetentionDays, DateTime.Today);
-                    NoticeDialog.Show(this, "已清理 " + count + " 个过期日志文件，保留最近 " + RetentionDays + " 天。", "日志清理");
-                }
-                catch (Exception ex) { NoticeDialog.Show(this, "清理未完成：" + ex.Message, "日志清理", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
-            };
-            logs.Controls.Add(cleanup, 0, 3);
-
-            var footer = UiStyle.Grid(1, 3);
-            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 48, 24, 40 }) footer.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
-            var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft,
-                Margin = Padding.Empty, WrapContents = false };
-            var save = new RoundedButton { Text = "保存设置", Width = 120, Height = UiStyle.ButtonHeight, Margin = new Padding(UiStyle.SmallGap, 0, 0, 0) };
-            var cancel = new RoundedButton { Text = "返回概览", DialogResult = DialogResult.Cancel,
-                Width = 120, Height = UiStyle.ButtonHeight, Margin = Padding.Empty };
-            save.Click += (sender, args) =>
-            {
-                if (!ValidateThemeColor()) return;
-                if (TopLevel) DialogResult = DialogResult.OK;
-                else if (SaveRequested != null) SaveRequested();
-            };
-            cancel.Click += (sender, args) => { if (!TopLevel && CancelRequested != null) CancelRequested(); };
-            AppTheme.ActionButton(save, true);
-            AppTheme.ActionButton(cancel, false);
-            buttons.Controls.Add(save);
-            buttons.Controls.Add(cancel);
-            footer.Controls.Add(buttons, 0, 0);
-            feedback.Text = "更改后点击保存设置";
-            feedback.Dock = DockStyle.Fill;
-            feedback.Font = UiStyle.Caption;
-            feedback.ForeColor = AppTheme.Muted;
-            feedback.TextAlign = ContentAlignment.MiddleRight;
-            footer.Controls.Add(feedback, 0, 1);
-
-            var about = UiStyle.Grid(2, 1);
-            about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
-            about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v2.7.1", Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true, Font = UiStyle.Caption }, 0, 0);
-            const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
-            var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill,
-                Margin = new Padding(0, UiStyle.Space4, 0, UiStyle.Space4), Icon = UiIcon.External,
-                Tag = repositoryUrl, AccessibleDescription = repositoryUrl };
-            AppTheme.ActionButton(github, false);
-            github.Click += (sender, args) =>
-            {
-                try { Process.Start(new ProcessStartInfo(repositoryUrl) { UseShellExecute = true }); }
-                catch (Exception ex) { NoticeDialog.Show(this, "无法打开浏览器，请访问 " + repositoryUrl + Environment.NewLine + ex.Message, "GitHub 项目"); }
-            };
-            about.Controls.Add(github, 1, 0);
-            footer.Controls.Add(about, 0, 2);
-            layout.Controls.Add(footer, 0, 2);
-            foreach (var toggle in new[] { night, tray, startup })
-                toggle.CheckedChanged += (sender, args) => feedback.Text = "有更改尚未保存";
-            days.ValueChanged += (sender, args) => feedback.Text = "有更改尚未保存";
-            AcceptButton = save;
-            CancelButton = cancel;
-            Controls.Add(layout);
-            AppTheme.Apply(this);
-            ResumeLayout(true);
-        }
-
-        internal void ShowSaved() { feedback.Text = "设置已保存"; }
-
-        internal bool ValidateThemeColor()
-        {
-            Color parsed;
-            if (AppTheme.TryColor(ThemeColor, out parsed)) return true;
-            feedback.Text = "颜色格式应为 #RRGGBB，例如 #6750A4";
-            colorCode.Focus();
-            return false;
-        }
-
-        private Control BuildColorPicker(string initial)
-        {
-            AppTheme.TryColor(initial, out selectedColor);
-            var row = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Margin = Padding.Empty };
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 36));
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
-            row.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            var swatch = new Panel { Dock = DockStyle.Fill, Margin = new Padding(2, 8, 8, 8),
-                AccessibleName = "主题色预览" };
-            swatch.Paint += (sender, args) =>
-            {
-                using (var brush = new SolidBrush(selectedColor)) args.Graphics.FillRectangle(brush, swatch.ClientRectangle);
-                using (var pen = new Pen(AppTheme.Edge)) args.Graphics.DrawRectangle(pen, 0, 0, swatch.Width - 1, swatch.Height - 1);
-            };
-            colorCode.Text = AppTheme.ColorCode(selectedColor);
-            colorCode.AccessibleName = "主题色代码";
-            colorCode.TextChanged += (sender, args) =>
-            {
-                Color parsed;
-                if (AppTheme.TryColor(ThemeColor, out parsed)) selectedColor = parsed;
-                swatch.Invalidate();
-                feedback.Text = "有更改尚未保存";
-            };
-            var choose = new RoundedButton { Text = "选择颜色", Dock = DockStyle.Fill };
-            var reset = new RoundedButton { Text = "默认颜色", Dock = DockStyle.Fill };
-            AppTheme.ActionButton(choose, false);
-            AppTheme.ActionButton(reset, false);
-            choose.Click += (sender, args) =>
-            {
-                using (var picker = new ColorDialog { Color = selectedColor, FullOpen = true })
-                    if (picker.ShowDialog(TopLevelControl) == DialogResult.OK)
-                        colorCode.Text = AppTheme.ColorCode(picker.Color);
-            };
-            reset.Click += (sender, args) => colorCode.Text = AppTheme.ColorCode(AppTheme.Accent);
-            row.Controls.Add(swatch, 0, 0);
-            row.Controls.Add(UiStyle.Entry(colorCode, "主题色代码"), 1, 0);
-            row.Controls.Add(choose, 2, 0);
-            row.Controls.Add(reset, 3, 0);
-            return row;
-        }
-
-        private TableLayoutPanel Section(TableLayoutPanel parent, int row, string title, params int[] heights)
-        {
-            var card = UiStyle.Card(true);
-            card.Margin = new Padding(0, 0, 0, UiStyle.Gap);
-            var grid = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = heights.Length + 1 };
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in heights) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
-            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            grid.Controls.Add(new Label { Text = title, Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.SectionTitle }, 0, 0);
-            card.Controls.Add(grid);
-            parent.Controls.Add(card, 0, row);
-            return grid;
-        }
-    }
-}
-
-
-
 
 
 

@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -144,8 +145,10 @@ namespace SteamDirect
             text = text.Trim(); IPAddress address; int port = 27015;
             if (!(text.StartsWith("[", StringComparison.Ordinal) && text.Contains("]:")) && IPAddress.TryParse(text, out address)) return new IPEndPoint(address, port);
             int split = text.LastIndexOf(':');
-            if (split < 1 || !int.TryParse(text.Substring(split + 1), out port) || port < 1 || port > 65535) throw new ArgumentException("请输入服务器 IP 或 IP:查询端口，例如 1.2.3.4:27015。IPv6 带端口请使用 [地址]:端口。");
-            string host = text.Substring(0, split).Trim('[', ']');
+            if (split < 1 || !int.TryParse(text.Substring(split + 1), NumberStyles.None, CultureInfo.InvariantCulture, out port) || port < 1 || port > 65535) throw new ArgumentException("请输入服务器 IP 或 IP:查询端口，例如 1.2.3.4:27015。IPv6 带端口请使用 [地址]:端口。");
+            string host = text.Substring(0, split);
+            if (host.StartsWith("[", StringComparison.Ordinal) && host.EndsWith("]", StringComparison.Ordinal)) host = host.Substring(1, host.Length - 2);
+            if (host.IndexOfAny(new[] { '[', ']' }) >= 0) throw new ArgumentException("服务器 IP 的方括号格式无效。");
             if (!IPAddress.TryParse(host, out address)) throw new ArgumentException("服务器地址必须是有效 IP；可留空。");
             return new IPEndPoint(address, port);
         }
@@ -343,7 +346,7 @@ namespace SteamDirect
 
 namespace SteamDirect
 {
-    internal sealed class NetworkWindow : Form
+    internal sealed class NetworkWindow : DesktopForm, IManagedPage
     {
         private readonly TextBox target = new TextBox();
         private readonly TextBox details = new TextBox();
@@ -355,12 +358,25 @@ namespace SteamDirect
         private readonly Label[] notes = new Label[6];
         private CancellationTokenSource cancellation;
         private readonly Action<string> log;
-        internal NetworkWindow(Action<string> saveLog)
+        private readonly Func<IPEndPoint, Action<DiagnosticUpdate>, Action<string>, CancellationToken, NetworkEvidence> diagnose;
+        // A single bounded diagnostic continues across navigation; its result remains on this page.
+        public void EnterPage() { }
+        public void LeavePage() { }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && cancellation != null) cancellation.Cancel();
+            base.Dispose(disposing);
+        }
+        internal NetworkWindow(Action<string> saveLog, Func<IPEndPoint, Action<DiagnosticUpdate>, Action<string>, CancellationToken, NetworkEvidence> diagnose = null,
+            Action openHistory = null)
         {
             log = saveLog;
+            this.diagnose = diagnose ?? NetworkDiagnostics.Run;
             SuspendLayout();
             Text = "CS2 × Steam 网络诊断";
-            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            var ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            Icon = ownedIcon;
+            Disposed += (sender, args) => { if (ownedIcon != null) ownedIcon.Dispose(); };
             AutoScaleDimensions = new SizeF(96, 96);
             AutoScaleMode = AutoScaleMode.Dpi;
             Font = UiStyle.Body;
@@ -372,25 +388,39 @@ namespace SteamDirect
 
             var root = UiStyle.Grid(1, 5);
             root.Padding = UiStyle.PagePadding;
+            root.BackColor = AppTheme.Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
             int actionHeight = UiStyle.DensePadding.Vertical + UiStyle.Space32 + UiStyle.ButtonHeight +
                 UiStyle.Space32 + UiStyle.Space4 + UiStyle.Gap;
-            int statusHeight = 2 * (UiStyle.DensePadding.Vertical + UiStyle.CompactHeight + UiStyle.ButtonHeight) + UiStyle.SmallGap + UiStyle.Gap;
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, actionHeight));
+            int statusHeight = 2 * (UiStyle.Space24 + UiStyle.CompactHeight + UiStyle.Space32) +
+                UiStyle.DensePadding.Vertical + UiStyle.SmallGap + UiStyle.Gap;
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, statusHeight));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-            root.Controls.Add(UiStyle.Header("网络诊断", "CS2 · Steam    查看连接状态与网络路径"), 0, 0);
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, actionHeight));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
+            var heading = UiStyle.Grid(openHistory == null ? 1 : 2, 1);
+            heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            heading.Controls.Add(UiStyle.Header("网络诊断", "Steam · CS2"), 0, 0);
+            if (openHistory != null)
+            {
+                heading.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
+                var history = new RoundedButton { Text = "查看对局趋势", Dock = DockStyle.Top, Height = UiStyle.ButtonHeight,
+                    Margin = new Padding(0, UiStyle.Space8, 0, 0) };
+                AppTheme.ActionButton(history, false);
+                history.Click += (sender, args) => openHistory();
+                heading.Controls.Add(history, 1, 0);
+            }
+            root.Controls.Add(heading, 0, 0);
 
-            root.Controls.Add(BuildControls(), 0, 1);
-            root.Controls.Add(BuildStatusCards(), 0, 2);
+            root.Controls.Add(BuildStatusCards(), 0, 1);
+            root.Controls.Add(BuildControls(), 0, 2);
 
-            conclusion.Text = "开始检测后，这里会显示网络诊断结果和处理建议。";
+            conclusion.Text = "等待检测。";
             root.Controls.Add(BuildReadout("诊断结论与建议", conclusion, AppTheme.Ink, new Padding(0, 0, 0, UiStyle.SmallGap)), 0, 3);
             root.Controls.Add(BuildReadout("检测明细", details, AppTheme.Muted, Padding.Empty), 0, 4);
 
-            Controls.Add(root);
+            Controls.Add(new ContentViewport(root, UiStyle.HeaderHeight + actionHeight + statusHeight + root.Padding.Vertical + 248));
             Shown += (sender, args) =>
             {
                 conclusion.Select(0, 0);
@@ -465,34 +495,28 @@ namespace SteamDirect
             return panel;
         }
 
-        private TableLayoutPanel BuildStatusCards()
+        private Control BuildStatusCards()
         {
+            var group = UiStyle.Card(true);
+            group.Margin = new Padding(0, 0, 0, UiStyle.Gap);
             var cards = UiStyle.Grid(3, 2);
-            cards.Margin = new Padding(0, 0, 0, UiStyle.Gap);
             for (int i = 0; i < 3; i++) cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333F));
             cards.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
             cards.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
             string[] titles = { "本地网络", "代理 / VPN", "Steam 服务", "Steam 客户端", "CS2 进程", "对局服务器" };
             for (int i = 0; i < titles.Length; i++)
             {
-                var card = UiStyle.Card(true);
-                card.Margin = new Padding(0, 0, i % 3 == 2 ? 0 : UiStyle.Gap, i < 3 ? UiStyle.SmallGap : 0);
-                var inner = UiStyle.Grid(2, 2);
-                inner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
-                inner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
-                inner.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.CompactHeight));
-                inner.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-                inner.Controls.Add(new Label { Text = titles[i], Dock = DockStyle.Fill, Margin = Padding.Empty, Font = UiStyle.Body, ForeColor = AppTheme.Ink, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
-                states[i] = new Label { Text = "待检测", Dock = DockStyle.Fill, Margin = Padding.Empty, ForeColor = AppTheme.Ink, Font = UiStyle.SectionTitle, TextAlign = ContentAlignment.MiddleRight };
-                states[i].AccessibleName = titles[i] + "状态";
-                notes[i] = new Label { Text = i == 5 ? "选填服务器地址。官方匹配可能使用中继。" : "等待检测", Dock = DockStyle.Fill, Margin = Padding.Empty, AutoEllipsis = true, Font = UiStyle.Caption, ForeColor = AppTheme.Muted };
-                inner.Controls.Add(states[i], 1, 0);
-                inner.Controls.Add(notes[i], 0, 1);
-                inner.SetColumnSpan(notes[i], 2);
-                card.Controls.Add(inner);
-                cards.Controls.Add(card, i % 3, i / 3);
+                var cell = new SectionRule { Dock = DockStyle.Fill,
+                    BackColor = AppTheme.Surface, Margin = new Padding(0, 0, i % 3 == 2 ? 0 : UiStyle.Gap, 0),
+                    Padding = new Padding(0, UiStyle.Space8, 0, 0) };
+                var inner = UiStyle.Metric(titles[i], UiIcon.None, out states[i], out notes[i]);
+                states[i].Text = "待检测";
+                if (i == 5) notes[i].Text = "可填服务器地址";
+                cell.Controls.Add(inner);
+                cards.Controls.Add(cell, i % 3, i / 3);
             }
-            return cards;
+            group.Controls.Add(cards);
+            return group;
         }
 
         private RoundedPanel BuildReadout(string title, TextBox box, Color foreground, Padding margin)
@@ -508,7 +532,7 @@ namespace SteamDirect
             box.Margin = Padding.Empty;
             box.ForeColor = foreground;
             if (box == details) box.Font = UiStyle.Caption;
-            layout.Controls.Add(box, 0, 1);
+            layout.Controls.Add(new NativeScrollFrame(box), 0, 1);
             frame.Controls.Add(layout);
             return frame;
         }
@@ -522,6 +546,7 @@ namespace SteamDirect
         {
             if (IsDisposed || Disposing) return;
             if (InvokeRequired) { try { BeginInvoke(new Action<DiagnosticUpdate>(Apply), item); } catch (InvalidOperationException) { } return; }
+            if (cancellation != null && SteamGameDiscovery.IsSteamGameActive()) { cancellation.Cancel(); return; }
             if (item.CompletedUnits >= 0)
             {
                 progressBar.Value = Math.Max(0, Math.Min(100, item.CompletedUnits * 100 / 8));
@@ -538,6 +563,11 @@ namespace SteamDirect
         }
         private async Task RunAsync()
         {
+            if (cancellation != null || IsDisposed || Disposing) return;
+            if (SteamGameDiscovery.IsSteamGameActive() || Motion.IsGaming != null && Motion.IsGaming())
+            {
+                conclusion.Text = "游戏进行中，全面检测已暂停。"; progress.Text = "游戏保护"; return;
+            }
             IPEndPoint server;
             try { server = NetworkDiagnostics.ParseServer(target.Text); } catch (ArgumentException ex) { NoticeDialog.Show(this, ex.Message, "服务器地址"); return; }
             progressBar.Value = 0;
@@ -545,10 +575,11 @@ namespace SteamDirect
             target.Enabled = false; start.Text = "取消检测"; details.Clear(); conclusion.Text = "正在收集证据，请等待各项检查完成。";
             for (int i = 0; i < 6; i++) { states[i].Text = "待检测"; AppTheme.SetForeground(states[i], AppTheme.Ink); notes[i].Text = "等待检测"; }
             cancellation = new CancellationTokenSource();
+            var token = cancellation.Token;
             var watch = Stopwatch.StartNew();
             try
             {
-                var evidence = await Task.Run(() => NetworkDiagnostics.Run(server, Apply, Append, cancellation.Token));
+                var evidence = await Task.Run(() => diagnose(server, Apply, Append, token));
                 if (!IsDisposed)
                 {
                     conclusion.Text = evidence.Conclusion(); progress.Text = "检测完成 · 耗时 " + watch.Elapsed.TotalSeconds.ToString("0.0") + " 秒 · 明细如下";

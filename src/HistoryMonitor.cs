@@ -20,6 +20,7 @@ namespace SteamDirect
         internal static readonly string DefaultPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamDirect", "network-history.sqlite3");
         private readonly Func<List<SteamGameProcess>> scan;
+        private readonly object lifecycle = new object();
         private readonly CancellationTokenSource stop = new CancellationTokenSource();
         private readonly Dictionary<string, ActiveGame> active = new Dictionary<string, ActiveGame>();
         private readonly Dictionary<string, HistorySession> pendingSessions = new Dictionary<string, HistorySession>();
@@ -29,10 +30,11 @@ namespace SteamDirect
         private readonly Queue<HistorySession> reports = new Queue<HistorySession>();
         private readonly Stopwatch clock = Stopwatch.StartNew();
         private long nextFlush, nextSample;
+        private long recordingFloor;
         private Task worker;
         private volatile bool playing;
         private volatile string error;
-        private int disposed, started;
+        private int disposed, started, stopDisposed;
         private long pings, dns, batches;
         internal HistoryStore Store { get; private set; }
         internal bool IsPlaying { get { return playing; } }
@@ -47,10 +49,28 @@ namespace SteamDirect
             scan = discover ?? new SteamGameDiscovery().Scan;
         }
 
+        private HistoryMonitor(HistoryStore store, Func<List<SteamGameProcess>> discover, long floor)
+        {
+            Store = store; scan = discover; recordingFloor = floor;
+        }
+        internal Task Completion { get { lock (lifecycle) return worker ?? Task.FromResult(0); } }
+        internal HistoryMonitor CreateRestart()
+        {
+            lock (lifecycle)
+            {
+                if (disposed == 0 || worker != null && !worker.IsCompleted) throw new InvalidOperationException("请等待记录停止后再重新开启。");
+                return new HistoryMonitor(Store, scan, Now());
+            }
+        }
+
         internal void Start()
         {
-            if (Interlocked.Exchange(ref started, 1) != 0 || Volatile.Read(ref disposed) != 0) return;
-            worker = Task.Factory.StartNew(Work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            lock (lifecycle)
+            {
+                if (started != 0 || disposed != 0) return;
+                started = 1;
+                worker = Task.Factory.StartNew(Work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
         }
 
         internal static int Interval(double load) { return load >= .85 ? 20 : load >= .70 ? 10 : 5; }
@@ -58,6 +78,8 @@ namespace SteamDirect
 
         private void Work()
         {
+            // Lower only our recorder thread, never the game or Steam process.
+            try { Thread.CurrentThread.Priority = ThreadPriority.BelowNormal; } catch (System.Security.SecurityException) { }
             var token = stop.Token;
             bool initialized = false;
             try
@@ -144,7 +166,7 @@ namespace SteamDirect
                 ActiveGame item;
                 if (active.TryGetValue(game.Key, out item)) { item.MissingAt = 0; continue; }
                 if (pendingSessions.Count >= 256) continue;
-                long start = game.StartedAt > 0 ? Math.Min(game.StartedAt, now) : now;
+                long start = Math.Max(recordingFloor, game.StartedAt > 0 ? Math.Min(game.StartedAt, now) : now);
                 long interruptedEnd;
                 if (interruptedEnds.TryGetValue(game.Name, out interruptedEnd) && start <= interruptedEnd) start = now;
                 var session = new HistorySession
@@ -251,12 +273,17 @@ namespace SteamDirect
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-            stop.Cancel();
-            if (worker == null) { stop.Dispose(); return; }
-            if (worker.Wait(6000)) stop.Dispose();
-            else worker.ContinueWith(t => stop.Dispose(), TaskScheduler.Default);
+            Task running;
+            lock (lifecycle)
+            {
+                if (disposed == 0) { disposed = 1; stop.Cancel(); }
+                running = worker;
+            }
+            if (running == null) { DisposeStop(); return; }
+            if (running.Wait(6000)) DisposeStop();
+            else running.ContinueWith(t => DisposeStop(), TaskScheduler.Default);
         }
+        private void DisposeStop() { if (Interlocked.Exchange(ref stopDisposed, 1) == 0) stop.Dispose(); }
     }
 }
 
