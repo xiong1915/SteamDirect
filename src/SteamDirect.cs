@@ -142,7 +142,18 @@ namespace SteamDirect
         private readonly Label operationResult = new Label();
         private readonly OverviewStatus overviewStatus;
 
+        private HistoryWindow preparedHistory;
+        private bool historyCreated;
         private bool startHidden;
+
+        private void PrepareHistoryAfterShow()
+        {
+
+            if (IsDisposed || !Visible || WindowState == FormWindowState.Minimized ||
+                running || historyCreated || history.IsPlaying || SteamGameDiscovery.IsSteamGameReported()) return;
+            preparedHistory = CreateHistoryWindow();
+            historyCreated = true;
+        }
         internal MainWindow(bool background = false, HistoryMonitor historyOverride = null, UserPreferences preferencesOverride = null)
         {
             preferences = preferencesOverride ?? UserPreferences.Load(UserPreferences.DefaultPath);
@@ -152,7 +163,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.28";
+            Text = "Steam 直连助手 v3.0.29";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -354,6 +365,11 @@ namespace SteamDirect
                     Status("操作正在进行，请等待完成后退出。");
                 }
             };
+            Shown += (sender, args) => BeginInvoke((Action)PrepareHistoryAfterShow);
+            Disposed += (sender, args) =>
+            {
+                if (preparedHistory != null) preparedHistory.Dispose();
+            };
             startHidden = background && preferences.TrayEnabled;
             Log("就绪，请先退出游戏。");
             if (preferences.NetworkRecording) history.Start();
@@ -429,7 +445,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.28", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.29", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -559,6 +575,13 @@ namespace SteamDirect
             }
         }
 
+        private HistoryWindow CreateHistoryWindow()
+        {
+            return new HistoryWindow(history.Store, () => history.IsPlaying,
+                () => !preferences.NetworkRecording ? "自动记录已关闭，可在设置中开启。" :
+                    string.IsNullOrEmpty(history.Error) ? "自动记录已开启。" : "自动记录遇到错误，请查看日志或重启应用。", true);
+        }
+
         private Form CreatePage(string page)
         {
             if (page == "网络诊断") return new NetworkWindow(Log, openHistory: () =>
@@ -567,9 +590,13 @@ namespace SteamDirect
                 var report = pages.ActivePage as HistoryWindow;
                 if (report != null) report.ShowNetworkTrend();
             });
-            if (page == "游戏记录") return new HistoryWindow(history.Store, () => history.IsPlaying,
-                () => !preferences.NetworkRecording ? "自动记录已关闭，可在设置中开启。" :
-                    string.IsNullOrEmpty(history.Error) ? "自动记录已开启。" : "自动记录遇到错误，请查看日志或重启应用。", true);
+            if (page == "游戏记录")
+            {
+                historyCreated = true;
+                var report = preparedHistory;
+                preparedHistory = null;
+                return report ?? CreateHistoryWindow();
+            }
             var settings = new SettingsWindow(preferences.TrayEnabled, StartupSettings.IsEnabled(),
                 preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor, preferences.LogDirectory, preferences.ReduceMotion, preferences.WindowDiagnostics, preferences.NetworkRecording);
             settings.Synchronize = () => settings.Reload(preferences, StartupSettings.IsEnabled());
