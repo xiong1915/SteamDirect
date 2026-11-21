@@ -18,7 +18,7 @@ namespace SteamDirect
             {
                 if (selected == value) return;
                 selected = value;
-                if (HorizontalIndicator) UpdateMotion();
+                if (selection != null) selection.To(selected ? 1F : 0F, UiStyle.StatusMotion);
                 else Invalidate();
             }
         }
@@ -56,7 +56,7 @@ namespace SteamDirect
         {
             if (interaction == null || selection == null) return;
             interaction.To(pressed ? 1F : hovering ? .55F : 0F, UiStyle.ButtonMotion);
-            if (HorizontalIndicator) selection.To(selected ? 1F : 0F, UiStyle.StatusMotion);
+
         }
         protected override void Dispose(bool disposing) { if (disposing) { interaction.Dispose(); selection.Dispose(); } base.Dispose(disposing); }
         protected override void OnEnabledChanged(EventArgs e) { base.OnEnabledChanged(e); if (!Enabled) hovering = pressed = false; UpdateMotion(); }
@@ -83,8 +83,8 @@ namespace SteamDirect
             Color fill = !Enabled ? AppTheme.Background(AppTheme.Page) :
                 amount <= .55F ? Motion.Blend(BackColor, hover, amount / .55F) : Motion.Blend(hover, down, (amount - .55F) / .45F);
             bool navigation=Icon==UiIcon.Home||Icon==UiIcon.Network||Icon==UiIcon.History||Icon==UiIcon.Settings;
-            if (navigation && Enabled)
-                fill = Motion.Blend(selected ? AppTheme.Background(AppTheme.Pill) : background, AppTheme.Hover, .6F * amount);
+            if ((navigation || HorizontalIndicator) && Enabled)
+                fill = Motion.Blend(Motion.Blend(background, AppTheme.Background(AppTheme.Pill), selection.Current), AppTheme.Hover, .6F * amount);
             if (TextOnly && Enabled && amount > 0)
                 fill = Motion.Blend(background, AppTheme.Hover, Math.Min(1F, amount / .55F));
             if (!TextOnly || Enabled && amount > 0)
@@ -106,7 +106,7 @@ namespace SteamDirect
             if (!IconOnly)
                 TextRenderer.DrawText(e.Graphics, Text, Font, bounds, textColor,
                     alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | CaptionFlags);
-            if (selected && HorizontalIndicator && selection.Current > 0 && Width > 8 && Height > 8)
+            if (HorizontalIndicator && selection.Current > 0 && Width > 8 && Height > 8)
             {
                 using (var marker = new SolidBrush(AppTheme.Background(AppTheme.Accent)))
                 {

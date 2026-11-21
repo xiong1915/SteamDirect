@@ -165,13 +165,51 @@ namespace SteamDirect
             }
         }
 
+        private sealed class PageTitleLabel : Label
+        {
+            private readonly Motion.Value reveal;
+
+            internal PageTitleLabel()
+            {
+                DoubleBuffered = true;
+                reveal = new Motion.Value(this, 1F);
+            }
+
+            protected override void OnVisibleChanged(EventArgs e)
+            {
+                base.OnVisibleChanged(e);
+                if (reveal == null || !Visible || !IsHandleCreated || !Motion.Allowed) return;
+                reveal.Set(0F);
+                reveal.To(1F, 160);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                if (reveal == null || reveal.Current >= 1F) { base.OnPaint(e); return; }
+                var bounds = ClientRectangle;
+                int offset = (int)Math.Round(UiStyle.Scale(this, Space8) * (1F - reveal.Current));
+                bounds.X += offset;
+                bounds.Width = Math.Max(0, bounds.Width - offset);
+                TextRenderer.DrawText(e.Graphics, Text, Font, bounds,
+                    Motion.Blend(ParentSurface(this), ForeColor, .45F + .55F * reveal.Current),
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
+                    TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing && reveal != null) reveal.Dispose();
+                base.Dispose(disposing);
+            }
+        }
+
         internal static Control Header(string title, string description)
         {
             var header = Grid(1, 2);
             header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             header.RowStyles.Add(new RowStyle(SizeType.Percent, string.IsNullOrEmpty(description)?100:64));
             header.RowStyles.Add(new RowStyle(SizeType.Percent, string.IsNullOrEmpty(description)?0:36));
-            header.Controls.Add(new Label { Text = title, Dock = DockStyle.Fill, Margin = Padding.Empty,
+            header.Controls.Add(new PageTitleLabel { Text = title, Dock = DockStyle.Fill, Margin = Padding.Empty,
                 Font = PageTitle, ForeColor = AppTheme.Ink, AutoEllipsis = true, TextAlign=ContentAlignment.MiddleLeft }, 0, 0);
             header.Controls.Add(new Label { Text = description, Dock = DockStyle.Fill, Margin = Padding.Empty,
                 Font = Caption, ForeColor = AppTheme.Muted, AutoEllipsis = true }, 0, 1);
