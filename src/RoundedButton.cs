@@ -18,7 +18,7 @@ namespace SteamDirect
             {
                 if (selected == value) return;
                 selected = value;
-                if (selection != null) selection.To(selected ? 1F : 0F, UiStyle.StatusMotion);
+                if (selection != null) selection.SpringTo(selected ? 1F : 0F, UiStyle.StatusMotion);
                 else Invalidate();
             }
         }
@@ -60,7 +60,7 @@ namespace SteamDirect
             if (Enabled && (spaceDown || pointerDown && hovering))
                 interaction.Set(1F);
             else
-                interaction.To(Enabled && hovering ? .55F : 0F, UiStyle.ButtonMotion);
+                interaction.SpringTo(Enabled && hovering ? .55F : 0F, UiStyle.ButtonMotion);
         }
 
         protected override void Dispose(bool disposing) { if (disposing) { interaction.Dispose(); selection.Dispose(); } base.Dispose(disposing); }

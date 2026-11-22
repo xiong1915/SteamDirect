@@ -19,7 +19,7 @@ namespace SteamDirect
         protected override void OnCheckedChanged(EventArgs e)
         {
             base.OnCheckedChanged(e);
-            if (position != null) position.To(Checked ? 1F : 0F, 200);
+            if (position != null) position.SpringTo(Checked ? 1F : 0F, 200);
         }
         protected override void Dispose(bool disposing) { if (disposing && position != null) position.Dispose(); base.Dispose(disposing); }
         private RectangleF TrackBounds()
@@ -41,7 +41,8 @@ namespace SteamDirect
             float scale = UiStyle.Dpi(this) / 96f;
             var bounds = TrackBounds();
             float width = bounds.Width, height = bounds.Height, top = bounds.Y, left = bounds.X;
-            Color track = Motion.Blend(AppTheme.Edge, AppTheme.Text(AppTheme.Accent), Enabled ? position.Current : 0);
+            float travel = Math.Max(0F, Math.Min(1F, position.Current));
+            Color track = Motion.Blend(AppTheme.Edge, AppTheme.Text(AppTheme.Accent), Enabled ? travel : 0);
             using (var brush = new SolidBrush(track))
             using (var path = new GraphicsPath())
             {
@@ -51,8 +52,8 @@ namespace SteamDirect
                 e.Graphics.FillPath(brush, path);
             }
             float thumb = 14 * scale;
-            using (var brush = new SolidBrush(Motion.Blend(AppTheme.Text(AppTheme.Muted), AppTheme.AccentForeground, position.Current)))
-                e.Graphics.FillEllipse(brush, left + (3 + (36 - 14 - 6) * position.Current) * scale, top + 3 * scale, thumb, thumb);
+            using (var brush = new SolidBrush(Motion.Blend(AppTheme.Text(AppTheme.Muted), AppTheme.AccentForeground, travel)))
+                e.Graphics.FillEllipse(brush, left + (3 + (36 - 14 - 6) * travel) * scale, top + 3 * scale, thumb, thumb);
             var textBounds = Rectangle.FromLTRB(0, 0, Math.Max(0, (int)(left - 12 * scale)), Height);
             if (e.ClipRectangle.IntersectsWith(textBounds))
                 TextRenderer.DrawText(e.Graphics, Text, Font, textBounds,

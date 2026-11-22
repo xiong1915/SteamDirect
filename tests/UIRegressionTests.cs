@@ -20,6 +20,13 @@ namespace SteamDirect {
   private static int checks;
   private static void Check(bool ok,string message){if(!ok)throw new Exception(message);checks++;}
   [STAThread] internal static int Run(){
+   double velocity, reversedVelocity;
+   double position = Motion.SampleSpring(0, 1, 0, 36, .04, out velocity);
+   double reversed = Motion.SampleSpring(position, 0, velocity, 36, 0, out reversedVelocity);
+   Check(position > 0 && position < 1 && velocity > 0 && reversed == position &&
+    Math.Abs(reversedVelocity - velocity) < .00001, "Spring reversal must preserve instantaneous position and velocity.");
+   double stopping = Motion.SampleSpring(position, 0, velocity, 36, .3, out reversedVelocity);
+   Check(Math.Abs(stopping) < .001 && Math.Abs(reversedVelocity) < .05, "Critical damping must settle after reversal.");
    WindowEnvironment.OffscreenTests=true; Motion.Reduced=true;
    using(var form=new DesktopForm { StartPosition=FormStartPosition.Manual, Location=new Point(-20000,-20000), ShowInTaskbar=false }) using(var control=new Panel()) {
     form.Controls.Add(control); form.Show(); Application.DoEvents();

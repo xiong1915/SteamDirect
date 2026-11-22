@@ -179,6 +179,17 @@ namespace SteamDirect
                 (int)(from.G + (to.G - from.G) * fraction), (int)(from.B + (to.B - from.B) * fraction));
         }
 
+        // Closed-form solution for a critically damped spring with unit mass.
+        internal static double SampleSpring(double from, double target, double initialVelocity,
+            double frequency, double seconds, out double velocity)
+        {
+            double displacement = from - target;
+            double slope = initialVelocity + frequency * displacement;
+            double decay = Math.Exp(-frequency * seconds);
+            velocity = (initialVelocity - frequency * slope * seconds) * decay;
+            return target + (displacement + slope * seconds) * decay;
+        }
+
         internal sealed class Value : IDisposable
         {
             private readonly Control owner;
@@ -186,6 +197,7 @@ namespace SteamDirect
             private float current, from, target;
             private long started;
             private int duration;
+            private double springFrequency, initialVelocity;
             private bool disposed;
             internal float Current { get { return current; } }
 
@@ -202,19 +214,37 @@ namespace SteamDirect
 
             internal void To(float value, int milliseconds)
             {
+                Retarget(value, milliseconds, false);
+            }
+
+            internal void SpringTo(float value, int settleMilliseconds)
+            {
+                Retarget(value, settleMilliseconds, true);
+            }
+
+            private void Retarget(float value, int milliseconds, bool spring)
+            {
                 if (disposed) return;
                 if (target == value && (current == value || active.Contains(this))) return;
                 long now = Stopwatch.GetTimestamp();
-                if (duration > 0 && active.Contains(this)) current = Interpolate(now);
+                double velocity = 0;
+                if (duration > 0 && active.Contains(this))
+                    current = Interpolate(now, out velocity);
                 target = value;
                 if (milliseconds <= 0 || !Allowed || !CanAnimate(owner))
                 {
                     Snap();
                     return;
                 }
-                if (Math.Abs(current - target) < .001F) { Snap(); return; }
+                if (Math.Abs(current - target) < .001F && (!spring || Math.Abs(velocity) < .025))
+                {
+                    Snap();
+                    return;
+                }
                 from = current;
                 duration = milliseconds;
+                springFrequency = spring ? 7200.0 / milliseconds : 0;
+                initialVelocity = spring ? velocity : 0;
                 started = now;
                 if (!active.Contains(this)) active.Add(this);
                 Start(owner);
@@ -255,20 +285,32 @@ namespace SteamDirect
                 if (disposed || !active.Contains(this)) return;
                 if (!allowed || !CanAnimate(owner)) { Snap(); return; }
                 if (duration == 0) { Changed(); return; }
-                if ((now - started) * 1000.0 >= duration * (double)Stopwatch.Frequency)
+                double elapsedMs = (now - started) * 1000.0 / Stopwatch.Frequency;
+                if (springFrequency == 0 && elapsedMs >= duration)
                 {
                     Snap();
                     return;
                 }
-                current = Interpolate(now);
+                double velocity;
+                current = Interpolate(now, out velocity);
+                if (springFrequency != 0 && (elapsedMs >= 2.0 * duration ||
+                    Math.Abs(current - target) <= .002 && Math.Abs(velocity) <= .05))
+                {
+                    Snap();
+                    return;
+                }
                 Changed();
             }
 
-            private float Interpolate(long now)
+            private float Interpolate(long now, out double velocity)
             {
-                double progress = Math.Max(0, Math.Min(1, (now - started) * 1000.0 / Stopwatch.Frequency / duration));
-                float remainder = (float)(1 - progress);
-                return from + (target - from) * (1 - remainder * remainder * remainder);
+                double seconds = Math.Max(0, (now - started) / (double)Stopwatch.Frequency);
+                if (springFrequency != 0)
+                    return (float)SampleSpring(from, target, initialVelocity, springFrequency, seconds, out velocity);
+
+                double remaining = Math.Max(0, 1 - seconds * 1000 / duration);
+                velocity = (target - from) * 3000.0 / duration * remaining * remaining;
+                return from + (target - from) * (float)(1 - remaining * remaining * remaining);
             }
 
             private void Changed()
