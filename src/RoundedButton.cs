@@ -29,6 +29,7 @@ namespace SteamDirect
         internal bool TextOnly;
         internal bool IconOnly;
         internal float IconOpacity = 1F;
+        internal float CaptionOpacity = 1F;
         internal const TextFormatFlags CaptionFlags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
 
         internal Rectangle CaptionBounds
@@ -106,7 +107,7 @@ namespace SteamDirect
                 alignment = TextFormatFlags.Left;
             }
             if (!IconOnly)
-                TextRenderer.DrawText(e.Graphics, Text, Font, bounds, textColor,
+                TextRenderer.DrawText(e.Graphics, Text, Font, bounds, Motion.Blend(fill, textColor, CaptionOpacity),
                     alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | CaptionFlags);
             if (HorizontalIndicator && selection.Current > 0 && Width > 8 && Height > 8)
             {

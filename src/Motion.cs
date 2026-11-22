@@ -17,7 +17,12 @@ namespace SteamDirect
         private static int posted;
         private static System.Threading.EventWaitHandle frameSignal;
         private static System.Threading.RegisteredWaitHandle frameWait;
-        internal static int FrameInterval { get; private set; }
+        private static double framePeriod, nextFrame;
+
+        internal static double FramePeriodTicks(int refreshHz)
+        {
+            return Math.Max(4.0, 1000.0 / refreshHz) * Stopwatch.Frequency / 1000.0;
+        }
 
         [DllImport("kernel32.dll", EntryPoint = "CreateWaitableTimerExW", CharSet = CharSet.Unicode)]
         private static extern Microsoft.Win32.SafeHandles.SafeWaitHandle CreateWaitableTimerEx(IntPtr attributes, string name, uint flags, uint access);
@@ -44,7 +49,8 @@ namespace SteamDirect
                 try { int reported = GetDeviceCaps(dc, 116); if (reported >= 30) hz = reported; }
                 finally { DeleteDC(dc); }
             }
-            FrameInterval = Math.Max(4, (int)Math.Floor(1000.0 / hz));
+            framePeriod = FramePeriodTicks(hz);
+            nextFrame = Stopwatch.GetTimestamp();
             ticking = true;
             if (frameSignal == null)
             {
@@ -56,13 +62,22 @@ namespace SteamDirect
                     frameSignal.SafeWaitHandle = handle;
                 }
             }
-            long due = -1;
-            if (frameSignal != null && SetWaitableTimer(frameSignal.SafeWaitHandle, ref due, FrameInterval, IntPtr.Zero, IntPtr.Zero, false))
-            {
+            if (frameSignal != null)
                 frameWait = System.Threading.ThreadPool.RegisterWaitForSingleObject(frameSignal,
                     (state, timeout) => QueueFrame(state), null, System.Threading.Timeout.Infinite, false);
-            }
-            else timer.Change(0, FrameInterval);
+            ScheduleFrame();
+        }
+
+        private static void ScheduleFrame()
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (nextFrame <= now)
+                nextFrame += (Math.Floor((now - nextFrame) / framePeriod) + 1) * framePeriod;
+
+            double delayMs = (nextFrame - now) * 1000.0 / Stopwatch.Frequency;
+            long due = -Math.Max(1L, (long)Math.Round(delayMs * 10000));
+            if (frameWait == null || !SetWaitableTimer(frameSignal.SafeWaitHandle, ref due, 0, IntPtr.Zero, IntPtr.Zero, false))
+                timer.Change(Math.Max(1, (int)Math.Ceiling(delayMs)), System.Threading.Timeout.Infinite);
         }
 
         private static void QueueFrame(object state)
@@ -87,6 +102,7 @@ namespace SteamDirect
                 frame.Clear();
                 System.Threading.Interlocked.Exchange(ref posted, 0);
                 StopIfIdle();
+                if (ticking) ScheduleFrame();
             }
         }
 
@@ -188,6 +204,8 @@ namespace SteamDirect
             {
                 if (disposed) return;
                 if (target == value && (current == value || active.Contains(this))) return;
+                long now = Stopwatch.GetTimestamp();
+                if (duration > 0 && active.Contains(this)) current = Interpolate(now);
                 target = value;
                 if (milliseconds <= 0 || !Allowed || !CanAnimate(owner))
                 {
@@ -197,7 +215,7 @@ namespace SteamDirect
                 if (Math.Abs(current - target) < .001F) { Snap(); return; }
                 from = current;
                 duration = milliseconds;
-                started = Stopwatch.GetTimestamp();
+                started = now;
                 if (!active.Contains(this)) active.Add(this);
                 Start(owner);
             }
@@ -237,12 +255,20 @@ namespace SteamDirect
                 if (disposed || !active.Contains(this)) return;
                 if (!allowed || !CanAnimate(owner)) { Snap(); return; }
                 if (duration == 0) { Changed(); return; }
+                if ((now - started) * 1000.0 >= duration * (double)Stopwatch.Frequency)
+                {
+                    Snap();
+                    return;
+                }
+                current = Interpolate(now);
+                Changed();
+            }
+
+            private float Interpolate(long now)
+            {
                 double progress = Math.Max(0, Math.Min(1, (now - started) * 1000.0 / Stopwatch.Frequency / duration));
                 float remainder = (float)(1 - progress);
-                float eased = 1 - remainder * remainder * remainder;
-                current = from + (target - from) * eased;
-                if (progress >= 1) { Snap(); return; }
-                Changed();
+                return from + (target - from) * (1 - remainder * remainder * remainder);
             }
 
             private void Changed()

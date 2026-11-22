@@ -153,7 +153,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.33";
+            Text = "Steam 直连助手 v3.0.34";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -430,7 +430,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.33", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.34", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -468,7 +468,12 @@ namespace SteamDirect
             {
                 toggle.IconOpacity = .55F + .45F * railTransition.Current;
                 toggle.Invalidate();
-                if (railTransition.Current >= 1F) updateRail();
+                foreach (RoundedButton button in navigation.Values)
+                {
+                    if (button.IconOnly) continue;
+                    button.CaptionOpacity = railTransition.Current;
+                    button.Invalidate(button.CaptionBounds);
+                }
             });
             updateRail = () =>
             {
@@ -512,6 +517,7 @@ namespace SteamDirect
             toggle.Click += (sender, args) =>
             {
                 manualCollapse = !manualCollapse;
+                updateRail();
                 railTransition.Set(0F);
                 railTransition.To(1F, UiStyle.ButtonMotion);
             };

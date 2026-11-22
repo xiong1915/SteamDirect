@@ -12,10 +12,22 @@ namespace SteamDirect {
    using(var form=new DesktopForm { StartPosition=FormStartPosition.Manual, Location=new Point(-20000,-20000), ShowInTaskbar=false }) using(var control=new Panel()) {
     form.Controls.Add(control); form.Show(); Application.DoEvents();
     using(var value=new Motion.Value(control,0F)) {
+     foreach (int hz in new[] { 60, 160, 180 })
+      Check(Math.Abs(Motion.FramePeriodTicks(hz) * hz / System.Diagnostics.Stopwatch.Frequency - 1) < .000001,
+       "Motion scheduler must preserve fractional refresh intervals.");
      value.To(1F,180); Check(value.Current==1F&&Motion.ActiveCount==0,"Reduced motion must settle without scheduler.");
      Motion.Reduced=false; Motion.IsGaming=()=>true; value.To(0F,180);
      Check(value.Current==0F&&Motion.ActiveCount==0,"Gaming must settle immediately.");
      Motion.IsGaming=()=>false; bool allowed=Motion.Allowed; value.To(1F,180); Check(Motion.ActiveCount==(allowed?1:0),"Visible animation respects system motion preference.");
+     if (allowed)
+     {
+      typeof(Motion.Value).GetField("started", BindingFlags.NonPublic | BindingFlags.Instance)
+       .SetValue(value, System.Diagnostics.Stopwatch.GetTimestamp() - System.Diagnostics.Stopwatch.Frequency / 10);
+      value.To(0F,180);
+      Check(value.Current > .8F && value.Current <= 1F && Motion.ActiveCount == 1,
+       "Reversing between frames must interpolate from the elapsed position.");
+      value.To(1F,180);
+     }
      control.Hide(); Check(value.Current==1F&&Motion.ActiveCount==0,"Hidden owner completes and releases motion.");
      control.Show(); value.To(0F,180); value.To(.25F,180); WindowEnvironment.OffscreenTests=true; Motion.Reduced=true;
      Check(value.Current==.25F && Motion.ActiveCount==0,"Retarget settles at latest semantic state.");
