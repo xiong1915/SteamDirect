@@ -20,6 +20,8 @@ namespace SteamDirect
         [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
         [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
         [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+        [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);
+
         private static bool OwnForeground() { uint process; GetWindowThreadProcessId(GetForegroundWindow(), out process); return process == (uint)Process.GetCurrentProcess().Id; }
         private static void Pump(int milliseconds) { var watch = Stopwatch.StartNew(); while (watch.ElapsedMilliseconds < milliseconds) { Application.DoEvents(); Need(!OwnForeground(),"Test process activated a foreground window"); Thread.Sleep(5); } }
         private static void Await(Task task) { var watch = Stopwatch.StartNew(); while (!task.IsCompleted && watch.ElapsedMilliseconds < 10000) Pump(5); if (!task.IsCompleted) throw new TimeoutException("Fixture asynchronous operation timed out"); task.GetAwaiter().GetResult(); }
@@ -55,6 +57,7 @@ namespace SteamDirect
                     }
                     sessions.Add(new HistorySession { Id = "yesterday", Game = "昨日记录", Mode = "直连", Target = "192.0.2.1", Start = stamp - 86400000, End = stamp - 86000000 });
                     store.WriteBatch(sessions, samples, incidents);
+                    if (args.Length > 1 && args[1] == "tray") { ProbeFirstTrayOpen(monitor, output); return 0; }
                     if (args.Length > 1 && args[1] == "monitors") { ProbeMonitors(monitor, output); return 0; }
                     if (args.Length > 1 && args[1] == "desktop") { MainMatrix(monitor, output); return 0; }
                     int[,] matrix = { {1920,1080,96}, {1920,1080,120}, {2560,1440,96}, {2560,1440,144}, {3840,2160,144}, {3840,2160,168}, {3840,2160,192} };
@@ -112,6 +115,50 @@ namespace SteamDirect
             } catch(Exception ex) {Console.Error.WriteLine(ex);return 1;}
             finally {Motion.IsGaming=null;try{Directory.Delete(temporary,true);}catch(IOException){}}
         }
+        private static void ProbeFirstTrayOpen(HistoryMonitor monitor, string output)
+        {
+            using (var main = new MainWindow(true, monitor, new UserPreferences
+            {
+                NetworkRecording = false, TrayEnabled = true, ReduceMotion = false, WindowDiagnostics = true
+            }))
+            {
+                main.ShowInTaskbar = false;
+                main.StartPosition = FormStartPosition.Manual;
+                main.Location = new Point(-24000, -24000);
+                main.Show();
+                Need(main.IsHandleCreated && !main.Visible, "Background startup exposed the main window.");
+                IntPtr hwnd = main.Handle;
+                var recent = (OverviewHistory)Field(main, "recentHistory");
+                var wait = Stopwatch.StartNew();
+                while (recent.RecordCount == 0 && wait.ElapsedMilliseconds < 3000) Pump(20);
+                Need(recent.RecordCount > 0 && !main.Visible, "History was not prepared while hidden.");
+                bool revealedThroughCloak = false;
+                main.VisibleChanged += (sender, args) =>
+                {
+                    if (!main.Visible) return;
+                    int cloak;
+                    revealedThroughCloak = main.IsPreparingPresentation &&
+                        DwmGetWindowAttribute(hwnd, 14, out cloak, sizeof(int)) == 0 && (cloak & 1) != 0;
+                };
+                var restore = Stopwatch.StartNew();
+                main.ShowMainWindow();
+                restore.Stop();
+                int after;
+                Need(main.Visible && revealedThroughCloak && DwmGetWindowAttribute(hwnd, 14, out after, sizeof(int)) == 0 &&
+                    (after & 1) == 0 && !OwnForeground(), "First tray restore did not finish its paint while cloaked.");
+                var nav = typeof(MainWindow).GetMethod("NavigateTo", Private);
+                nav.Invoke(main, new object[] { "游戏记录" });
+                var manager = (PageManager)Field(main, "pages");
+                var history = manager.ActivePage as HistoryWindow;
+                Need(history != null && history.Visible && history.IsHandleCreated &&
+                    manager.LastMeasurement != null && !manager.LastMeasurement.Contains("native_paints=0 "),
+                    "The first history navigation did not dispatch its page paint before returning.");
+                Console.WriteLine("PASS first tray restore " + restore.Elapsed.TotalMilliseconds.ToString("F2") +
+                    "ms, cached rows=" + recent.RecordCount + ", " + manager.LastMeasurement);
+                Capture(main, Path.Combine(output, "tray-history-first.png"));
+            }
+        }
+
         private static void ProbeMonitors(HistoryMonitor monitor, string output)
         {
             var screens = Screen.AllScreens.OrderByDescending(screen => screen.Primary).ToArray();

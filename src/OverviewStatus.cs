@@ -34,9 +34,9 @@ namespace SteamDirect
             }
         }
 
-        internal async void RequestRefresh()
+        internal async void RequestRefresh(bool allowHidden = false)
         {
-            if (!Visible || !IsHandleCreated || reading || WindowEnvironment.OffscreenTests) return;
+            if (reading || WindowEnvironment.OffscreenTests || (!allowHidden && (!Visible || !IsHandleCreated))) return;
             reading = true;
             var snapshot = await Task.Run(() => new[]
             {

@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace SteamDirect
@@ -9,6 +10,19 @@ namespace SteamDirect
         // Set only by the separate acceptance executable, never by persisted user settings.
         internal static bool OffscreenTests { get; set; }
         internal static int LayoutDpi { get; set; }
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
+
+        [DllImport("dwmapi.dll")]
+        internal static extern int DwmFlush();
+
+        internal static bool TryCloak(IntPtr window, bool cloak)
+        {
+            const int CloakAttribute = 13;
+            int enabled = cloak ? 1 : 0;
+            return DwmSetWindowAttribute(window, CloakAttribute, ref enabled, sizeof(int)) == 0;
+        }
+
         internal static Rectangle Fit(Rectangle bounds, Rectangle work)
         {
             int width = Math.Min(bounds.Width, work.Width), height = Math.Min(bounds.Height, work.Height);

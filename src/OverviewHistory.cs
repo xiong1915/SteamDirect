@@ -53,11 +53,11 @@ namespace SteamDirect
             }
         }
 
-        internal async void RequestRefresh(HistoryMonitor monitor, bool recording)
+        internal async void RequestRefresh(HistoryMonitor monitor, bool recording, bool allowHidden = false)
         {
             var store = monitor.Store;
             long revision = store.Revision;
-            if (!IsHandleCreated || !Visible || loading) return;
+            if (loading || (!allowHidden && (!IsHandleCreated || !Visible))) return;
             if (RecordCount == 0 && (monitor.IsPlaying || loadedRevision == revision))
                 state.Text = monitor.IsPlaying ? "退出游戏后可查看记录。" : EmptyMessage(recording);
             if (loadedRevision == revision || monitor.IsPlaying) return;

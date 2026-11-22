@@ -224,6 +224,8 @@ namespace SteamDirect
                 }
                 finally { host.ResumeLayout(false); }
                 }
+                if (next is HistoryWindow && host.Visible)
+                    RedrawBatch.FlushPendingPaint(host);
                 if (diagnostic)
                 {
                     paint = stage.Elapsed.TotalMilliseconds;

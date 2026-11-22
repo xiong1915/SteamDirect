@@ -180,6 +180,9 @@ namespace SteamDirect
             {
                 base.OnVisibleChanged(e);
                 if (reveal == null || !Visible || !IsHandleCreated || !Motion.Allowed) return;
+                var form = FindForm();
+                var main = TopLevelControl as MainWindow;
+                if (form is HistoryWindow || (main != null && main.IsPreparingPresentation)) return;
                 reveal.Set(0F);
                 reveal.To(1F, 160);
             }

@@ -142,6 +142,7 @@ namespace SteamDirect
         private readonly OverviewStatus overviewStatus;
 
         private bool startHidden;
+        internal bool IsPreparingPresentation { get; private set; }
 
         internal MainWindow(bool background = false, HistoryMonitor historyOverride = null, UserPreferences preferencesOverride = null)
         {
@@ -152,7 +153,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.39";
+            Text = "Steam 直连助手 v3.0.40";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -423,7 +424,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.39", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.40", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -632,20 +633,33 @@ namespace SteamDirect
                 // Keep a message target for tray and single-instance activation.
                 if (!IsHandleCreated) CreateHandle();
                 PerformLayout();
+                recentHistory.RequestRefresh(history, preferences.NetworkRecording, allowHidden: true);
+                overviewStatus.RequestRefresh(allowHidden: true);
                 return;
             }
             bool opening = value && !Visible && TopLevel;
-            if (opening && windowDiagnostics != null) windowDiagnostics.Begin();
-            base.SetVisibleCore(value);
-            if (opening && Visible)
+            if (!opening) { base.SetVisibleCore(value); return; }
+
+            if (windowDiagnostics != null) windowDiagnostics.Begin();
+            IntPtr window = Handle;
+            bool cloaked = WindowEnvironment.TryCloak(window, true);
+            IsPreparingPresentation = true;
+            try
             {
-                // Finish pending child paints before queued history/status updates get the UI thread.
-                RedrawBatch.FlushPendingPaint(this);
-                if (windowDiagnostics != null)
+                base.SetVisibleCore(value);
+                if (Visible)
                 {
-                    windowDiagnostics.PaintsFlushed();
-                    windowDiagnostics.Displayed();
+                    RedrawBatch.FlushPendingPaint(this);
+                    if (cloaked) WindowEnvironment.DwmFlush();
+                    if (windowDiagnostics != null) windowDiagnostics.PaintsFlushed();
                 }
+            }
+            finally
+            {
+                IsPreparingPresentation = false;
+                if (cloaked && IsHandleCreated && Handle == window)
+                    WindowEnvironment.TryCloak(window, false);
+                if (Visible && windowDiagnostics != null) windowDiagnostics.Displayed();
             }
         }
 

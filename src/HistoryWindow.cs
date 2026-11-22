@@ -681,34 +681,39 @@ namespace SteamDirect
             var previousTop = preferredId == null ? records.TopItem : null;
             var topSession = previousTop == null ? null : previousTop.Tag as HistorySession;
             ListViewItem preferred = null, top = null;
-            fillingRecords = true;
-            records.BeginUpdate();
-            try
+            Task selection;
+            using (new RedrawBatch(this))
             {
-                records.Items.Clear();
-                foreach (var session in sessions)
+                fillingRecords = true;
+                records.BeginUpdate();
+                try
                 {
-                    var row = new ListViewItem(session.Game ?? "未知游戏");
-                    row.ToolTipText = SessionTiming(session) + (session.HasAnomalies ? " · 网络异常，选择记录查看原因和建议" : "");
-                    row.SubItems.Add(LocalTime(session.Start, "yyyy-MM-dd HH:mm:ss"));
-                    row.SubItems.Add((session.End == 0 ? "已玩 " : "游玩 ") + SpanText((session.End == 0 ? (long)(DateTimeOffset.UtcNow - Epoch).TotalMilliseconds : session.End) - session.Start));
-                    row.SubItems.Add(session.Mode ?? "未知");
-                    row.Tag = session;
-                    records.Items.Add(row);
-                    if (session.Id == selectedId) preferred = row;
-                    if (topSession != null && session.Id == topSession.Id) top = row;
+                    records.Items.Clear();
+                    foreach (var session in sessions)
+                    {
+                        var row = new ListViewItem(session.Game ?? "未知游戏");
+                        row.ToolTipText = SessionTiming(session) + (session.HasAnomalies ? " · 网络异常，选择记录查看原因和建议" : "");
+                        row.SubItems.Add(LocalTime(session.Start, "yyyy-MM-dd HH:mm:ss"));
+                        row.SubItems.Add((session.End == 0 ? "已玩 " : "游玩 ") + SpanText((session.End == 0 ? (long)(DateTimeOffset.UtcNow - Epoch).TotalMilliseconds : session.End) - session.Start));
+                        row.SubItems.Add(session.Mode ?? "未知");
+                        row.Tag = session;
+                        records.Items.Add(row);
+                        if (session.Id == selectedId) preferred = row;
+                        if (topSession != null && session.Id == topSession.Id) top = row;
+                    }
+                    if (records.Items.Count > 0 && (preferredId == null || preferred != null))
+                    {
+                        var row = preferred ?? records.Items[0];
+                        row.Selected = true;
+                        row.EnsureVisible();
+                    }
                 }
-                if (records.Items.Count > 0 && (preferredId == null || preferred != null))
-                {
-                    var row = preferred ?? records.Items[0];
-                    row.Selected = true;
-                    row.EnsureVisible();
-                }
+                finally { records.EndUpdate(); fillingRecords = false; }
+                FitRecordRows(true);
+                if (preferred != null && top != null) records.TopItem = top;
+                selection = LoadSelectionAsync();
             }
-            finally { records.EndUpdate(); fillingRecords = false; }
-            FitRecordRows(true);
-            if (preferred != null && top != null) records.TopItem = top;
-            await LoadSelectionAsync();
+            await selection;
             if (Available && preferredId != null && preferred == null)
                 status.Text = "这条记录已不在近期列表中，可在游戏记录中查询。";
         }
