@@ -15,6 +15,7 @@ namespace SteamDirect
         private readonly List<Control> pages = new List<Control>();
         private readonly List<RoundedButton> buttons = new List<RoundedButton>();
         private int fittedWidth = -1, fittedDpi;
+        internal event Action SectionChanged;
         internal int SelectedIndex { get; private set; }
         internal int PageCount { get { return pages.Count; } }
         internal HistorySections()
@@ -101,6 +102,7 @@ namespace SteamDirect
                 SetPageSelected(index, true);
             }
             finally { content.ResumeLayout(true); }
+            if (SectionChanged != null) SectionChanged();
         }
 
         internal void RevealPage(int index)

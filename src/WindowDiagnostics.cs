@@ -16,7 +16,7 @@ namespace SteamDirect
         private static int writerBusy;
         private readonly Stopwatch clock = new Stopwatch();
         private int layouts, paints, created, destroyed, gdiBefore;
-        private long memoryBefore, firstPaint, shown, lastTick, maximumGap;
+        private long memoryBefore, firstPaint, shown, paintsFlushed, lastTick, maximumGap;
         internal bool Enabled;
         internal string LastResult { get; private set; }
         [DllImport("user32.dll")] private static extern int GetGuiResources(IntPtr process, int flags);
@@ -30,11 +30,12 @@ namespace SteamDirect
         internal void Begin()
         {
             if (!Enabled || clock.IsRunning || (Motion.IsGaming != null && Motion.IsGaming())) return;
-            layouts = paints = created = destroyed = 0; shown = firstPaint = -1; maximumGap = lastTick = 0;
+            layouts = paints = created = destroyed = 0; shown = firstPaint = paintsFlushed = -1; maximumGap = lastTick = 0;
             using (var process = Process.GetCurrentProcess()) { memoryBefore = process.WorkingSet64; gdiBefore = GetGuiResources(process.Handle, 0); }
             clock.Restart(); timer.Start();
         }
         internal void Displayed() { if (clock.IsRunning) shown = clock.ElapsedMilliseconds; }
+        internal void PaintsFlushed() { if (clock.IsRunning) paintsFlushed = clock.ElapsedMilliseconds; }
         private void Layout(object sender, LayoutEventArgs e) { if (clock.IsRunning) layouts++; }
         private void Paint(object sender, PaintEventArgs e) { if (clock.IsRunning) { paints++; if (firstPaint < 0) firstPaint = clock.ElapsedMilliseconds; } }
         private void Created(object sender, EventArgs e) { if (clock.IsRunning) created++; }
@@ -52,7 +53,7 @@ namespace SteamDirect
             {
                 var screen = Screen.FromControl(window);
                 LastResult = DateTime.Now.ToString("s") + " restore_request=0ms shown=" + shown + "ms parent_first_paint=" + firstPaint +
-                    "ms observation=" + clock.ElapsedMilliseconds + "ms UI_queue_delay_max=" + maximumGap + "ms layouts=" + layouts + " paints=" + paints +
+                    "ms child_paint_flush=" + paintsFlushed + "ms observation=" + clock.ElapsedMilliseconds + "ms UI_queue_delay_max=" + maximumGap + "ms layouts=" + layouts + " paints=" + paints +
                     " HWND_create/destroy=" + created + "/" + destroyed + " GDI=" + gdiBefore + "->" + GetGuiResources(process.Handle, 0) +
                     " working_set_delta=" + (process.WorkingSet64 - memoryBefore) + " screen=" + screen.DeviceName + " bounds=" + screen.Bounds +
                     " dpi=" + window.DeviceDpi + " motion_active=" + Motion.ActiveCount;

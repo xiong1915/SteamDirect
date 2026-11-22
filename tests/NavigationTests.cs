@@ -90,8 +90,13 @@ namespace SteamDirect
                     Wait(() => rows.Items.Count == 2 && !(bool)Field(history, "loadingRecords"));
                     Need(scope.SelectedIndex == 1 && ((Label)Field(history, "status")).Text.Contains("已显示最近历史"), "Empty today opens existing history once");
                     Need(((RichTextBox)Field(history, "overviewText")).Text.Length > 0, "Overview loaded");
-                    Need(((Control)Field(history, "networkChart")).AccessibleDescription.Contains("1 个采样点"), "Chart loaded");
+                    var reportSections = (HistorySections)Field(history, "reportSections");
+                    Need((int)Field(history, "renderedSections") == 0, "Hidden report tabs should not render with the overview");
+                    reportSections.SelectPage(1);
+                    Need(((Control)Field(history, "networkChart")).AccessibleDescription.Contains("1 个采样点"), "Chart loaded on demand");
+                    reportSections.SelectPage(2);
                     Need(((ListView)Field(history, "incidents")).Items.Count == 1, "Timeline loaded");
+                    reportSections.SelectPage(3);
                     string comparison = ((RichTextBox)Field(history, "comparisonText")).Text;
                     Need(comparison.Contains("直连 ·") && comparison.Contains("代理 ·") && comparison.Contains("样本不足"), "History shows both modes and insufficient-data status");
                     history.MinimumSize = Size.Empty;

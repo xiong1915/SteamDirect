@@ -142,19 +142,8 @@ namespace SteamDirect
         private readonly Label operationResult = new Label();
         private readonly OverviewStatus overviewStatus;
 
-        private HistoryWindow preparedHistory;
-        private bool historyCreated;
         private bool startHidden;
-        private bool presented;
 
-        private void PrepareHistoryForNavigation()
-        {
-
-            if (IsDisposed || !Visible || WindowState == FormWindowState.Minimized ||
-                running || historyCreated || history.IsPlaying || SteamGameDiscovery.IsSteamGameReported()) return;
-            preparedHistory = CreateHistoryWindow();
-            historyCreated = true;
-        }
         internal MainWindow(bool background = false, HistoryMonitor historyOverride = null, UserPreferences preferencesOverride = null)
         {
             preferences = preferencesOverride ?? UserPreferences.Load(UserPreferences.DefaultPath);
@@ -164,7 +153,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.32";
+            Text = "Steam 直连助手 v3.0.33";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -366,10 +355,6 @@ namespace SteamDirect
                 }
             };
 
-            Disposed += (sender, args) =>
-            {
-                if (preparedHistory != null) preparedHistory.Dispose();
-            };
             startHidden = background && preferences.TrayEnabled;
             Log("就绪，请先退出游戏。");
             if (preferences.NetworkRecording) history.Start();
@@ -441,16 +426,11 @@ namespace SteamDirect
                     AccessibleName = page + "页面", TabIndex = i, Icon = icons[i], CornerRadius = UiStyle.NavigationRadius };
                 AppTheme.ActionButton(button, false);
                 button.Font = UiStyle.Body;
-                if (page == "游戏记录")
-                {
-                    button.MouseEnter += (sender, args) => PrepareHistoryForNavigation();
-                    button.Enter += (sender, args) => PrepareHistoryForNavigation();
-                }
                 button.Click += (sender, args) => NavigateTo(page);
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.32", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.33", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -482,24 +462,21 @@ namespace SteamDirect
             sidebar.Disposed += (sender, args) => hints.Dispose();
             foreach (var item in navigation) hints.SetToolTip(item.Value, item.Key);
             bool manualCollapse = false, appliedCollapse = false, railLayoutPending = false;
+            Action updateRail = null;
             Motion.Value railTransition = null;
-            railTransition = new Motion.Value(sidebar, shell.ColumnStyles[0].Width, () =>
+            railTransition = new Motion.Value(toggle, 1F, () =>
             {
-                int width = (int)Math.Round(railTransition.Current);
-                if (Math.Abs(shell.ColumnStyles[0].Width - width) >= 1)
-                    shell.ColumnStyles[0].Width = width;
+                toggle.IconOpacity = .55F + .45F * railTransition.Current;
+                toggle.Invalidate();
+                if (railTransition.Current >= 1F) updateRail();
             });
-            Action<bool> updateRail = animate =>
+            updateRail = () =>
             {
                 bool constrained = shell.Width > 0 && shell.Width < UiStyle.Scale(shell, UiStyle.CompactWindowWidth);
                 bool collapsed = manualCollapse || constrained;
                 int width = UiStyle.Scale(shell, collapsed ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
                 toggle.Enabled = !constrained;
-                if (Math.Abs(shell.ColumnStyles[0].Width - width) < 1 && appliedCollapse == collapsed)
-                {
-                    if (!animate) railTransition.Set(width);
-                    return;
-                }
+                if (Math.Abs(shell.ColumnStyles[0].Width - width) < 1 && appliedCollapse == collapsed) return;
                 bool appearanceChanged = appliedCollapse != collapsed;
                 appliedCollapse = collapsed;
                 using (new RedrawBatch(sidebar))
@@ -509,8 +486,7 @@ namespace SteamDirect
                     brand.SuspendLayout();
                     try
                     {
-                        if (animate) railTransition.To(width, UiStyle.StatusMotion);
-                        else railTransition.Set(width);
+                        shell.ColumnStyles[0].Width = width;
                         if (appearanceChanged)
                         {
                             toggle.AccessibleName = collapsed ? "展开侧边栏" : "折叠侧边栏";
@@ -533,7 +509,12 @@ namespace SteamDirect
                 }
             };
             hints.SetToolTip(toggle, toggle.AccessibleName);
-            toggle.Click += (sender, args) => { manualCollapse = !manualCollapse; updateRail(true); };
+            toggle.Click += (sender, args) =>
+            {
+                manualCollapse = !manualCollapse;
+                railTransition.Set(0F);
+                railTransition.To(1F, UiStyle.ButtonMotion);
+            };
             shell.SizeChanged += (sender, args) =>
             {
                 if (!IsHandleCreated || railLayoutPending) return;
@@ -541,10 +522,10 @@ namespace SteamDirect
                 BeginInvoke((Action)(() =>
                 {
                     railLayoutPending = false;
-                    if (!IsDisposed) updateRail(false);
+                    if (!IsDisposed) updateRail();
                 }));
             };
-            Shown += (sender, args) => updateRail(false);
+            Shown += (sender, args) => updateRail();
             Controls.Add(shell);
             SelectNavigation("概览");
         }
@@ -607,13 +588,7 @@ namespace SteamDirect
                 var report = pages.ActivePage as HistoryWindow;
                 if (report != null) report.ShowNetworkTrend();
             });
-            if (page == "游戏记录")
-            {
-                historyCreated = true;
-                var report = preparedHistory;
-                preparedHistory = null;
-                return report ?? CreateHistoryWindow();
-            }
+            if (page == "游戏记录") return CreateHistoryWindow();
             var settings = new SettingsWindow(preferences.TrayEnabled, StartupSettings.IsEnabled(),
                 preferences.RetentionDays, preferences.NightMode, preferences.ThemeColor, preferences.LogDirectory, preferences.ReduceMotion, preferences.WindowDiagnostics, preferences.NetworkRecording);
             settings.Synchronize = () => settings.Reload(preferences, StartupSettings.IsEnabled());
@@ -660,13 +635,18 @@ namespace SteamDirect
                 PerformLayout();
                 return;
             }
-            bool firstPresentation = value && !presented && TopLevel;
+            bool opening = value && !Visible && TopLevel;
+            if (opening && windowDiagnostics != null) windowDiagnostics.Begin();
             base.SetVisibleCore(value);
-            if (firstPresentation && Visible)
+            if (opening && Visible)
             {
-                presented = true;
                 // Finish pending child paints before queued history/status updates get the UI thread.
                 RedrawBatch.FlushPendingPaint(this);
+                if (windowDiagnostics != null)
+                {
+                    windowDiagnostics.PaintsFlushed();
+                    windowDiagnostics.Displayed();
+                }
             }
         }
 

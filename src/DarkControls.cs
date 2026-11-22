@@ -86,7 +86,11 @@ namespace SteamDirect
         {
             max = Math.Max(0, max); visible = Math.Max(1, visible); position = Math.Max(0, Math.Min(max, position));
             if (maximum == max && page == visible && value == position) return;
-            maximum = max; page = visible; value = position; Invalidate();
+            var previous = maximum == 0 ? Rectangle.Empty : Thumb;
+            maximum = max; page = visible; value = position;
+            var next = maximum == 0 ? Rectangle.Empty : Thumb;
+            if (!previous.IsEmpty && !next.IsEmpty) Invalidate(Rectangle.Inflate(Rectangle.Union(previous, next), 1, 1));
+            else if (!previous.IsEmpty || !next.IsEmpty) Invalidate(Rectangle.Inflate(previous.IsEmpty ? next : previous, 1, 1));
         }
         internal DarkScrollBar() { hover = new Motion.Value(this, 0F); DoubleBuffered = true; TabStop = false; AccessibleRole = AccessibleRole.ScrollBar; AccessibleName = "垂直滚动"; }
         private Rectangle Thumb

@@ -74,7 +74,10 @@ namespace SteamDirect {
     }catch{image.Dispose();throw;}
    }
    if (reveal.Current >= 1F)
-    e.Graphics.DrawImage(imageCache, ClientRectangle, 0, 0, imageCache.Width, imageCache.Height, GraphicsUnit.Pixel);
+   {
+    var dirty = Rectangle.Intersect(ClientRectangle, e.ClipRectangle);
+    if (!dirty.IsEmpty) e.Graphics.DrawImage(imageCache, dirty, dirty, GraphicsUnit.Pixel);
+   }
    else
    {
     revealColors.Matrix33 = reveal.Current;

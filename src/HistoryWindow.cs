@@ -60,6 +60,8 @@ namespace SteamDirect
         private bool initialScopeResolved;
         private string selectionHint;
         private readonly HistorySections reportSections;
+        private Detail displayedDetail;
+        private int renderedSections;
         private readonly Stack<TableLayoutPanel> buildingGrids = new Stack<TableLayoutPanel>();
         internal double LastDataLoadMilliseconds { get; private set; }
         internal double LastQueryMilliseconds { get; private set; }
@@ -253,6 +255,7 @@ namespace SteamDirect
             timeline.Controls.Add(new NativeScrollFrame(incidents), 0, 1);
             tabs.Add("异常时间线", timeline);
             tabs.Add("历史参考", new NativeScrollFrame(comparisonText));
+            tabs.SectionChanged += RenderSelectedSection;
             detail.Controls.Add(tabs, 0, 3);
             detail.SetColumnSpan(tabs, 2);
             bool compactHeader = false;
@@ -809,7 +812,10 @@ namespace SteamDirect
         private void ShowDetailState(string title, string message, bool failed = false)
         {
             UiStyle.SetState(overviewTitle, overviewNote, title, message, failed);
+            displayedDetail = null;
+            renderedSections = 0;
             comparisonText.Text = message;
+            incidents.Items.Clear();
             incidentSummary.Text = message;
             networkChart.SetEmpty(message);
         }
@@ -1049,9 +1055,28 @@ namespace SteamDirect
             metricValues[2].Text = metrics.Attempts.ToString(CultureInfo.InvariantCulture);
             overviewText.Text = detail.OverviewText;
             FormatNarrative(overviewText);
-            comparisonText.Text = detail.Comparison;
-            FormatNarrative(comparisonText);
-            networkChart.SetData(detail.Session, detail.Samples, detail.Events);
+            displayedDetail = detail;
+            renderedSections = 0;
+            RenderSelectedSection();
+        }
+
+        private void RenderSelectedSection()
+        {
+            var detail = displayedDetail;
+            int section = reportSections.SelectedIndex;
+            if (detail == null || section <= 0 || (renderedSections & (1 << section)) != 0) return;
+            renderedSections |= 1 << section;
+            if (section == 1) networkChart.SetData(detail.Session, detail.Samples, detail.Events);
+            else if (section == 2) RenderIncidents(detail);
+            else
+            {
+                comparisonText.Text = detail.Comparison;
+                FormatNarrative(comparisonText);
+            }
+        }
+
+        private void RenderIncidents(Detail detail)
+        {
             incidents.BeginUpdate();
             try
             {
