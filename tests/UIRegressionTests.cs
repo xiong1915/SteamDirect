@@ -5,6 +5,18 @@ using System.Reflection;
 using System.Collections.Generic;
 namespace SteamDirect {
  internal static class UIRegressionTests {
+  private sealed class ButtonInputProbe : RoundedButton
+  {
+   internal void SimulatePress() { OnMouseDown(new MouseEventArgs(MouseButtons.Left, 1, 2, 2, 0)); }
+   internal void SimulatePointer(int x) { OnMouseMove(new MouseEventArgs(MouseButtons.Left, 0, x, 2, 0)); }
+   internal void SimulateCaptureLoss() { OnMouseCaptureChanged(EventArgs.Empty); }
+   internal void SimulateSpace(bool down)
+   {
+    var args = new KeyEventArgs(Keys.Space);
+    if (down) OnKeyDown(args);
+    else OnKeyUp(args);
+   }
+  }
   private static int checks;
   private static void Check(bool ok,string message){if(!ok)throw new Exception(message);checks++;}
   [STAThread] internal static int Run(){
@@ -34,6 +46,26 @@ namespace SteamDirect {
      Motion.Reduced=false; value.To(0F,180); control.Dispose(); Check(Motion.ActiveCount==0,"Disposed owner releases motion.");
     }
    }
+   Motion.Reduced = true;
+   using (var button = new ButtonInputProbe())
+   {
+    var interaction = (Motion.Value)typeof(RoundedButton)
+     .GetField("interaction", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(button);
+    button.SimulatePress();
+    Check(interaction.Current == 1F, "Pointer press should be immediate.");
+    button.SimulatePointer(-1);
+    Check(interaction.Current == 0F, "Dragging out must release the pressed appearance.");
+    button.SimulatePointer(2);
+    Check(interaction.Current == 1F, "Dragging back in must restore the pressed appearance.");
+    button.SimulateCaptureLoss();
+    Check(interaction.Current == .55F, "Losing capture must clear pointer press.");
+    button.SimulateSpace(true);
+    button.SimulatePointer(-1);
+    Check(interaction.Current == 1F, "Moving the pointer away must preserve a held Space key.");
+    button.SimulateSpace(false);
+    Check(interaction.Current == 0F, "Releasing Space must clear keyboard press.");
+   }
+   Motion.Reduced = false;
    foreach(bool dark in new[]{false,true}) foreach(string color in new[]{"#6750A4","#FF0000","#FFFFFF","#000000"}) {
     AppTheme.SetTheme(dark,color);
     Check(AppTheme.Contrast(AppTheme.Text(AppTheme.Accent),AppTheme.Background(AppTheme.Surface))>=4.5,"Accent text contrast.");

@@ -94,15 +94,18 @@ namespace SteamDirect
             if (SelectedIndex == index) return;
             int previous = SelectedIndex;
             SelectedIndex = index;
-            content.SuspendLayout();
-            try
+            using (new RedrawBatch(content))
             {
-                if (previous >= 0) SetPageSelected(previous, false);
-                pages[index].BringToFront();
-                SetPageSelected(index, true);
+                content.SuspendLayout();
+                try
+                {
+                    pages[index].BringToFront();
+                    SetPageSelected(index, true);
+                    if (previous >= 0) SetPageSelected(previous, false);
+                }
+                finally { content.ResumeLayout(true); }
+                if (SectionChanged != null) SectionChanged();
             }
-            finally { content.ResumeLayout(true); }
-            if (SectionChanged != null) SectionChanged();
         }
 
         internal void RevealPage(int index)

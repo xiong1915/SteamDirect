@@ -7,7 +7,7 @@ namespace SteamDirect
 {
     internal class RoundedButton : Button
     {
-        private bool hovering, pressed;
+        private bool hovering, pointerDown, spaceDown;
         private readonly Motion.Value interaction;
         private readonly Motion.Value selection;
         private bool selected;
@@ -56,20 +56,56 @@ namespace SteamDirect
 
         private void UpdateMotion()
         {
-            if (interaction == null || selection == null) return;
-            if (pressed) interaction.Set(1F);
-            else interaction.To(hovering ? .55F : 0F, UiStyle.ButtonMotion);
-
+            if (interaction == null) return;
+            if (Enabled && (spaceDown || pointerDown && hovering))
+                interaction.Set(1F);
+            else
+                interaction.To(Enabled && hovering ? .55F : 0F, UiStyle.ButtonMotion);
         }
+
         protected override void Dispose(bool disposing) { if (disposing) { interaction.Dispose(); selection.Dispose(); } base.Dispose(disposing); }
-        protected override void OnEnabledChanged(EventArgs e) { base.OnEnabledChanged(e); if (!Enabled) hovering = pressed = false; UpdateMotion(); }
+        protected override void OnEnabledChanged(EventArgs e)
+        {
+            base.OnEnabledChanged(e);
+            if (!Enabled) hovering = pointerDown = spaceDown = false;
+            UpdateMotion();
+        }
         protected override void OnMouseEnter(EventArgs e) { hovering = true; UpdateMotion(); base.OnMouseEnter(e); }
-        protected override void OnMouseLeave(EventArgs e) { hovering = pressed = false; UpdateMotion(); base.OnMouseLeave(e); }
-        protected override void OnMouseDown(MouseEventArgs e) { pressed = e.Button == MouseButtons.Left; UpdateMotion(); base.OnMouseDown(e); }
-        protected override void OnMouseUp(MouseEventArgs e) { pressed = false; UpdateMotion(); base.OnMouseUp(e); }
-        protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Space) { pressed = true; UpdateMotion(); } base.OnKeyDown(e); }
-        protected override void OnKeyUp(KeyEventArgs e) { pressed = false; UpdateMotion(); base.OnKeyUp(e); }
-        protected override void OnLostFocus(EventArgs e) { pressed = false; UpdateMotion(); base.OnLostFocus(e); }
+        protected override void OnMouseLeave(EventArgs e) { hovering = false; UpdateMotion(); base.OnMouseLeave(e); }
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            bool inside = ClientRectangle.Contains(e.Location);
+            if (inside != hovering) { hovering = inside; UpdateMotion(); }
+            base.OnMouseMove(e);
+        }
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                hovering = ClientRectangle.Contains(e.Location);
+                pointerDown = true;
+                UpdateMotion();
+            }
+            base.OnMouseDown(e);
+        }
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                hovering = ClientRectangle.Contains(e.Location);
+                pointerDown = false;
+                UpdateMotion();
+            }
+            base.OnMouseUp(e);
+        }
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            base.OnMouseCaptureChanged(e);
+            if (!Capture && pointerDown) { pointerDown = false; UpdateMotion(); }
+        }
+        protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Space && !spaceDown) { spaceDown = true; UpdateMotion(); } base.OnKeyDown(e); }
+        protected override void OnKeyUp(KeyEventArgs e) { if (e.KeyCode == Keys.Space) { spaceDown = false; UpdateMotion(); } base.OnKeyUp(e); }
+        protected override void OnLostFocus(EventArgs e) { pointerDown = spaceDown = false; UpdateMotion(); base.OnLostFocus(e); }
 
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -96,8 +132,10 @@ namespace SteamDirect
                 using (var brush = new SolidBrush(fill)) e.Graphics.FillPath(brush, path);
             }
             var bounds = CaptionBounds;
-            Color textColor = Enabled && navigation && selected ? AppTheme.Text(AppTheme.Accent) :
-                Enabled ? ForeColor : AppTheme.Text(AppTheme.Disabled);
+            Color textColor = !Enabled ? AppTheme.Text(AppTheme.Disabled) :
+                navigation || HorizontalIndicator
+                    ? Motion.Blend(AppTheme.Text(AppTheme.Muted), AppTheme.Text(AppTheme.Accent), selection.Current)
+                    : ForeColor;
             var alignment = TextOnly ? TextFormatFlags.Left : TextFormatFlags.HorizontalCenter;
             if (Icon != UiIcon.None)
             {
@@ -113,7 +151,9 @@ namespace SteamDirect
             {
                 using (var marker = new SolidBrush(AppTheme.Background(AppTheme.Accent)))
                 {
-                    e.Graphics.FillRectangle(marker, (int)(Width * .18F), Height - Math.Max(2, (int)(2 * scale)), Math.Max(1, (int)(Width * .64F * selection.Current)), Math.Max(2, (int)(2 * scale)));
+                    int markerWidth = Math.Max(1, (int)(Width * .64F * selection.Current));
+                    int markerHeight = Math.Max(2, (int)(2 * scale));
+                    e.Graphics.FillRectangle(marker, (Width - markerWidth) / 2, Height - markerHeight, markerWidth, markerHeight);
                 }
             }
             if (Focused && ShowFocusCues)
