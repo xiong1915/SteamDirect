@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -73,6 +74,30 @@ namespace SteamDirect
                         if (!baseline && prepared != null)
                             Need(prepared.GetValue(main) == null, "Home startup constructed the history page before navigation intent");
                         FontMetrics(main);
+                        if (!baseline)
+                        {
+                            var desktopRun = Environment.GetEnvironmentVariable("STEAMDIRECT_VISIBLE_MOTION") == "1";
+                            var monitorArea = Array.Find(Screen.AllScreens, screen => !screen.Primary);
+                            var offscreen = main.Bounds;
+                            if (desktopRun && monitorArea != null)
+                            {
+                                var work = monitorArea.WorkingArea;
+                                main.Bounds = new Rectangle(work.X + 20, work.Y + 20, Math.Min(980, work.Width - 40), Math.Min(720, work.Height - 40));
+                                Pump(100);
+                            }
+                            using (var trace = new NavigationTrace(true))
+                            {
+                                trace.Observe(main);
+                                MotionAcceptance(main);
+                                Console.WriteLine("MOTION visible_desktop=" + (desktopRun && monitorArea != null) + " " + trace.Summary);
+                            }
+                            if (desktopRun && monitorArea != null)
+                            {
+                                main.Bounds = offscreen;
+                                OffscreenGeometry.Resize(main, fourK ? new Size(3760, 2060) : new Size(1840, 980));
+                                Pump(100);
+                            }
+                        }
                         var nav=typeof(MainWindow).GetMethod("NavigateTo",Private);
                         string[] pages={"网络诊断","游戏记录","设置","概览"};
                         var first=new Dictionary<string,Form>();
@@ -138,6 +163,34 @@ namespace SteamDirect
             }catch(Exception ex){Console.Error.WriteLine(ex);return 1;}finally{Motion.IsGaming=null;try{Directory.Delete(temp,true);}catch(IOException){}}
         }
 
+        private static void MotionAcceptance(MainWindow main)
+        {
+            if (!Motion.Allowed) { Console.WriteLine("MOTION skipped by Windows accessibility policy"); return; }
+            var stamps = new List<double>();
+            var clock = Stopwatch.StartNew();
+            Motion.Value value = null;
+            using (value = new Motion.Value(main, 0F, () =>
+            {
+                stamps.Add(clock.Elapsed.TotalMilliseconds);
+
+            }))
+            {
+                var toggle = FindSidebarToggle(main);
+                toggle.PerformClick();
+                value.To(1F, 240);
+                Pump(300);
+                Need(value.Current == 1F && stamps.Count >= 2, "Motion did not reach its destination");
+                var gaps = stamps.Zip(stamps.Skip(1), (a, b) => b - a).OrderBy(x => x).ToArray();
+                Console.WriteLine("MOTION interval_p50_ms=" + gaps[gaps.Length / 2].ToString("F2") +
+                    " max_ms=" + gaps.Last().ToString("F2") + " frames=" + stamps.Count);
+                value.To(0F, 240);
+                Motion.Reduced = true;
+                Need(value.Current == 0F && Motion.ActiveCount == 0, "Reduced motion did not settle active controls");
+                toggle.PerformClick();
+                Motion.Reduced = false;
+            }
+        }
+
         private static void SidebarAcceptance(MainWindow main, Control page, string name)
         {
             var host = (PageHost)Field(main, "pageHost");
@@ -160,6 +213,7 @@ namespace SteamDirect
                         elapsed += clock.Elapsed.TotalMilliseconds;
                         if (i == 0) Console.WriteLine("SIDEBAR detail " + name + " " + trace.Summary);
                     }
+                    Pump(200);
                     Need(toggle.PointToScreen(Point.Empty) == anchor, "Sidebar toggle moved with the page");
                     Need(page.Bounds == host.PageBounds, "Sidebar toggle did not fit the active page");
                 }

@@ -55,6 +55,7 @@ namespace SteamDirect
                 var control = owner as Control;
                 Motion.Value fade = null;
                 fade = new Motion.Value(window, 0, () => { if (!window.IsDisposed && fade != null) window.Opacity = .9 + .1 * fade.Current; });
+                if (Motion.Allowed) window.Opacity = .9;
                 window.Shown += (sender, args) => fade.To(1, UiStyle.DialogMotion);
                 try { return window.ShowDialog(control == null ? owner : control.TopLevelControl); } finally { fade.Dispose(); }
             }

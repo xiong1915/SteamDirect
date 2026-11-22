@@ -8,6 +8,19 @@ namespace SteamDirect
     // Retain the native combo's keyboard, IME, selection and accessibility implementation.
     internal sealed class DarkComboBox : ComboBox
     {
+        private readonly Motion.Value drop;
+
+        internal DarkComboBox()
+        {
+            drop = new Motion.Value(this, 0F);
+        }
+
+        protected override void OnDropDownClosed(EventArgs e)
+        {
+            drop.To(0F, UiStyle.ButtonMotion);
+            base.OnDropDownClosed(e);
+        }
+
         internal Rectangle CaptionBounds
         {
             get
@@ -25,6 +38,7 @@ namespace SteamDirect
         {
             var info = new ComboInfo { size = Marshal.SizeOf(typeof(ComboInfo)) };
             if (GetComboBoxInfo(Handle, ref info) && info.list != IntPtr.Zero) SetWindowTheme(info.list, AppTheme.IsDark ? "DarkMode_Explorer" : "Explorer", null);
+            drop.To(1F, UiStyle.ButtonMotion);
             base.OnDropDown(e);
         }
         protected override void WndProc(ref Message message)
@@ -55,15 +69,17 @@ namespace SteamDirect
             TextRenderer.DrawText(graphics, Text, Font, CaptionBounds,
                 AppTheme.Text(Enabled ? AppTheme.Ink : AppTheme.Muted), TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
             int x = rect.Right - arrow / 2, y = rect.Height / 2, d = UiStyle.Scale(this, 4);
+            int rise = (int)Math.Round(d * (.5F - (drop == null ? 0F : drop.Current)));
             using (var pen = new Pen(AppTheme.Text(AppTheme.Muted), Math.Max(1, UiStyle.Dpi(this) / 96F)))
-                graphics.DrawLines(pen, new[] { new Point(x - d, y - d / 2), new Point(x, y + d / 2), new Point(x + d, y - d / 2) });
+                graphics.DrawLines(pen, new[] { new Point(x - d, y - rise), new Point(x, y + rise), new Point(x + d, y - rise) });
         }
     }
 
     internal sealed class DarkScrollBar : Control
     {
         private int maximum, page = 1, value, dragY, dragValue;
-        private bool hover, dragging;
+        private bool dragging;
+        private readonly Motion.Value hover;
         internal event Action<int> ScrollTo;
         internal int Value { get { return value; } }
         internal void SetRange(int max, int visible, int position)
@@ -72,7 +88,7 @@ namespace SteamDirect
             if (maximum == max && page == visible && value == position) return;
             maximum = max; page = visible; value = position; Invalidate();
         }
-        internal DarkScrollBar() { DoubleBuffered = true; TabStop = false; AccessibleRole = AccessibleRole.ScrollBar; AccessibleName = "垂直滚动"; }
+        internal DarkScrollBar() { hover = new Motion.Value(this, 0F); DoubleBuffered = true; TabStop = false; AccessibleRole = AccessibleRole.ScrollBar; AccessibleName = "垂直滚动"; }
         private Rectangle Thumb
         {
             get {
@@ -88,7 +104,7 @@ namespace SteamDirect
             if (maximum == 0) return;
             e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             using (var path = UiStyle.RoundRect(Thumb, Width / 2F))
-            using (var brush = new SolidBrush(dragging ? AppTheme.Text(AppTheme.Accent) : hover ? AppTheme.Text(AppTheme.Muted) : AppTheme.Edge)) e.Graphics.FillPath(brush, path);
+            using (var brush = new SolidBrush(dragging ? AppTheme.Text(AppTheme.Accent) : Motion.Blend(AppTheme.Edge, AppTheme.Text(AppTheme.Muted), hover.Current))) e.Graphics.FillPath(brush, path);
         }
         private void MoveTo(int position) { if (ScrollTo != null) ScrollTo(Math.Max(0, Math.Min(maximum, position))); }
         protected override void OnMouseDown(MouseEventArgs e)
@@ -100,8 +116,8 @@ namespace SteamDirect
         protected override void OnMouseMove(MouseEventArgs e) { base.OnMouseMove(e); if (dragging) MoveTo(dragValue + (int)((long)(e.Y - dragY) * maximum / Math.Max(1, Height - UiStyle.Scale(this, 6) - Thumb.Height))); }
         protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); dragging = false; Capture = false; Invalidate(); }
         protected override void OnMouseCaptureChanged(EventArgs e) { base.OnMouseCaptureChanged(e); if (!Capture) { dragging = false; Invalidate(); } }
-        protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hover = true; Invalidate(); }
-        protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hover = false; Invalidate(); }
+        protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hover.To(1F, UiStyle.ButtonMotion); }
+        protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hover.To(0F, UiStyle.ButtonMotion); }
         protected override void OnMouseWheel(MouseEventArgs e) { base.OnMouseWheel(e); MoveTo(value - Math.Sign(e.Delta) * Math.Max(1, SystemInformation.MouseWheelScrollLines)); }
     }
 

@@ -126,6 +126,23 @@ namespace SteamDirect
             if (state == FormWindowState.Normal && previousState != FormWindowState.Normal && !fitting) QueueDisplayCheck();
             previousState = state;
         }
-        protected override void OnShown(EventArgs e) { base.OnShown(e); CheckWorkArea(); }
+        private Motion.Value appearance;
+
+        protected override void OnLoad(EventArgs e)
+        {
+            if (TopLevel && !(this is MainWindow) && Motion.Allowed)
+            {
+                Opacity = .94;
+                appearance = new Motion.Value(this, 0F, () => Opacity = .94 + .06 * appearance.Current);
+            }
+            base.OnLoad(e);
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            CheckWorkArea();
+            if (appearance != null) appearance.To(1F, UiStyle.DialogMotion);
+        }
     }
 }

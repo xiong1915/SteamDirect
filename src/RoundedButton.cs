@@ -55,7 +55,8 @@ namespace SteamDirect
         private void UpdateMotion()
         {
             if (interaction == null || selection == null) return;
-            interaction.To(pressed ? 1F : hovering ? .55F : 0F, UiStyle.ButtonMotion);
+            if (pressed) interaction.Set(1F);
+            else interaction.To(hovering ? .55F : 0F, UiStyle.ButtonMotion);
 
         }
         protected override void Dispose(bool disposing) { if (disposing) { interaction.Dispose(); selection.Dispose(); } base.Dispose(disposing); }

@@ -11,7 +11,106 @@ namespace SteamDirect
     internal static class Motion
     {
         private static readonly List<Value> active = new List<Value>();
-        private static readonly Timer timer = new Timer { Interval = UiStyle.MotionTick };
+        private static readonly System.Threading.Timer timer = new System.Threading.Timer(QueueFrame);
+        private static readonly List<Value> frame = new List<Value>();
+        private static WindowsFormsSynchronizationContext context;
+        private static int posted;
+        private static System.Threading.EventWaitHandle frameSignal;
+        private static System.Threading.RegisteredWaitHandle frameWait;
+        internal static int FrameInterval { get; private set; }
+
+        [DllImport("kernel32.dll", EntryPoint = "CreateWaitableTimerExW", CharSet = CharSet.Unicode)]
+        private static extern Microsoft.Win32.SafeHandles.SafeWaitHandle CreateWaitableTimerEx(IntPtr attributes, string name, uint flags, uint access);
+        [DllImport("kernel32.dll")]
+        private static extern bool SetWaitableTimer(Microsoft.Win32.SafeHandles.SafeWaitHandle timer,
+            ref long due, int period, IntPtr completion, IntPtr argument, bool resume);
+        [DllImport("kernel32.dll")]
+        private static extern bool CancelWaitableTimer(Microsoft.Win32.SafeHandles.SafeWaitHandle timer);
+        private static bool ticking, shuttingDown;
+
+        [DllImport("gdi32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr CreateDC(string driver, string device, string output, IntPtr initialization);
+        [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr dc, int index);
+        [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr dc);
+
+        private static void Start(Control owner)
+        {
+            if (ticking || shuttingDown) return;
+            if (context == null) context = new WindowsFormsSynchronizationContext();
+            int hz = 60;
+            IntPtr dc = CreateDC("DISPLAY", Screen.FromControl(owner).DeviceName, null, IntPtr.Zero);
+            if (dc != IntPtr.Zero)
+            {
+                try { int reported = GetDeviceCaps(dc, 116); if (reported >= 30) hz = reported; }
+                finally { DeleteDC(dc); }
+            }
+            FrameInterval = Math.Max(4, (int)Math.Floor(1000.0 / hz));
+            ticking = true;
+            if (frameSignal == null)
+            {
+                var handle = CreateWaitableTimerEx(IntPtr.Zero, null, 2, 0x00100002);
+                if (handle.IsInvalid) handle.Dispose();
+                else
+                {
+                    frameSignal = new System.Threading.EventWaitHandle(false, System.Threading.EventResetMode.AutoReset);
+                    frameSignal.SafeWaitHandle = handle;
+                }
+            }
+            long due = -1;
+            if (frameSignal != null && SetWaitableTimer(frameSignal.SafeWaitHandle, ref due, FrameInterval, IntPtr.Zero, IntPtr.Zero, false))
+            {
+                frameWait = System.Threading.ThreadPool.RegisterWaitForSingleObject(frameSignal,
+                    (state, timeout) => QueueFrame(state), null, System.Threading.Timeout.Infinite, false);
+            }
+            else timer.Change(0, FrameInterval);
+        }
+
+        private static void QueueFrame(object state)
+        {
+            if (System.Threading.Interlocked.Exchange(ref posted, 1) != 0) return;
+            try { context.Post(_ => DrawFrame(), null); }
+            catch (InvalidOperationException) { System.Threading.Interlocked.Exchange(ref posted, 0); }
+        }
+
+        private static void DrawFrame()
+        {
+            try
+            {
+                if (!ticking) return;
+                long now = Stopwatch.GetTimestamp();
+                bool allowed = Allowed;
+                frame.AddRange(active);
+                foreach (var value in frame) value.Step(now, allowed);
+            }
+            finally
+            {
+                frame.Clear();
+                System.Threading.Interlocked.Exchange(ref posted, 0);
+                StopIfIdle();
+            }
+        }
+
+        private static void StopIfIdle()
+        {
+            if (!ticking || active.Count != 0) return;
+            ticking = false;
+            if (frameWait != null)
+            {
+                CancelWaitableTimer(frameSignal.SafeWaitHandle);
+                frameWait.Unregister(null);
+                frameWait = null;
+            }
+            timer.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+        }
+
+        private static bool CanAnimate(Control owner)
+        {
+            var window = owner.TopLevelControl as Form;
+            var desktop = window as DesktopForm;
+            return owner.IsHandleCreated && owner.Visible && !owner.IsDisposed &&
+                (window == null || window.WindowState != FormWindowState.Minimized) &&
+                (desktop == null || !desktop.IsLiveResizing);
+        }
         private static bool reduced;
         internal static Func<bool> IsGaming;
 
@@ -41,18 +140,20 @@ namespace SteamDirect
 
         static Motion()
         {
-            timer.Tick += (sender, args) =>
+            Application.ApplicationExit += (sender, args) =>
             {
-                foreach (var value in active.ToArray()) value.Step();
-                if (active.Count == 0) timer.Stop();
+                shuttingDown = true;
+                FinishAll();
+                timer.Dispose();
+                if (frameSignal != null) frameSignal.Dispose();
+                if (context != null) context.Dispose();
             };
-            Application.ApplicationExit += (sender, args) => { FinishAll(); timer.Dispose(); };
         }
 
         private static void FinishAll()
         {
             foreach (var value in active.ToArray()) value.Snap();
-            timer.Stop();
+            StopIfIdle();
         }
 
         internal static Color Blend(Color from, Color to, float fraction)
@@ -86,8 +187,9 @@ namespace SteamDirect
             internal void To(float value, int milliseconds)
             {
                 if (disposed) return;
+                if (target == value && (current == value || active.Contains(this))) return;
                 target = value;
-                if (milliseconds <= 0 || !Allowed || !owner.IsHandleCreated || !owner.Visible || owner.IsDisposed)
+                if (milliseconds <= 0 || !Allowed || !CanAnimate(owner))
                 {
                     Snap();
                     return;
@@ -97,7 +199,21 @@ namespace SteamDirect
                 duration = milliseconds;
                 started = Stopwatch.GetTimestamp();
                 if (!active.Contains(this)) active.Add(this);
-                timer.Start();
+                Start(owner);
+            }
+
+            internal void SetPulse(bool enabled)
+            {
+                if (disposed) return;
+                if (!enabled || !Allowed || !CanAnimate(owner))
+                {
+                    active.Remove(this);
+                    StopIfIdle();
+                    return;
+                }
+                duration = 0;
+                if (!active.Contains(this)) active.Add(this);
+                Start(owner);
             }
 
             internal void Set(float value)
@@ -112,16 +228,18 @@ namespace SteamDirect
                 if (disposed) return;
                 current = target;
                 active.Remove(this);
-                if (active.Count == 0) timer.Stop();
+                StopIfIdle();
                 Changed();
             }
 
-            internal void Step()
+            internal void Step(long now, bool allowed)
             {
-                if (disposed) return;
-                if (!Allowed || !owner.Visible || !owner.IsHandleCreated || owner.IsDisposed) { Snap(); return; }
-                double progress = Math.Min(1, (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency / duration);
-                float eased = (float)(1 - Math.Pow(1 - progress, 3));
+                if (disposed || !active.Contains(this)) return;
+                if (!allowed || !CanAnimate(owner)) { Snap(); return; }
+                if (duration == 0) { Changed(); return; }
+                double progress = Math.Max(0, Math.Min(1, (now - started) * 1000.0 / Stopwatch.Frequency / duration));
+                float remainder = (float)(1 - progress);
+                float eased = 1 - remainder * remainder * remainder;
                 current = from + (target - from) * eased;
                 if (progress >= 1) { Snap(); return; }
                 Changed();
@@ -143,7 +261,7 @@ namespace SteamDirect
                 if (disposed) return;
                 disposed = true;
                 active.Remove(this);
-                if (active.Count == 0) timer.Stop();
+                StopIfIdle();
                 owner.Disposed -= OwnerDisposed;
                 owner.VisibleChanged -= Visibility;
                 owner.HandleDestroyed -= Visibility;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Windows.Forms;
 namespace SteamDirect {
  internal sealed class HistoryNetworkChart : Control {
@@ -11,13 +12,16 @@ namespace SteamDirect {
   private string emptyMessage = "从左侧选择一条游戏记录。";
   private bool invalidData;
   private Bitmap imageCache;
+  private readonly Motion.Value reveal;
+  private readonly ImageAttributes revealAttributes = new ImageAttributes();
+  private readonly ColorMatrix revealColors = new ColorMatrix();
   private readonly ToolTip dataTip = new ToolTip { ShowAlways = false };
   private readonly List<HistorySample> tipSamples = new List<HistorySample>();
   private long tipAt = long.MinValue;
   private bool cachedDark;
   private bool fontChangedDuringDrag;
   private int cachedColor, cachedDpi;
-  internal HistoryNetworkChart(){DoubleBuffered=true;ResizeRedraw=true;Dock=DockStyle.Fill;BackColor=AppTheme.Surface;Font=UiStyle.Caption;AccessibleName="本局网络波动图";}
+  internal HistoryNetworkChart(){reveal=new Motion.Value(this,1F);DoubleBuffered=true;ResizeRedraw=true;Dock=DockStyle.Fill;BackColor=AppTheme.Surface;Font=UiStyle.Caption;AccessibleName="本局网络波动图";}
   internal void SetEmpty(string message)
   {
    SetData(null, null, null);
@@ -34,6 +38,8 @@ namespace SteamDirect {
    foreach(var issue in events)if(issue==null||issue.Start<0||issue.Start>253402300799999L||issue.End<0||issue.End>253402300799999L)invalidData=true;
    tipSamples.Clear(); if(!invalidData){tipSamples.AddRange(samples);tipSamples.Sort((a,b)=>a.At.CompareTo(b.At));}tipAt=long.MinValue;dataTip.SetToolTip(this,null);
    ClearCache();
+   if (samples.Count > 0 && Visible && IsHandleCreated && Motion.Allowed) { reveal.Set(.65F); reveal.To(1F, UiStyle.StatusMotion); }
+   else reveal.Set(1F);
    AccessibleDescription=samples.Count==0?emptyMessage:"已加载 "+samples.Count+" 个采样点。超时不等于游戏实际丢包。";Invalidate();
   }
   private bool IsLiveResizing
@@ -67,11 +73,18 @@ namespace SteamDirect {
      fontChangedDuringDrag = false;
     }catch{image.Dispose();throw;}
    }
-   e.Graphics.DrawImage(imageCache, ClientRectangle, 0, 0, imageCache.Width, imageCache.Height, GraphicsUnit.Pixel);
+   if (reveal.Current >= 1F)
+    e.Graphics.DrawImage(imageCache, ClientRectangle, 0, 0, imageCache.Width, imageCache.Height, GraphicsUnit.Pixel);
+   else
+   {
+    revealColors.Matrix33 = reveal.Current;
+    revealAttributes.SetColorMatrix(revealColors);
+    e.Graphics.DrawImage(imageCache, ClientRectangle, 0, 0, imageCache.Width, imageCache.Height, GraphicsUnit.Pixel, revealAttributes);
+   }
   }
   // Visibility alone does not invalidate data, size, theme or DPI. Keep the bounded cache for tray/tab restore.
   private void ClearCache(){if(imageCache!=null){imageCache.Dispose();imageCache=null;}}
-  protected override void Dispose(bool disposing){if(disposing){dataTip.Dispose();ClearCache();}base.Dispose(disposing);}
+  protected override void Dispose(bool disposing){if(disposing){dataTip.Dispose();revealAttributes.Dispose();ClearCache();}base.Dispose(disposing);}
   protected override void OnMouseMove(MouseEventArgs e){
    base.OnMouseMove(e);if(tipSamples.Count==0||Width<=UiStyle.Scale(this,64))return;
    double fraction=Math.Max(0,Math.Min(1,(e.X-UiStyle.Scale(this,48))/(double)Math.Max(1,Width-UiStyle.Scale(this,64))));

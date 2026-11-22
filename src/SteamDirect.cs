@@ -120,7 +120,7 @@ namespace SteamDirect
         internal bool DirectConnectRunning { get { return running; } }
         private readonly StepTimeline timeline = new StepTimeline();
         private readonly Label elapsedLabel = new Label();
-        private readonly System.Windows.Forms.Timer animationTimer = new System.Windows.Forms.Timer();
+        private readonly Motion.Value operationAnimation;
         private long displayedSecond = -1;
         private int displayedStep = -1;
         private readonly Stopwatch operationWatch = new Stopwatch();
@@ -164,7 +164,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.31";
+            Text = "Steam 直连助手 v3.0.32";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -325,10 +325,9 @@ namespace SteamDirect
             logBox.BorderStyle = BorderStyle.None;
             logBox.AccessibleName = "操作记录";
             logArea.Controls.Add(new NativeScrollFrame(logBox) { BackColor = AppTheme.Page }, 0, 1);
-            animationTimer.Interval = UiStyle.MotionTick;
-            animationTimer.Tick += (sender, args) =>
+            operationAnimation = new Motion.Value(this, 0F, () =>
             {
-                if (!Visible || WindowState == FormWindowState.Minimized || !Motion.Allowed) { animationTimer.Stop(); return; }
+                if (!running || !Visible || WindowState == FormWindowState.Minimized || !Motion.Allowed) return;
                 long elapsed = operationWatch.ElapsedMilliseconds;
                 if (timeline.Visible) timeline.AdvanceSpinner(elapsed);
                 if (displayedSecond == elapsed / 1000 && displayedStep == timeline.ActiveStep) return;
@@ -336,7 +335,7 @@ namespace SteamDirect
                 displayedStep = timeline.ActiveStep;
                 if (timeline.ActiveStep >= 0 && timeline.ActiveStep < timeline.StepCount)
                     elapsedLabel.Text = "第 " + (timeline.ActiveStep + 1) + " / " + timeline.StepCount + " 步  ·  " + operationWatch.Elapsed.ToString(@"mm\:ss");
-            };
+            });
             trayMenu.Items.Add("打开主窗口", null, (sender, args) => ShowMainWindow());
             trayMenu.Items.Add("设置", null, (sender, args) => OpenSettings());
             trayMenu.Opening += (sender, args) =>
@@ -451,7 +450,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.31", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.32", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -483,13 +482,24 @@ namespace SteamDirect
             sidebar.Disposed += (sender, args) => hints.Dispose();
             foreach (var item in navigation) hints.SetToolTip(item.Value, item.Key);
             bool manualCollapse = false, appliedCollapse = false, railLayoutPending = false;
-            Action updateRail = () =>
+            Motion.Value railTransition = null;
+            railTransition = new Motion.Value(sidebar, shell.ColumnStyles[0].Width, () =>
+            {
+                int width = (int)Math.Round(railTransition.Current);
+                if (Math.Abs(shell.ColumnStyles[0].Width - width) >= 1)
+                    shell.ColumnStyles[0].Width = width;
+            });
+            Action<bool> updateRail = animate =>
             {
                 bool constrained = shell.Width > 0 && shell.Width < UiStyle.Scale(shell, UiStyle.CompactWindowWidth);
                 bool collapsed = manualCollapse || constrained;
                 int width = UiStyle.Scale(shell, collapsed ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
                 toggle.Enabled = !constrained;
-                if (Math.Abs(shell.ColumnStyles[0].Width - width) < 1 && appliedCollapse == collapsed) return;
+                if (Math.Abs(shell.ColumnStyles[0].Width - width) < 1 && appliedCollapse == collapsed)
+                {
+                    if (!animate) railTransition.Set(width);
+                    return;
+                }
                 bool appearanceChanged = appliedCollapse != collapsed;
                 appliedCollapse = collapsed;
                 using (new RedrawBatch(sidebar))
@@ -499,7 +509,8 @@ namespace SteamDirect
                     brand.SuspendLayout();
                     try
                     {
-                        shell.ColumnStyles[0].Width = width;
+                        if (animate) railTransition.To(width, UiStyle.StatusMotion);
+                        else railTransition.Set(width);
                         if (appearanceChanged)
                         {
                             toggle.AccessibleName = collapsed ? "展开侧边栏" : "折叠侧边栏";
@@ -522,7 +533,7 @@ namespace SteamDirect
                 }
             };
             hints.SetToolTip(toggle, toggle.AccessibleName);
-            toggle.Click += (sender, args) => { manualCollapse = !manualCollapse; updateRail(); };
+            toggle.Click += (sender, args) => { manualCollapse = !manualCollapse; updateRail(true); };
             shell.SizeChanged += (sender, args) =>
             {
                 if (!IsHandleCreated || railLayoutPending) return;
@@ -530,10 +541,10 @@ namespace SteamDirect
                 BeginInvoke((Action)(() =>
                 {
                     railLayoutPending = false;
-                    if (!IsDisposed) updateRail();
+                    if (!IsDisposed) updateRail(false);
                 }));
             };
-            Shown += (sender, args) => updateRail();
+            Shown += (sender, args) => updateRail(false);
             Controls.Add(shell);
             SelectNavigation("概览");
         }
@@ -618,7 +629,7 @@ namespace SteamDirect
                 if (pages != null) pages.Dispose();
                 history.Dispose();
                 windowDiagnostics.Dispose();
-                animationTimer.Dispose();
+                operationAnimation.Dispose();
                 trayIcon.Dispose();
                 trayMenu.Dispose();
                 if (ownedMainIcon != null) ownedMainIcon.Dispose();
@@ -686,8 +697,7 @@ namespace SteamDirect
         protected override void OnResize(EventArgs e) { base.OnResize(e); if (Visible && WindowState != FormWindowState.Minimized) lastVisibleState = WindowState; UpdateOperationAnimation(); }
         private void UpdateOperationAnimation()
         {
-            if (animationTimer == null) return;
-            if (running && Visible && WindowState != FormWindowState.Minimized && Motion.Allowed) animationTimer.Start(); else animationTimer.Stop();
+            if (operationAnimation != null) operationAnimation.SetPulse(running);
         }
 
         private void OpenSettings()
@@ -780,7 +790,7 @@ namespace SteamDirect
 
         internal void FinishProgress(bool success)
         {
-            animationTimer.Stop();
+            operationAnimation.SetPulse(false);
             operationWatch.Stop();
             timeline.Failed = !success;
             if (success) timeline.ActiveStep = timeline.StepCount;
