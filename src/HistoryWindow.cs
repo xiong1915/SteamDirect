@@ -183,6 +183,7 @@ namespace SteamDirect
                 if (records.SelectedItems.Count == 1) OpenDetailedData(records.SelectedItems[0].Tag as HistorySession);
             });
             recordMenu.Opening += (sender, args) => AppTheme.ApplyTray(recordMenu);
+            AppTheme.ApplyTray(recordMenu);
             records.ContextMenuStrip = recordMenu;
             listLayout.Controls.Add(new NativeScrollFrame(records), 0, 1);
             var pages = Grid(3, 1);

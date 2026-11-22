@@ -195,7 +195,15 @@ namespace SteamDirect
         {
             var host = (PageHost)Field(main, "pageHost");
             var toggle = FindSidebarToggle(main);
-            Need(toggle != null && toggle.Enabled, "Expected an available sidebar toggle");
+            Need(toggle != null, "Expected a sidebar toggle");
+            if (!toggle.Enabled)
+            {
+                var links = (Dictionary<string, Button>)Field(main, "navigation");
+                foreach (RoundedButton link in links.Values)
+                    Need(link.IconOnly && link.AccessibleName.Length > 0, "Compact sidebar retained an expanded or inaccessible link");
+                Console.WriteLine("SIDEBAR compact page=" + name + " labels=icons");
+                return;
+            }
             Point anchor = toggle.PointToScreen(Point.Empty);
             int resizes = 0;
             EventHandler resized = (sender, args) => resizes++;

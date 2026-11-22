@@ -405,7 +405,7 @@ namespace SteamDirect
             if (openHistory != null)
             {
                 heading.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
-                var history = new RoundedButton { Text = "查看对局趋势", Dock = DockStyle.Top, Height = UiStyle.ButtonHeight,
+                var history = new RoundedButton { Text = "查看对局趋势", Dock = DockStyle.Top, Height = UiStyle.ButtonHeight, CaptionInset = UiStyle.Space8,
                     Margin = new Padding(0, UiStyle.Space8, 0, 0) };
                 AppTheme.ActionButton(history, false);
                 history.Click += (sender, args) => openHistory();

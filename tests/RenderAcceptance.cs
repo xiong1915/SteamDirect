@@ -253,7 +253,7 @@ namespace SteamDirect
                             if (page == "概览")
                             {
                                 var run = (Button)Field(main, "runButton");
-                                Need(run.Height >= UiStyle.Scale(run, 32), "Main action collapsed");
+                                Need(run.Height >= UiStyle.Scale(run, 32), "Main action collapsed: button=" + run.Bounds + " parent=" + run.Parent.Bounds + " page DPI=" + dpi);
                                 var log = (TextBox)Field(main, "logBox");
                                 var timeline = (Control)Field(main, "timeline");
                                 Need(!log.Visible && !timeline.Visible, "Secondary overview sections should start hidden");
@@ -268,6 +268,29 @@ namespace SteamDirect
                                 var details = (TextBox)Field(active, "details");
                                 Need(conclusion.Height >= UiStyle.Scale(conclusion, 40), "Diagnostic conclusion collapsed");
                                 Need(details.Height >= UiStyle.Scale(details, 32), "Diagnostic details collapsed");
+                            }
+                            if (sizes[index,0] == 1920 && dpi >= 168)
+                            {
+                                var links = (Dictionary<string, Button>)Field(main, "navigation");
+                                Need(links.Values.Cast<RoundedButton>().All(button => button.IconOnly),
+                                    "1080p with high Windows scale needs compact navigation.");
+                            }
+                            if (page == "设置")
+                            {
+                                var project = Descendants(active).OfType<RoundedButton>()
+                                    .Single(button => button.Icon == UiIcon.External);
+                                Control parent = project.Parent;
+                                while (parent != null && (!(parent is ScrollableControl) || !((ScrollableControl)parent).AutoScroll))
+                                    parent = parent.Parent;
+                                Need(parent != null, "Settings About needs a reachable scroll viewport.");
+                                var viewport = (ScrollableControl)parent;
+                                viewport.ScrollControlIntoView(project);
+                                Pump(30);
+                                var visible = viewport.RectangleToScreen(viewport.ClientRectangle);
+                                var buttonBounds = project.RectangleToScreen(project.ClientRectangle);
+                                Need(project.Height <= UiStyle.Scale(project, UiStyle.ButtonHeight + 2) &&
+                                    visible.Contains(buttonBounds), "GitHub action must fit as a compact, fully visible button after scrolling.");
+                                Capture(main, Path.Combine(output, "settings-about-" + sizes[index, 0] + "-" + dpi + ".png"));
                             }
                             if (page == "游戏记录")
                             {

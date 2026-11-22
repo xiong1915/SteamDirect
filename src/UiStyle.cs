@@ -50,7 +50,8 @@ namespace SteamDirect
         }
         internal void ScrollTo(int value)
         {
-            scroll.SetRange(Math.Max(0, content.Height - Height), Math.Max(1, Height), value); PerformLayout();
+            scroll.SetRange(Math.Max(0, content.Height - Height), Math.Max(1, Height), value);
+            if (content.Top != -scroll.Value) content.Top = -scroll.Value;
         }
         internal void SetMinimumHeight(int height)
         {
@@ -103,8 +104,8 @@ namespace SteamDirect
         internal const int HeaderHeight = 80, ButtonHeight = 40, CompactHeight = 32, Gap = Space16, SmallGap = Space8;
         internal const int LargeButtonHeight = 44, AppHeaderHeight = Space48, StatusBarHeight = Space32,
             SidebarWidth = 232, CollapsedSidebarWidth = 64, MinimumWindowWidth = 1100, MinimumWindowHeight = 700,
-            CompactWindowWidth = 880, CompactWindowHeight = 540;
-        internal const int ButtonMotion = 100, DialogMotion = 180, StatusMotion = 180;
+            CompactWindowWidth = 880, CompactWindowHeight = 540, ExpandedSidebarBreakpoint = 1120;
+        internal const int ButtonMotion = 100, StatusMotion = 180;
         internal const float SmallRadius = 6, ControlRadius = 8, CardRadius = 12, DialogRadius = 16, NavigationRadius = ControlRadius;
         internal const int SpinnerPeriodMs = 1600; // Continuous motion is reserved for active operations; controls animate only on interaction.
         private static readonly string Family = PickFont("Segoe UI Variable Text", "Segoe UI");

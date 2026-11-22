@@ -180,8 +180,16 @@ namespace SteamDirect
             button.Font = UiStyle.Button;
         }
 
+        private sealed class MenuPalette { internal bool Applied, Dark; }
+        private static readonly ConditionalWeakTable<ContextMenuStrip, MenuPalette> menuPalettes =
+            new ConditionalWeakTable<ContextMenuStrip, MenuPalette>();
+
         internal static void ApplyTray(ContextMenuStrip menu)
         {
+            var palette = menuPalettes.GetValue(menu, key => new MenuPalette());
+            if (palette.Applied && palette.Dark == IsDark) return;
+            palette.Applied = true;
+            palette.Dark = IsDark;
             menu.ShowImageMargin = false;
             menu.ShowCheckMargin = false;
             menu.Font = UiStyle.Body;
@@ -295,7 +303,12 @@ namespace SteamDirect
         private static void NativeThemeCreated(object sender, EventArgs args) { ApplyNativeTheme((Control)sender); }
         private static void ApplyNativeTheme(Control control)
         {
-            try { SetWindowTheme(control.Handle, IsDark ? "DarkMode_Explorer" : "Explorer", null); }
+            try
+            {
+                SetWindowTheme(control.Handle, IsDark ? "DarkMode_Explorer" : "Explorer", null);
+                var combo = control as DarkComboBox;
+                if (combo != null) combo.ApplyListTheme();
+            }
             catch (DllNotFoundException) { } catch (EntryPointNotFoundException) { }
         }
         private static void PaintDisabledButton(object sender, PaintEventArgs args)

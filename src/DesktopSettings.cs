@@ -275,13 +275,13 @@ namespace SteamDirect
 
             var about = UiStyle.Grid(2, 1);
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
+            about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168));
             about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.36", Dock = DockStyle.Fill,
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.37", Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true, Font = UiStyle.Caption }, 0, 0);
             const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
             var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill,
-                Margin = new Padding(0, UiStyle.Space4, 0, UiStyle.Space4), Icon = UiIcon.External,
+                Margin = Padding.Empty, Icon = UiIcon.External,
                 Tag = repositoryUrl, AccessibleDescription = repositoryUrl };
             AppTheme.ActionButton(github, false);
             github.Click += (sender, args) =>
@@ -290,7 +290,7 @@ namespace SteamDirect
                 catch (Exception ex) { NoticeDialog.Show(this, "无法打开浏览器，请访问 " + repositoryUrl + Environment.NewLine + ex.Message, "GitHub 项目"); }
             };
             about.Controls.Add(github, 1, 0);
-            Section(cards, 4, "关于").Controls.Add(about, 0, 0);
+            Section(cards, 4, "关于", UiStyle.ButtonHeight).Controls.Add(about, 0, 0);
             layout.Controls.Add(footer, 0, 2);
             foreach (var toggle in new[] { night, tray, startup, reduce, diagnostic, recording })
                 toggle.CheckedChanged += (sender, args) => feedback.Text = "有更改尚未保存";
@@ -341,8 +341,8 @@ namespace SteamDirect
                 swatch.Invalidate();
                 feedback.Text = "有更改尚未保存";
             };
-            var choose = new RoundedButton { Text = "选择颜色", Dock = DockStyle.Fill };
-            var reset = new RoundedButton { Text = "默认颜色", Dock = DockStyle.Fill };
+            var choose = new RoundedButton { Text = "选择颜色", Dock = DockStyle.Fill, CaptionInset = UiStyle.Space8 };
+            var reset = new RoundedButton { Text = "默认颜色", Dock = DockStyle.Fill, CaptionInset = UiStyle.Space8 };
             AppTheme.ActionButton(choose, false);
             AppTheme.ActionButton(reset, false);
             choose.Click += (sender, args) =>

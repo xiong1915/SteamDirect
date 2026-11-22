@@ -153,7 +153,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.36";
+            Text = "Steam 直连助手 v3.0.37";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -199,7 +199,7 @@ namespace SteamDirect
             }, 0, 0);
             runButton.Text = "严格直连并重启 Steam";
             runButton.Dock = DockStyle.Left;
-            runButton.MinimumSize = new Size(224, 0);
+            runButton.MinimumSize = new Size(224, UiStyle.ButtonHeight);
             runButton.Width = 244;
             runButton.Margin = Padding.Empty;
             AppTheme.ActionButton(runButton, true);
@@ -333,6 +333,7 @@ namespace SteamDirect
             };
             trayMenu.Items.Add(new ToolStripSeparator());
             trayMenu.Items.Add("退出 Steam 直连助手", null, (sender, args) => RequestExit());
+            AppTheme.ApplyTray(trayMenu);
             trayIcon.Text = "Steam 直连助手";
             trayIcon.Icon = Icon;
             trayIcon.ContextMenuStrip = trayMenu;
@@ -382,7 +383,7 @@ namespace SteamDirect
             pageHost.ContentWidthLimit = () =>
             {
                 // A rail toggle can reposition the page without reflowing its native controls.
-                int reservedRail = shell.ClientSize.Width < UiStyle.Scale(shell, UiStyle.CompactWindowWidth)
+                int reservedRail = shell.ClientSize.Width < UiStyle.Scale(shell, UiStyle.ExpandedSidebarBreakpoint)
                     ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth;
                 return Math.Max(0, shell.DisplayRectangle.Width - UiStyle.Scale(shell, reservedRail) - pageHost.Margin.Horizontal);
             };
@@ -430,7 +431,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.36", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.37", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -477,7 +478,7 @@ namespace SteamDirect
             });
             updateRail = () =>
             {
-                bool constrained = shell.Width > 0 && shell.Width < UiStyle.Scale(shell, UiStyle.CompactWindowWidth);
+                bool constrained = shell.Width > 0 && shell.Width < UiStyle.Scale(shell, UiStyle.ExpandedSidebarBreakpoint);
                 bool collapsed = manualCollapse || constrained;
                 int width = UiStyle.Scale(shell, collapsed ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
                 toggle.Enabled = !constrained;

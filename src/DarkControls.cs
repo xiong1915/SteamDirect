@@ -8,16 +8,43 @@ namespace SteamDirect
     // Retain the native combo's keyboard, IME, selection and accessibility implementation.
     internal sealed class DarkComboBox : ComboBox
     {
-        private readonly Motion.Value drop;
+        private bool popupOpen;
+        private IntPtr themedList;
+        private bool themedDark;
 
         internal DarkComboBox()
         {
-            drop = new Motion.Value(this, 0F);
+            DrawMode = DrawMode.OwnerDrawFixed;
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            UpdateItemHeight();
+        }
+
+        protected override void OnFontChanged(EventArgs e)
+        {
+            base.OnFontChanged(e);
+            if (IsHandleCreated) UpdateItemHeight();
+        }
+
+        protected override void OnDpiChangedAfterParent(EventArgs e)
+        {
+            base.OnDpiChangedAfterParent(e);
+            if (IsHandleCreated) UpdateItemHeight();
+        }
+
+        private void UpdateItemHeight()
+        {
+            int height = TextRenderer.MeasureText("国", Font).Height + UiStyle.Scale(this, 4);
+            if (ItemHeight != height) ItemHeight = height;
         }
 
         protected override void OnDropDownClosed(EventArgs e)
         {
-            drop.To(0F, UiStyle.ButtonMotion);
+            popupOpen = false;
+            Invalidate();
             base.OnDropDownClosed(e);
         }
 
@@ -32,44 +59,95 @@ namespace SteamDirect
         [StructLayout(LayoutKind.Sequential)] private struct ComboInfo { internal int size; internal Rectangle item, button; internal uint state; internal IntPtr combo, edit, list; }
         [DllImport("user32.dll")] private static extern bool GetComboBoxInfo(IntPtr window, ref ComboInfo info);
         [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] private static extern int SetWindowTheme(IntPtr window, string app, string id);
-        [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr window);
-        [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr window, IntPtr dc);
-        protected override void OnDropDown(EventArgs e)
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PaintInfo
+        {
+            internal IntPtr dc;
+            internal int erase, left, top, right, bottom, restore, update;
+            private int reserved0, reserved1, reserved2, reserved3, reserved4, reserved5, reserved6, reserved7;
+        }
+
+        [DllImport("user32.dll")] private static extern IntPtr BeginPaint(IntPtr window, out PaintInfo paint);
+        [DllImport("user32.dll")] private static extern bool EndPaint(IntPtr window, ref PaintInfo paint);
+
+        internal void ApplyListTheme()
         {
             var info = new ComboInfo { size = Marshal.SizeOf(typeof(ComboInfo)) };
-            if (GetComboBoxInfo(Handle, ref info) && info.list != IntPtr.Zero) SetWindowTheme(info.list, AppTheme.IsDark ? "DarkMode_Explorer" : "Explorer", null);
-            drop.To(1F, UiStyle.ButtonMotion);
+            bool dark = AppTheme.IsDark;
+            if (!GetComboBoxInfo(Handle, ref info) || info.list == IntPtr.Zero ||
+                themedList == info.list && themedDark == dark) return;
+            SetWindowTheme(info.list, dark ? "DarkMode_Explorer" : "Explorer", null);
+            themedList = info.list;
+            themedDark = dark;
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            themedList = IntPtr.Zero;
+            popupOpen = false;
+            base.OnHandleDestroyed(e);
+        }
+
+        protected override void OnDropDown(EventArgs e)
+        {
+            popupOpen = true;
+            Invalidate();
             base.OnDropDown(e);
         }
+
+        protected override void OnDrawItem(DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= Items.Count) return;
+            bool selected = (e.State & DrawItemState.Selected) != 0;
+            using (var fill = new SolidBrush(AppTheme.Background(selected ? AppTheme.Pill : AppTheme.InputSurface)))
+                e.Graphics.FillRectangle(fill, e.Bounds);
+            var textBounds = Rectangle.Inflate(e.Bounds, -UiStyle.Scale(this, 8), 0);
+            TextRenderer.DrawText(e.Graphics, GetItemText(Items[e.Index]), Font, textBounds, AppTheme.Text(AppTheme.Ink),
+                TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
+
         protected override void WndProc(ref Message message)
         {
-            base.WndProc(ref message);
-            if (DropDownStyle != ComboBoxStyle.DropDownList) return;
-            if (message.Msg == 0xF) {
-                IntPtr dc = GetDC(Handle); if (dc == IntPtr.Zero) return;
-                try { using (var graphics = Graphics.FromHdc(dc)) DrawFace(graphics); } finally { ReleaseDC(Handle, dc); }
-            } else if ((message.Msg == 0x318 || message.Msg == 0x317) && message.WParam != IntPtr.Zero) {
-                using (var graphics = Graphics.FromHdc(message.WParam)) DrawFace(graphics);
+            if (DropDownStyle == ComboBoxStyle.DropDownList)
+            {
+                if (message.Msg == 0x14) { message.Result = new IntPtr(1); return; } // WM_ERASEBKGND
+                if (message.Msg == 0x0F) // WM_PAINT
+                {
+                    PaintInfo paint;
+                    IntPtr dc = BeginPaint(message.HWnd, out paint);
+                    try
+                    {
+                        if (dc != IntPtr.Zero && Width > 1 && Height > 1)
+                            using (var frame = BufferedGraphicsManager.Current.Allocate(dc, ClientRectangle))
+                            {
+                                DrawFace(frame.Graphics);
+                                frame.Render(dc);
+                            }
+                    }
+                    finally { EndPaint(message.HWnd, ref paint); }
+                    return;
+                }
+                if ((message.Msg == 0x318 || message.Msg == 0x317) && message.WParam != IntPtr.Zero)
+                {
+                    using (var graphics = Graphics.FromHdc(message.WParam)) DrawFace(graphics);
+                    return;
+                }
             }
+            base.WndProc(ref message);
         }
+
         private void DrawFace(Graphics graphics)
         {
             var rect = ClientRectangle;
             if (Width < 2 || Height < 2) return;
-            using (var background = new SolidBrush(UiStyle.ParentSurface(this)))
+            using (var background = new SolidBrush(BackColor))
                 graphics.FillRectangle(background, rect);
             graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using (var outline = UiStyle.RoundRect(new RectangleF(.5F, .5F, Width - 1, Height - 1), UiStyle.ControlRadius * UiStyle.Dpi(this) / 96F))
-            {
-                using (var fill = new SolidBrush(BackColor)) graphics.FillPath(fill, outline);
-                using (var edge = new Pen(Focused ? AppTheme.Focus : AppTheme.Edge))
-                    graphics.DrawPath(edge, outline);
-            }
             int arrow = UiStyle.Scale(this, 24);
             TextRenderer.DrawText(graphics, Text, Font, CaptionBounds,
                 AppTheme.Text(Enabled ? AppTheme.Ink : AppTheme.Muted), TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
             int x = rect.Right - arrow / 2, y = rect.Height / 2, d = UiStyle.Scale(this, 4);
-            int rise = (int)Math.Round(d * (.5F - (drop == null ? 0F : drop.Current)));
+            int rise = Math.Max(1, d / 2) * (popupOpen ? -1 : 1);
             using (var pen = new Pen(AppTheme.Text(AppTheme.Muted), Math.Max(1, UiStyle.Dpi(this) / 96F)))
                 graphics.DrawLines(pen, new[] { new Point(x - d, y - rise), new Point(x, y + rise), new Point(x + d, y - rise) });
         }

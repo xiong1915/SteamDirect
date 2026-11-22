@@ -14,9 +14,15 @@ namespace SteamDirect
             var observer=new OffscreenGeometry();observer.AssignHandle(form.Handle);
             try{
                 form.MaximumSize=new Size(12000,12000);
-                int width=size.Width+form.Width-form.ClientSize.Width,height=size.Height+form.Height-form.ClientSize.Height;
-                if(!SetWindowPos(form.Handle,IntPtr.Zero,0,0,width,height,0x416))throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-                form.PerformLayout();
+                for (int attempt = 0; attempt < 3; attempt++)
+                {
+                    int width = size.Width + form.Width - form.ClientSize.Width;
+                    int height = size.Height + form.Height - form.ClientSize.Height;
+                    if (!SetWindowPos(form.Handle, IntPtr.Zero, 0, 0, width, height, 0x416))
+                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                    form.PerformLayout();
+                    if (form.ClientSize == size) break;
+                }
             }finally{observer.ReleaseHandle();}
         }
         protected override void WndProc(ref Message message)

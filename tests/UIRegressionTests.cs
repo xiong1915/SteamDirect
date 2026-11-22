@@ -53,6 +53,29 @@ namespace SteamDirect {
      Motion.Reduced=false; value.To(0F,180); control.Dispose(); Check(Motion.ActiveCount==0,"Disposed owner releases motion.");
     }
    }
+   using (var popupHost = new DesktopForm { StartPosition = FormStartPosition.Manual,
+    Location = new Point(-22000, -22000), ShowInTaskbar = false })
+   using (var combo = new DarkComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 })
+   {
+    popupHost.Controls.Add(combo);
+    combo.Items.AddRange(new object[] { "全部", "今天的对局", "查看历史对局" });
+    combo.SelectedIndex = 1;
+    AppTheme.Apply(popupHost);
+    popupHost.Show();
+    IntPtr originalHandle = combo.Handle;
+    for (int n = 0; n < 8; n++)
+    {
+     combo.DroppedDown = true;
+     Check(combo.DroppedDown, "Native list must open when its face uses buffered drawing.");
+     combo.Update();
+     combo.DroppedDown = false;
+    }
+    using (var bitmap = new Bitmap(combo.Width, combo.Height))
+     combo.DrawToBitmap(bitmap, combo.ClientRectangle);
+    Check(combo.Handle == originalHandle && combo.SelectedIndex == 1 &&
+     combo.ItemHeight >= TextRenderer.MeasureText(combo.Text, combo.Font).Height,
+     "Popup cycles must preserve the native handle, selection and readable row height.");
+   }
    Motion.Reduced = true;
    using (var button = new ButtonInputProbe())
    {
