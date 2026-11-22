@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -109,6 +111,48 @@ namespace SteamDirect
             if (surface != null) { overview.Dock = DockStyle.None; surface.ActivePage = overview; overview.Bounds = surface.PageBounds; }
         }
         private System.Drawing.Rectangle PageArea { get { var surface=host as PageHost;return surface==null?host.DisplayRectangle:surface.PageBounds; } }
+        private static void PrepareEmbeddedScale(Form page, int hostDpi)
+        {
+            if (page.AutoScaleMode != AutoScaleMode.Dpi) return;
+
+            // A page built before parenting initially uses the process DPI. After attachment,
+            // inherit the host's per-monitor scaling so WinForms scales the subtree only once.
+            float builtDpi = page.AutoScaleDimensions.Width;
+            page.AutoScaleMode = AutoScaleMode.Inherit;
+            if (builtDpi <= 0 || Math.Abs(hostDpi - builtDpi) < .5F) return;
+
+            float ratio = hostDpi / builtDpi;
+            page.SuspendLayout();
+            var fonts = new Dictionary<Font, Font>();
+            page.Disposed += (sender, args) =>
+            {
+                foreach (Font font in fonts.Values) font.Dispose();
+            };
+            try
+            {
+                page.Scale(new SizeF(ratio, ratio));
+                ScaleExplicitFonts(page, ratio, fonts);
+            }
+            finally { page.ResumeLayout(false); }
+        }
+
+        private static void ScaleExplicitFonts(Control control, float ratio, Dictionary<Font, Font> fonts)
+        {
+            if (TypeDescriptor.GetProperties(control)["Font"].ShouldSerializeValue(control))
+            {
+                Font original = control.Font;
+                Font scaled;
+                if (!fonts.TryGetValue(original, out scaled))
+                {
+                    scaled = new Font(original.FontFamily, original.Size * ratio, original.Style, original.Unit,
+                        original.GdiCharSet, original.GdiVerticalFont);
+                    fonts.Add(original, scaled);
+                }
+                control.Font = scaled;
+            }
+            foreach (Control child in control.Controls) ScaleExplicitFonts(child, ratio, fonts);
+        }
+
         internal bool Navigate(string name, Func<Form> create)
         {
             if (disposed || switching || name == currentName) return false;
@@ -131,6 +175,7 @@ namespace SteamDirect
                         page = create(); next = page; fresh = true;
                         if (diagnostic) { construct = stage.Elapsed.TotalMilliseconds; stage.Restart(); }
                         page.TopLevel = false; page.FormBorderStyle = FormBorderStyle.None;
+                        PrepareEmbeddedScale(page, UiStyle.Dpi(host));
                         page.MinimumSize = System.Drawing.Size.Empty; page.Dock = DockStyle.None; page.Tag = name;
                         page.SuspendLayout(); host.SuspendLayout();
                         try

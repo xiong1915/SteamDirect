@@ -55,7 +55,7 @@ namespace SteamDirect
                     }
                     sessions.Add(new HistorySession { Id = "yesterday", Game = "昨日记录", Mode = "直连", Target = "192.0.2.1", Start = stamp - 86400000, End = stamp - 86000000 });
                     store.WriteBatch(sessions, samples, incidents);
-                    if (args.Length > 1 && args[1] == "monitors") { ProbeMonitors(monitor); return 0; }
+                    if (args.Length > 1 && args[1] == "monitors") { ProbeMonitors(monitor, output); return 0; }
                     if (args.Length > 1 && args[1] == "desktop") { MainMatrix(monitor, output); return 0; }
                     int[,] matrix = { {1920,1080,96}, {1920,1080,120}, {2560,1440,96}, {2560,1440,144}, {3840,2160,144}, {3840,2160,168}, {3840,2160,192} };
                     foreach (string theme in new[] { "dark", "light", "red" }) {
@@ -112,7 +112,7 @@ namespace SteamDirect
             } catch(Exception ex) {Console.Error.WriteLine(ex);return 1;}
             finally {Motion.IsGaming=null;try{Directory.Delete(temporary,true);}catch(IOException){}}
         }
-        private static void ProbeMonitors(HistoryMonitor monitor)
+        private static void ProbeMonitors(HistoryMonitor monitor, string output)
         {
             var screens = Screen.AllScreens.OrderByDescending(screen => screen.Primary).ToArray();
             Need(screens.Length >= 2, "The hidden-window transition requires at least two active monitors.");
@@ -148,8 +148,53 @@ namespace SteamDirect
                         " notifications=" + (notifications - oldNotifications) + " visible=" + main.Visible);
                     previous = dpi;
                 }
+                var navigate = typeof(MainWindow).GetMethod("NavigateTo", Private);
+                var start = screens[1].Bounds;
+                Need(SetWindowPos(handle, IntPtr.Zero, start.X + 24, start.Y + 24, 0, 0, 0x215), "Preparing the lower-DPI monitor failed.");
+                Pump(50);
+                main.Show();
+                OffscreenGeometry.Resize(main, new Size(1250, 760));
+                foreach (string page in new[] { "网络诊断", "游戏记录", "设置" })
+                { navigate.Invoke(main, new object[] { page }); Pump(40); }
+                var manager = Field(main, "pages");
+                var settings = (Form)manager.GetType().GetProperty("ActivePage", Private).GetValue(manager, null);
+                var github = Descendants(settings).OfType<RoundedButton>().Single(button => button.Icon == UiIcon.External);
+                foreach (var screen in new[] { screens[1], screens[0], screens[1] })
+                {
+                    var bounds = screen.Bounds;
+                    Need(SetWindowPos(handle, IntPtr.Zero, bounds.X + 24, bounds.Y + 24, 0, 0, 0x215), "Moving visible test window failed.");
+                    Pump(100);
+                    foreach (string page in new[] { "网络诊断", "游戏记录", "设置" })
+                    {
+                        navigate.Invoke(main, new object[] { page });
+                        Pump(40);
+                        var active = (Form)manager.GetType().GetProperty("ActivePage", Private).GetValue(manager, null);
+                        Need(GetDpiForWindow(active.Handle) == main.DeviceDpi, "Embedded HWND did not move to the host DPI.");
+                        foreach (var combo in Descendants(active).OfType<DarkComboBox>().Where(combo => combo.Visible))
+                            foreach (var option in combo.Items)
+                                CheckCaption(combo, combo.GetItemText(option), combo.CaptionBounds, page, main.DeviceDpi);
+                    }
+                    CheckCaption(github, github.Text, github.CaptionBounds, "跨屏设置", main.DeviceDpi);
+                    Need(Math.Abs(github.Height - UiStyle.Scale(github, UiStyle.ButtonHeight)) <= 2 &&
+                        Math.Abs(github.Width - UiStyle.Scale(github, 168)) <= 2,
+                        "Cross-screen settings button kept dimensions from a different DPI: " + github.Bounds);
+                    Console.WriteLine("SETTINGS cross-screen dpi=" + main.DeviceDpi + " button=" + github.Size +
+                        " text_width=" + TextRenderer.MeasureText(github.Text, github.Font).Width +
+                        " available=" + github.CaptionBounds.Width + " foreground=" + OwnForeground());
+                    Need(!OwnForeground(), "Cross-monitor fixture took foreground.");
+                    if (screen.Primary)
+                    {
+                        var viewport = github.Parent;
+                        while (!(viewport is ScrollableControl) || !((ScrollableControl)viewport).AutoScroll)
+                            viewport = viewport.Parent;
+                        ((ScrollableControl)viewport).ScrollControlIntoView(github);
+                        Capture(main, Path.Combine(output, "settings-after-cross-screen.png"));
+                    }
+                    if (screen.Primary) navigate.Invoke(main, new object[] { "概览" });
+                    Pump(40);
+                }
                 Need(notifications >= 2, "The physical monitor pair did not produce two DPI transitions.");
-                Console.WriteLine("PASS real-monitor DPI propagation with a hidden SteamDirect window.");
+                Console.WriteLine("PASS real-monitor DPI transitions with hidden and cached embedded pages.");
             }
         }
 
