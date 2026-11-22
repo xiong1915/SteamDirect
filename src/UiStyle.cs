@@ -224,10 +224,10 @@ namespace SteamDirect
                 Padding = compact ? DensePadding : CardPadding, Margin = Padding.Empty };
         }
 
-        internal static Control Metric(string title, UiIcon icon, out Label value, out Label note)
+        internal static Control Metric(string title, UiIcon icon, out Label value, out Label note, bool includeNote = true)
         {
             int column = icon == UiIcon.None ? 0 : 1;
-            var grid = Grid(column + 1, 3);
+            var grid = Grid(column + 1, includeNote ? 3 : 2);
             if (column != 0)
             {
                 grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Space32));
@@ -242,14 +242,14 @@ namespace SteamDirect
             }
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             grid.RowStyles.Add(new RowStyle(SizeType.Absolute, Space20));
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, Space24));
-            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            grid.RowStyles.Add(new RowStyle(includeNote ? SizeType.Absolute : SizeType.Percent, includeNote ? Space24 : 100));
+            if (includeNote) grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             grid.Controls.Add(MetricLabel(title, Caption, AppTheme.Muted), column, 0);
             value = MetricLabel("", Subtitle, AppTheme.Ink);
             value.AccessibleName = title + "状态";
             grid.Controls.Add(value, column, 1);
-            note = MetricLabel("", Caption, AppTheme.Muted);
-            grid.Controls.Add(note, column, 2);
+            note = includeNote ? MetricLabel("", Caption, AppTheme.Muted) : null;
+            if (note != null) grid.Controls.Add(note, column, 2);
             return grid;
         }
 

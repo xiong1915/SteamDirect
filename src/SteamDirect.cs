@@ -112,7 +112,6 @@ namespace SteamDirect
         private readonly Button logButton = new RoundedButton();
         private readonly Button flowToggle, logToggle;
         private readonly CleanupPanel cleanupPanel;
-        private readonly Label statusLabel = new Label();
         private readonly TextBox logBox = new TextBox();
         private string logPath { get { return LogStore.CurrentPath; } }
         private DateTime lastCleanupDate = DateTime.MinValue;
@@ -153,7 +152,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.38";
+            Text = "Steam 直连助手 v3.0.39";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -166,7 +165,7 @@ namespace SteamDirect
             DoubleBuffered = true;
 
             BuildNavigation();
-            const int actionHeight = 180, metricsHeight = 84, maintenanceHeight = 132;
+            const int actionHeight = 152, metricsHeight = 68, maintenanceHeight = 132;
             int overviewHeight = UiStyle.HeaderHeight + actionHeight + metricsHeight + maintenanceHeight +
                 2 * UiStyle.ButtonHeight + UiStyle.PagePadding.Vertical;
             recentHistory = new OverviewHistory(OpenOverviewHistoryAsync);
@@ -186,10 +185,9 @@ namespace SteamDirect
             root.Controls.Add(UiStyle.Header("概览", "直连控制与本机状态"), 0, 0);
             var action = UiStyle.Card();
             action.Margin = new Padding(0, 0, 0, UiStyle.Space20);
-            var actionLayout = UiStyle.Grid(1, 4);
+            var actionLayout = UiStyle.Grid(1, 3);
             actionLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32));
-            actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space24));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.LargeButtonHeight));
             actionLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             actionLayout.Controls.Add(new Label
@@ -205,20 +203,14 @@ namespace SteamDirect
             AppTheme.ActionButton(runButton, true);
             runButton.Font = UiStyle.Button;
             runButton.Click += async (sender, args) => await RunAsync();
-            actionLayout.Controls.Add(runButton, 0, 2);
+            actionLayout.Controls.Add(runButton, 0, 1);
 
-            statusLabel.Text = "退出游戏后开始";
-            statusLabel.Dock = DockStyle.Fill;
-            statusLabel.Margin = new Padding(0, UiStyle.Space4, 0, 0);
-            statusLabel.AutoEllipsis = true;
-            statusLabel.Font = UiStyle.Caption;
-            actionLayout.Controls.Add(statusLabel, 0, 1);
             elapsedLabel.Text = "";
             elapsedLabel.ForeColor = AppTheme.Muted;
             elapsedLabel.Font = UiStyle.Caption;
             elapsedLabel.Dock = DockStyle.Fill;
             elapsedLabel.Margin = Padding.Empty;
-            actionLayout.Controls.Add(elapsedLabel, 0, 3);
+            actionLayout.Controls.Add(elapsedLabel, 0, 2);
             action.Controls.Add(actionLayout);
             root.Controls.Add(action, 0, 1);
             root.Controls.Add(overviewStatus, 0, 2);
@@ -431,7 +423,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.38", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.39", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -455,7 +447,7 @@ namespace SteamDirect
             operationResult.TextAlign = ContentAlignment.MiddleLeft;
             operationResult.Font = UiStyle.Caption;
             operationResult.ForeColor = AppTheme.Muted;
-            operationResult.AccessibleName = "最近一次直连结果";
+            operationResult.AccessibleName = "操作状态";
             footer.Controls.Add(operationResult);
             shell.Controls.Add(footer, 1, 1);
 
@@ -753,15 +745,9 @@ namespace SteamDirect
         {
             if (IsDisposed) return;
             if (InvokeRequired) { BeginInvoke(new Action<string>(Status), message); return; }
-            statusLabel.Text = message;
-            AppTheme.SetForeground(statusLabel, message.StartsWith("已停止") ? AppTheme.Error :
+            operationResult.Text = message;
+            AppTheme.SetForeground(operationResult, message.StartsWith("已停止") ? AppTheme.Error :
                 message.StartsWith("完成") ? AppTheme.Success : AppTheme.Ink);
-            if (message.StartsWith("完成") || message.StartsWith("已停止"))
-            {
-                operationResult.Text = message;
-                AppTheme.SetForeground(operationResult, message.StartsWith("完成") ? AppTheme.Success : AppTheme.Error);
-            }
-
         }
 
         internal void AdvanceStep(int index, string message)

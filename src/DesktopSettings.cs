@@ -181,24 +181,22 @@ namespace SteamDirect
             var viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Margin = Padding.Empty };
             var cards = UiStyle.Grid(1, 5);
             cards.Dock = DockStyle.Top;
-            cards.Height = 644;
+            cards.Height = 596;
             cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int height in new[] { 160, 108, 124, 168, 84 }) cards.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
+            foreach (int height in new[] { 136, 108, 100, 168, 84 }) cards.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             viewport.Controls.Add(cards);
             layout.Controls.Add(viewport, 0, 1);
 
-            var appearance = Section(cards, 0, "外观", UiStyle.Space32, UiStyle.ButtonHeight, UiStyle.Space24);
+            var appearance = Section(cards, 0, "外观", UiStyle.Space32, UiStyle.ButtonHeight);
             night.Text = "启用夜间模式";
             night.Checked = nightMode;
             night.Dock = DockStyle.Fill;
             appearance.Controls.Add(night, 0, 0);
             appearance.Controls.Add(BuildColorPicker(themeColor), 0, 1);
-            appearance.Controls.Add(new Label { Text = "自选颜色以灰度用于键盘焦点。", Dock = DockStyle.Fill,
-                ForeColor = AppTheme.Muted, AutoEllipsis = true, Margin = Padding.Empty, Font = UiStyle.Caption }, 0, 2);
             reduce.Text = "减少动画";
             reduce.Checked = reduceMotion;
             reduce.Dock = DockStyle.Fill;
-            appearance.Controls.Add(reduce, 0, 3);
+            appearance.Controls.Add(reduce, 0, 2);
 
             var behavior = Section(cards, 1, "Windows 集成", UiStyle.ButtonHeight);
             tray.Text = "关闭窗口后留在托盘";
@@ -209,14 +207,12 @@ namespace SteamDirect
             startup.Dock = DockStyle.Fill;
             behavior.Controls.Add(tray, 0, 0);
             behavior.Controls.Add(startup, 0, 1);
-            var monitoring = Section(cards, 2, "网络监控", UiStyle.ButtonHeight, UiStyle.Space24);
+            var monitoring = Section(cards, 2, "网络监控", UiStyle.ButtonHeight);
             recording.Text = "自动记录游戏网络";
             recording.AccessibleDescription = "关闭后停止扫描、探测和后台记录，保留已有历史。";
             recording.Checked = networkRecording; recording.Dock = DockStyle.Fill; monitoring.Controls.Add(recording, 0, 0);
-            monitoring.Controls.Add(new Label { Text = "关闭后保留已有游戏记录。", Dock = DockStyle.Fill,
-                Margin = Padding.Empty, ForeColor = AppTheme.Muted, Font = UiStyle.Caption }, 0, 1);
             diagnostic.Text = "窗口性能诊断"; diagnostic.Checked = windowDiagnostics;
-            diagnostic.Dock = DockStyle.Fill; monitoring.Controls.Add(diagnostic, 0, 2);
+            diagnostic.Dock = DockStyle.Fill; monitoring.Controls.Add(diagnostic, 0, 1);
 
             var logs = Section(cards, 3, "日志", UiStyle.ButtonHeight, UiStyle.ButtonHeight);
             logDirectoryBox.Text = logDirectory ?? LogStore.DirectoryPath;
@@ -266,7 +262,6 @@ namespace SteamDirect
             buttons.Controls.Add(save);
             buttons.Controls.Add(cancel);
             footer.Controls.Add(buttons, 1, 0);
-            feedback.Text = "更改后点击保存设置";
             feedback.Dock = DockStyle.Fill;
             feedback.Font = UiStyle.Caption;
             feedback.ForeColor = AppTheme.Muted;
@@ -277,7 +272,7 @@ namespace SteamDirect
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168));
             about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.38", Dock = DockStyle.Fill,
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.39", Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true, Font = UiStyle.Caption }, 0, 0);
             const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
             var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill,
@@ -292,9 +287,6 @@ namespace SteamDirect
             about.Controls.Add(github, 1, 0);
             Section(cards, 4, "关于", UiStyle.ButtonHeight).Controls.Add(about, 0, 0);
             layout.Controls.Add(footer, 0, 2);
-            foreach (var toggle in new[] { night, tray, startup, reduce, diagnostic, recording })
-                toggle.CheckedChanged += (sender, args) => feedback.Text = "有更改尚未保存";
-            days.ValueChanged += (sender, args) => feedback.Text = "有更改尚未保存";
             AcceptButton = save;
             CancelButton = cancel;
             Controls.Add(layout);
@@ -339,7 +331,7 @@ namespace SteamDirect
                 Color parsed;
                 if (AppTheme.TryColor(ThemeColor, out parsed)) selectedColor = parsed;
                 swatch.Invalidate();
-                feedback.Text = "有更改尚未保存";
+                feedback.Text = "";
             };
             var choose = new RoundedButton { Text = "选择颜色", Dock = DockStyle.Fill, CaptionInset = UiStyle.Space8 };
             var reset = new RoundedButton { Text = "默认颜色", Dock = DockStyle.Fill, CaptionInset = UiStyle.Space8 };
