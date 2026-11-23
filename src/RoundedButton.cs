@@ -23,11 +23,14 @@ namespace SteamDirect
             }
         }
         internal bool HorizontalIndicator;
+        internal bool OutlineOnly;
         internal UiIcon Icon = UiIcon.None;
         internal float CornerRadius = UiStyle.ControlRadius;
         internal int CaptionInset = UiStyle.Space12;
         internal bool TextOnly;
         internal bool IconOnly;
+        internal float SidebarProgress;
+        internal float CaptionOpacity = 1F;
         internal const TextFormatFlags CaptionFlags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
 
         internal Rectangle CaptionBounds
@@ -120,14 +123,20 @@ namespace SteamDirect
             Color fill = !Enabled ? AppTheme.Background(AppTheme.Page) :
                 amount <= .55F ? Motion.Blend(BackColor, hover, amount / .55F) : Motion.Blend(hover, down, (amount - .55F) / .45F);
             bool navigation=Icon==UiIcon.Home||Icon==UiIcon.Network||Icon==UiIcon.History||Icon==UiIcon.Settings;
-            if ((navigation || HorizontalIndicator) && Enabled)
-                fill = Motion.Blend(Motion.Blend(background, AppTheme.Background(AppTheme.Pill), selection.Current), AppTheme.Hover, .6F * amount);
+            if ((navigation || HorizontalIndicator || OutlineOnly) && Enabled)
+                fill = Motion.Blend(navigation
+                    ? Motion.Blend(background, AppTheme.Background(AppTheme.Pill), selection.Current)
+                    : background, AppTheme.Hover, .6F * amount);
             if (TextOnly && Enabled && amount > 0)
                 fill = Motion.Blend(background, AppTheme.Hover, Math.Min(1F, amount / .55F));
             if (!TextOnly || Enabled && amount > 0)
             {
                 using (var path = UiStyle.RoundRect(box, radius))
-                using (var brush = new SolidBrush(fill)) e.Graphics.FillPath(brush, path);
+                {
+                    using (var brush = new SolidBrush(fill)) e.Graphics.FillPath(brush, path);
+                    if (OutlineOnly)
+                        using (var outline = new Pen(AppTheme.Edge)) e.Graphics.DrawPath(outline, path);
+                }
             }
             var bounds = CaptionBounds;
             Color textColor = !Enabled ? AppTheme.Text(AppTheme.Disabled) :
@@ -139,11 +148,11 @@ namespace SteamDirect
             {
                 float size = UiStyle.Space20 * scale;
                 float left = IconOnly ? (Width - size) / 2 : UiStyle.Space12 * scale;
-                UiStyle.DrawIcon(e.Graphics, Icon, new RectangleF(left, (Height - size) / 2, size, size), textColor);
+                UiStyle.DrawIcon(e.Graphics, Icon, new RectangleF(left, (Height - size) / 2, size, size), textColor, SidebarProgress);
                 alignment = TextFormatFlags.Left;
             }
             if (!IconOnly)
-                TextRenderer.DrawText(e.Graphics, Text, Font, bounds, textColor,
+                TextRenderer.DrawText(e.Graphics, Text, Font, bounds, Motion.Blend(fill, textColor, CaptionOpacity),
                     alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | CaptionFlags);
             if (HorizontalIndicator && selection.Current > 0 && Width > 8 && Height > 8)
             {

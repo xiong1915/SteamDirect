@@ -99,6 +99,13 @@ namespace SteamDirect
                             }
                         }
                         var nav=typeof(MainWindow).GetMethod("NavigateTo",Private);
+                        if (Environment.GetEnvironmentVariable("STEAMDIRECT_WINDOW_STATE_ONLY") == "1")
+                        {
+                            nav.Invoke(main, new object[] { "游戏记录" });
+                            Pump(100);
+                            WindowStateAcceptance(main);
+                            return 0;
+                        }
                         string[] pages={"网络诊断","游戏记录","设置","概览"};
                         var first=new Dictionary<string,Form>();
                         var warm=new Dictionary<string,List<double>>();foreach(string p in pages)warm[p]=new List<double>();
@@ -122,7 +129,16 @@ namespace SteamDirect
                                 Need(history.LastDataLoadMilliseconds > 0, "History did not finish loading before the cached navigation benchmark");
                                 Console.WriteLine("DATA pipeline_elapsed_ms="+history.LastDataLoadMilliseconds+" sqlite_worker_ms="+history.LastQueryMilliseconds+" report_worker_ms="+history.LastAnalysisMilliseconds);
                                 CaptureCurrent(main,args[0],"history-loaded.png");
-                                Need(((Control)Field(current,"overviewText")).Height>=UiStyle.Scale(current,80),"Report body collapsed at constrained height");
+                                var advice = typeof(HistoryWindow).GetField("reportAdvice", Private);
+                                if (advice != null)
+                                {
+                                    var disclosure = (Button)advice.GetValue(current);
+                                    Need(disclosure.Enabled, "Report advice was unavailable.");
+                                    disclosure.PerformClick();
+                                    var body = (Control)Field(current, "overviewText");
+                                    Need(body.Visible && body.Height >= UiStyle.Scale(current, 80), "Expanded report advice collapsed.");
+                                    disclosure.PerformClick();
+                                }
                             }
                             if(i==3&&!baseline)
                             {
@@ -210,12 +226,17 @@ namespace SteamDirect
             {
                 for (int iteration = 0; iteration < 2; iteration++)
                 {
+                    var elapsed = Stopwatch.StartNew();
                     main.WindowState = FormWindowState.Maximized;
+                    double maximize = elapsed.Elapsed.TotalMilliseconds;
                     Need(main.WindowState == FormWindowState.Maximized && ReferenceEquals(host.ActivePage, page) &&
                         page.Bounds == host.PageBounds && host.ClientRectangle.Contains(page.Bounds) &&
                         main.ClientRectangle.Contains(main.RectangleToClient(host.RectangleToScreen(host.ClientRectangle))),
                         "Maximize did not immediately fit the cached page.");
+                    elapsed.Restart();
                     main.WindowState = FormWindowState.Normal;
+                    Console.WriteLine("WINDOW cycle=" + (iteration + 1) + " maximize_ms=" + maximize.ToString("F2") +
+                        " restore_ms=" + elapsed.Elapsed.TotalMilliseconds.ToString("F2"));
                     Need(main.WindowState == FormWindowState.Normal && ReferenceEquals(host.ActivePage, page) &&
                         page.Bounds == host.PageBounds && host.ClientRectangle.Contains(page.Bounds) &&
                         main.ClientRectangle.Contains(main.RectangleToClient(host.RectangleToScreen(host.ClientRectangle))),
@@ -250,20 +271,17 @@ namespace SteamDirect
                 Console.WriteLine("SIDEBAR compact page=" + name + " labels=icons");
                 return;
             }
-            var transition = main.Controls.Cast<Control>().Single(control => control.GetType().Name == "SidebarTransition");
-            var animatedWidth = transition.GetType().GetProperty("CurrentWidth", Private);
+            var progress = typeof(RoundedButton).GetField("SidebarProgress", Private);
             if (Motion.Allowed)
             {
                 toggle.PerformClick();
-                Need(transition.Visible && transition.Region != null, "Collapse omitted the clipped animation layer.");
-                Pump(40);
-                var width = (float)animatedWidth.GetValue(transition, null);
+                Pump(50);
+                float fraction = (float)progress.GetValue(toggle);
+                Need(fraction > 0F && fraction < 1F, "Sidebar toggle skipped its intermediate drawing state.");
                 toggle.PerformClick();
-                Need(transition.Visible && Math.Abs(width - (float)animatedWidth.GetValue(transition, null)) <= UiStyle.Scale(toggle, 32),
-                    "Reversing the sidebar jumped to a different edge: " + width + " → " + (float)animatedWidth.GetValue(transition, null));
                 Pump(390);
-                Need(!transition.Visible && transition.Region == null, "Sidebar animation left a visible drawing layer.");
-                Console.WriteLine("SIDEBAR transition passed collapse, reversal and layer release.");
+                Need((float)progress.GetValue(toggle) == 0F, "Reversed sidebar toggle did not settle.");
+                Console.WriteLine("SIDEBAR local animation passed intermediate state and reversal.");
             }
             Point anchor = toggle.PointToScreen(Point.Empty);
             int resizes = 0;
@@ -283,7 +301,6 @@ namespace SteamDirect
                         if (i == 0) Console.WriteLine("SIDEBAR detail " + name + " " + trace.Summary);
                     }
                     Pump(390);
-                    Need(!transition.Visible && transition.Region == null, "Sidebar drawing layer remained after settling.");
                     Need(toggle.PointToScreen(Point.Empty) == anchor, "Sidebar toggle moved with the page");
                     Need(page.Bounds == host.PageBounds, "Sidebar toggle did not fit the active page");
                 }

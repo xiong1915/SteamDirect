@@ -319,7 +319,7 @@ namespace SteamDirect
             return path;
         }
 
-        internal static void DrawIcon(Graphics graphics, UiIcon icon, RectangleF bounds, Color color)
+        internal static void DrawIcon(Graphics graphics, UiIcon icon, RectangleF bounds, Color color, float sidebarProgress = 0F)
         {
             if (icon == UiIcon.None) return;
             var state = graphics.Save();
@@ -355,7 +355,8 @@ namespace SteamDirect
                         break;
                     case UiIcon.Sidebar:
                         graphics.DrawRectangle(pen, 3, 4, 14, 12);
-                        graphics.DrawLine(pen, 8, 4, 8, 16);
+                        float divider = 8F + 4F * Math.Max(0F, Math.Min(1F, sidebarProgress));
+                        graphics.DrawLine(pen, divider, 4, divider, 16);
                         break;
                     case UiIcon.External:
                         graphics.DrawLines(pen, new[] { new PointF(10, 4), new PointF(4, 4), new PointF(4, 20), new PointF(20, 20), new PointF(20, 14) });

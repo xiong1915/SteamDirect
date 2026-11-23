@@ -33,6 +33,7 @@ namespace SteamDirect
         private readonly ComboBox recordScope = new DarkComboBox();
         private readonly HistoryNetworkChart networkChart = new HistoryNetworkChart();
         private readonly RichTextBox comparisonText = new RichTextBox();
+        private readonly RoundedButton reportAdvice = new RoundedButton();
         private readonly Label overviewTitle = new Label();
         private readonly Label overviewNote = new Label();
         private readonly Label[] metricValues = { new Label(), new Label(), new Label() };
@@ -111,7 +112,7 @@ namespace SteamDirect
             root.Padding = UiStyle.PagePadding;
             root.BackColor = Page;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.HeaderHeight));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48 + UiStyle.Space8));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
@@ -126,7 +127,11 @@ namespace SteamDirect
             modeFilter.SelectedIndex = recordScope.SelectedIndex = 0;
             UiStyle.ConfigureChoice(modeFilter); UiStyle.ConfigureChoice(recordScope);
             recordScope.SelectedIndexChanged += async (sender, args) => { if (IsHandleCreated && !loadingRecords) await RefreshAsync(); };
-            StyleButton(refresh, "查询", true); StyleButton(export, "导出记录", false); export.Enabled = false;
+            StyleButton(refresh, "查询", true);
+            refresh.BackColor = AppTheme.ReportAction;
+            StyleButton(export, "导出记录", false);
+            ((RoundedButton)export).OutlineOnly = true;
+            export.Enabled = false;
             var filters = new ReportFilters(gameFilter, modeFilter, recordScope, refresh, export);
             filters.HeightRequired += height => { float required = height + filterCard.Padding.Vertical + filterCard.Margin.Vertical; if (root.RowStyles[1].Height != required) root.RowStyles[1].Height = required; };
             filterCard.Controls.Add(filters);
@@ -302,7 +307,11 @@ namespace SteamDirect
             status.ForeColor = Muted;
             status.TextAlign = ContentAlignment.MiddleLeft;
             status.AutoEllipsis = true;
-            root.Controls.Add(status, 0, 3);
+            var reportFooter = new SectionRule { Dock = DockStyle.Fill, Margin = Padding.Empty,
+                Padding = new Padding(UiStyle.Space8, 0, UiStyle.Space8, 0), BackColor = AppTheme.Page };
+            status.TextAlign = ContentAlignment.MiddleLeft;
+            reportFooter.Controls.Add(status);
+            root.Controls.Add(reportFooter, 0, 3);
             gameFilter.TextChanged += (sender, args) => { previousPage.Enabled = nextPage.Enabled = false; };
             modeFilter.SelectedIndexChanged += (sender, args) => { previousPage.Enabled = nextPage.Enabled = false; };
             previousPage.Click += async (sender, args) => await RefreshAsync(page - 1);
@@ -318,7 +327,7 @@ namespace SteamDirect
             export.Click += async (sender, args) => await ExportAsync();
             Shown += (sender, args) => { if (TopLevel) EnterPage(); };
             ParentChanged += (sender, args) => { if (!TopLevel) MinimumSize = Size.Empty; };
-            Controls.Add(new ContentViewport(root, 690));
+            Controls.Add(new ContentViewport(root, 580));
             AppTheme.Apply(this);
             while (buildingGrids.Count != 0) buildingGrids.Pop().ResumeLayout(false);
             ResumeLayout(false);
@@ -343,37 +352,73 @@ namespace SteamDirect
         {
             var layout = Grid(1, 4);
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space40));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.ButtonHeight));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space48 + UiStyle.Space16));
+
+            var statusCard = UiStyle.Card(true);
+            statusCard.Margin = new Padding(0, 0, 0, UiStyle.Space8);
+            statusCard.Padding = new Padding(UiStyle.Space12, UiStyle.Space4, UiStyle.Space12, UiStyle.Space4);
+            var summary = Grid(1, 2);
+            summary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            summary.RowStyles.Add(new RowStyle(SizeType.Percent, 65));
+            summary.RowStyles.Add(new RowStyle(SizeType.Percent, 35));
             overviewTitle.Text = "选择记录后显示本局结果";
             overviewTitle.Dock = DockStyle.Fill;
-            overviewTitle.Font = UiStyle.HeroTitle;
-            layout.Controls.Add(overviewTitle, 0, 0);
+            overviewTitle.Font = UiStyle.SectionTitle;
+            overviewTitle.TextAlign = ContentAlignment.MiddleLeft;
+            summary.Controls.Add(overviewTitle, 0, 0);
             overviewNote.Dock = DockStyle.Fill;
             overviewNote.ForeColor = Muted;
+            overviewNote.Font = UiStyle.Caption;
             overviewNote.AutoEllipsis = true;
-            layout.Controls.Add(overviewNote, 0, 1);
-            var metrics = Grid(3, 2);
-            metrics.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-            metrics.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            string[] headings = { "外部平均 · ICMP", "探测超时", "探测总次数" };
+            summary.Controls.Add(overviewNote, 0, 1);
+            statusCard.Controls.Add(summary);
+            layout.Controls.Add(statusCard, 0, 0);
+
+            var metrics = Grid(3, 1);
+            string[] headings = { "平均延迟", "探测超时率", "延迟抖动" };
             for (int i = 0; i < metricValues.Length; i++)
             {
-                metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 3));
-                metrics.Controls.Add(Caption(headings[i]), i, 0);
+                metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / metricValues.Length));
+                var card = UiStyle.Card(true);
+                card.Margin = new Padding(0, 0, i == metricValues.Length - 1 ? 0 : UiStyle.Space8, UiStyle.Space8);
+                card.Padding = new Padding(UiStyle.Space8, UiStyle.Space4, UiStyle.Space8, UiStyle.Space4);
+                var metric = Grid(1, 2);
+                metric.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+                metric.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space20));
+                metric.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+                metric.Controls.Add(Caption(headings[i]), 0, 0);
                 var value = metricValues[i];
-                value.Text = "—"; value.Font = UiStyle.HeroTitle; value.Dock = DockStyle.Fill;
-                value.AutoEllipsis = true; value.Margin = Padding.Empty; value.AccessibleName = headings[i];
-                metrics.Controls.Add(value, i, 1);
+                value.Text = "—";
+                value.Font = UiStyle.HeroTitle;
+                value.Dock = DockStyle.Fill;
+                value.AutoEllipsis = true;
+                value.Margin = Padding.Empty;
+                value.AccessibleName = headings[i];
+                metric.Controls.Add(value, 0, 1);
+                card.Controls.Add(metric);
+                metrics.Controls.Add(card, i, 0);
             }
-            metrics.Margin = new Padding(0, UiStyle.Space8, 0, 0);
-            layout.Controls.Add(metrics, 0, 3);
+            layout.Controls.Add(metrics, 0, 1);
+
+            StyleButton(reportAdvice, "＋ 诊断与处理建议", false);
+            reportAdvice.TextOnly = true;
+            reportAdvice.Enabled = false;
+            reportAdvice.Margin = Padding.Empty;
+            layout.Controls.Add(reportAdvice, 0, 2);
             SetupText(overviewText, "本局结果说明与建议");
-            overviewText.Font = UiStyle.Body;
-            layout.Controls.Add(new NativeScrollFrame(overviewText), 0, 2);
-            return new ContentViewport(layout, 340);
+            var advice = new NativeScrollFrame(overviewText, compact: true) { Visible = false };
+            layout.Controls.Add(advice, 0, 3);
+            var viewport = new ContentViewport(layout, 180);
+            reportAdvice.Click += (sender, args) =>
+            {
+                advice.Visible = !advice.Visible;
+                reportAdvice.Text = advice.Visible ? "－ 诊断与处理建议" : "＋ 诊断与处理建议";
+                viewport.SetMinimumHeight(advice.Visible ? 320 : 180);
+            };
+            return viewport;
         }
 
         private static Label Caption(string text)
@@ -456,6 +501,19 @@ namespace SteamDirect
                 var area = Rectangle.Inflate(bounds, -gutter, -UiStyle.Scale(view, UiStyle.Space4));
                 using (var line = new Pen(AppTheme.Divider))
                     args.Graphics.DrawLine(line, area.Left, bounds.Bottom - 1, area.Right, bounds.Bottom - 1);
+                int markSize = UiStyle.Scale(view, UiStyle.Space32);
+                int markInset = markSize + gutter;
+                if (area.Width > markInset)
+                {
+                    var mark = new Rectangle(area.Left, area.Top, markSize, markSize);
+                    Color markColor = Motion.Blend(background, AppTheme.ReportAction, .55F);
+                    using (var shape = UiStyle.RoundRect(mark, UiStyle.Scale(view, UiStyle.Space8)))
+                    using (var paint = new SolidBrush(markColor)) args.Graphics.FillPath(paint, shape);
+                    TextRenderer.DrawText(args.Graphics, GameMark(args.Item.Text), UiStyle.CaptionStrong, mark,
+                        AppTheme.Text(Ink), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+                    area.X += markInset;
+                    area.Width -= markInset;
+                }
                 var session = (HistorySession)args.Item.Tag;
                 var history = (HistoryRecordList)view;
                 int[] heights = history.MeasureRow(args.Item, area.Width, RecordTextHeights);
@@ -466,12 +524,51 @@ namespace SteamDirect
                     TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
                 TextRenderer.DrawText(args.Graphics, args.Item.SubItems[1].Text, view.Font,
                     new Rectangle(area.X, area.Y + heights[0], area.Width, heights[1]), AppTheme.Text(Muted), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
-                TextRenderer.DrawText(args.Graphics, args.Item.SubItems[2].Text + " · " + args.Item.SubItems[3].Text, view.Font,
-                    new Rectangle(area.X, area.Y + heights[0] + heights[1], area.Width, heights[2]), AppTheme.Text(Ink), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                var timing = new Rectangle(area.X, area.Y + heights[0] + heights[1], area.Width, heights[2]);
+                DrawRecordTiming(args, view, timing, background);
                 return;
             }
             TextRenderer.DrawText(args.Graphics, args.SubItem.Text, view.Font, Rectangle.Inflate(bounds, -6, 0),
                 AppTheme.Text(color), TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+        }
+
+        private static string GameMark(string title)
+        {
+            if (string.IsNullOrWhiteSpace(title)) return "·";
+            int first = 0;
+            while (first < title.Length && !char.IsLetterOrDigit(title[first])) first++;
+            if (first == title.Length) return "·";
+            int next = first + 1;
+            while (next < title.Length && char.IsLetterOrDigit(title[next])) next++;
+            while (next < title.Length && !char.IsLetterOrDigit(title[next])) next++;
+            return next < title.Length
+                ? new string(new[] { char.ToUpperInvariant(title[first]), char.ToUpperInvariant(title[next]) })
+                : char.ToUpperInvariant(title[first]).ToString();
+        }
+
+        private static void DrawRecordTiming(DrawListViewSubItemEventArgs args, ListView view, Rectangle area, Color background)
+        {
+            string duration = args.Item.SubItems[2].Text;
+            string mode = args.Item.SubItems[3].Text;
+            var flags = TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter;
+            int gap = UiStyle.Scale(view, UiStyle.Space4);
+            int durationWidth = TextRenderer.MeasureText(duration, view.Font).Width;
+            int tagWidth = TextRenderer.MeasureText(mode, view.Font).Width + gap * 2;
+            if (durationWidth + gap + tagWidth > area.Width)
+            {
+                TextRenderer.DrawText(args.Graphics, duration + " · " + mode, view.Font, area,
+                    AppTheme.Text(Ink), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                return;
+            }
+            area.Height = Math.Min(area.Height, UiStyle.TextHeight(view) + gap);
+            TextRenderer.DrawText(args.Graphics, duration, view.Font, new Rectangle(area.X, area.Y, durationWidth, area.Height),
+                AppTheme.Text(Ink), flags);
+            var tag = new Rectangle(area.X + durationWidth + gap, area.Y, tagWidth, area.Height);
+            Color accent = mode == "代理" ? AppTheme.ReportAction : mode == "直连" ? AppTheme.Success : AppTheme.Muted;
+            using (var shape = UiStyle.RoundRect(tag, tag.Height / 2F))
+            using (var brush = new SolidBrush(Motion.Blend(background, accent, .28F)))
+                args.Graphics.FillPath(brush, shape);
+            TextRenderer.DrawText(args.Graphics, mode, view.Font, tag, AppTheme.Text(Ink), flags | TextFormatFlags.HorizontalCenter);
         }
 
         private static void SetupText(RichTextBox text, string label)
@@ -508,6 +605,8 @@ namespace SteamDirect
             if (fillingRecords || shuttingDown || records.IsDisposed || records.ClientSize.Width < 1) return;
             var list = (HistoryRecordList)records;
             int width = Math.Max(1, records.Columns[0].Width - 2 * UiStyle.Scale(records, UiStyle.Space8));
+            int markInset = UiStyle.Scale(records, UiStyle.Space32) + UiStyle.Scale(records, UiStyle.Space8);
+            if (width > markInset) width -= markInset;
             if (!list.RowLayoutChanged(width, force)) return;
             int padding = 2 * UiStyle.Scale(records, UiStyle.Space4);
             int height = (UiStyle.TextHeight(records) + UiStyle.Scale(records, UiStyle.Space4)) * 3 + padding;
@@ -782,7 +881,7 @@ namespace SteamDirect
                 ShowDetails(result);
                 LastAnalysisMilliseconds = analysisMilliseconds;
                 selectionPending = false;
-                status.Text = selectionHint + (selected.Interrupted ? "本局记录曾中断，详见报告" : "已加载本局记录");
+                status.Text = (selectionHint + (selected.Interrupted ? "本局记录曾中断" : "")).TrimEnd(' ', '·');
             }
             catch (OperationCanceledException)
             {
@@ -811,6 +910,7 @@ namespace SteamDirect
             detailData.Visible = false;
             incidents.Items.Clear();
             overviewText.Clear();
+            reportAdvice.Enabled = false;
             foreach (var value in metricValues) value.Text = "—";
             ShowDetailState("选择对局查看报告", "从左侧选择一条游戏记录。");
         }
@@ -829,6 +929,7 @@ namespace SteamDirect
         private sealed class Detail
         {
             internal string Comparison;
+            internal Color StatusColor;
             internal string OverviewTitle, OverviewNote, OverviewText;
             internal HistoryMetrics Metrics;
             internal List<HistoryEvent> Events;
@@ -891,7 +992,12 @@ namespace SteamDirect
                 detail.Events.Count > 0 ? "记录到尚未定位的异常" :
                 insufficient || session.Interrupted ? "记录不足，暂时无法完整判断" :
                 metrics.Lost > 0 ? "有零星超时，未发现持续网络异常" : "未发现持续网络异常";
-            detail.OverviewNote = "已按本局记录分析，故障位置和处理办法见下方。";
+            bool problem = adapterDown || localTrouble || dnsFailed || externalTrouble || spike || proxyTrouble || detail.Events.Count > 0;
+            detail.StatusColor = adapterDown || externalTrouble && metrics.Attempts > 0 && metrics.Lost == metrics.Attempts
+                ? AppTheme.Error : problem || metrics.Lost > 0 ? AppTheme.Warning :
+                insufficient || session.Interrupted ? AppTheme.Muted : AppTheme.Success;
+            detail.OverviewNote = string.IsNullOrWhiteSpace(session.Target)
+                ? "外部 ICMP 探测" : "外部 ICMP 探测 · " + session.Target;
             var location = new StringBuilder();
             var advice = new StringBuilder();
             if (adapterDown)
@@ -1054,11 +1160,15 @@ namespace SteamDirect
 
         private void ApplyDetails(Detail detail)
         {
-            UiStyle.SetState(overviewTitle, overviewNote, detail.OverviewTitle, detail.OverviewNote);
+            string statusIcon = detail.StatusColor == AppTheme.Success ? "✓ " :
+                detail.StatusColor == AppTheme.Muted ? "" : "● ";
+            UiStyle.SetState(overviewTitle, overviewNote, statusIcon + detail.OverviewTitle, detail.OverviewNote);
+            AppTheme.SetForeground(overviewTitle, detail.StatusColor);
+            reportAdvice.Enabled = true;
             var metrics = detail.Metrics;
             metricValues[0].Text = metrics.Attempts > metrics.Lost ? metrics.Average.ToString("F1", CultureInfo.InvariantCulture) + " ms" : "—";
             metricValues[1].Text = metrics.Attempts > 0 ? metrics.LossRate.ToString("F1", CultureInfo.InvariantCulture) + "%" : "—";
-            metricValues[2].Text = metrics.Attempts.ToString(CultureInfo.InvariantCulture);
+            metricValues[2].Text = metrics.JitterCount > 0 ? metrics.Jitter.ToString("F1", CultureInfo.InvariantCulture) + " ms" : "—";
             overviewText.Text = detail.OverviewText;
             FormatNarrative(overviewText);
             displayedDetail = detail;

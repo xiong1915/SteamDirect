@@ -195,7 +195,7 @@ namespace SteamDirect
             private readonly Control owner;
             private readonly Action changed;
             private float current, from, target;
-            private long started, lastSample;
+            private long started;
             private int duration;
             private double springFrequency, initialVelocity;
             private bool disposed;
@@ -222,19 +222,14 @@ namespace SteamDirect
                 Retarget(value, settleMilliseconds, true);
             }
 
-            internal void SpringToFromFrame(float value, int settleMilliseconds)
-            {
-                Retarget(value, settleMilliseconds, true, fromRenderedFrame: true);
-            }
-
-            private void Retarget(float value, int milliseconds, bool spring, bool fromRenderedFrame = false)
+            private void Retarget(float value, int milliseconds, bool spring)
             {
                 if (disposed) return;
                 if (target == value && (current == value || active.Contains(this))) return;
                 long now = Stopwatch.GetTimestamp();
                 double velocity = 0;
                 if (duration > 0 && active.Contains(this))
-                    current = Interpolate(fromRenderedFrame ? lastSample : now, out velocity);
+                    current = Interpolate(now, out velocity);
                 target = value;
                 if (milliseconds <= 0 || !Allowed || !CanAnimate(owner))
                 {
@@ -250,7 +245,7 @@ namespace SteamDirect
                 duration = milliseconds;
                 springFrequency = spring ? 7200.0 / milliseconds : 0;
                 initialVelocity = spring ? velocity : 0;
-                started = lastSample = now;
+                started = now;
                 if (!active.Contains(this)) active.Add(this);
                 Start(owner);
             }
@@ -297,7 +292,6 @@ namespace SteamDirect
                     return;
                 }
                 double velocity;
-                lastSample = now;
                 current = Interpolate(now, out velocity);
                 if (springFrequency != 0 && (elapsedMs >= 2.0 * duration ||
                     Math.Abs(current - target) <= .002 && Math.Abs(velocity) <= .05))

@@ -169,6 +169,8 @@ namespace SteamDirect
             original.Back = light;
             control.BackColor = Background(light);
         }
+        internal static readonly Color ReportAction = Color.FromArgb(0x24, 0x65, 0x67);
+
         internal static void ActionButton(Button button, bool primary)
         {
             button.FlatStyle = FlatStyle.Flat;
@@ -291,9 +293,18 @@ namespace SteamDirect
                     push.BackColor = AppTheme.primary;
                     push.ForeColor = primaryText;
                 }
+                if (original.Back == ReportAction)
+                {
+                    push.ForeColor = Color.White;
+                    push.FlatAppearance.MouseOverBackColor = Color.FromArgb(0x2B, 0x74, 0x76);
+                    push.FlatAppearance.MouseDownBackColor = Color.FromArgb(0x1D, 0x57, 0x59);
+                }
+                else
+                {
+                    push.FlatAppearance.MouseOverBackColor = primary ? AccentHover : Hover;
+                    push.FlatAppearance.MouseDownBackColor = primary ? AccentPressed : Edge;
+                }
                 push.FlatAppearance.BorderColor = Edge;
-                push.FlatAppearance.MouseOverBackColor = primary ? AccentHover : Hover;
-                push.FlatAppearance.MouseDownBackColor = primary ? AccentPressed : Edge;
                 push.Paint -= PaintDisabledButton; if (!(push is RoundedButton)) push.Paint += PaintDisabledButton;
             }
             foreach (Control child in control.Controls) Paint(child);

@@ -389,7 +389,13 @@ namespace SteamDirect
                                 var records = (ListView)Field(active, "records");
                                 var report = (RichTextBox)Field(active, "overviewText");
                                 Need(records.Height >= UiStyle.Scale(records, 100), "History list collapsed");
-                                Need(report.Height >= UiStyle.Scale(report, 80), "History report collapsed");
+                                var advice = (Button)Field(active, "reportAdvice");
+                                if (advice.Enabled)
+                                {
+                                    advice.PerformClick();
+                                    Need(report.Visible && report.Height >= UiStyle.Scale(report, 80), "Expanded history advice collapsed");
+                                    advice.PerformClick();
+                                }
                                 if (sizes[index,0] == 1920 && dpi >= 168)
                                 {
                                     var history = (HistoryWindow)active;

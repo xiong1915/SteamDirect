@@ -158,6 +158,7 @@ namespace SteamDirect
         private int maximum, page = 1, value, dragY, dragValue;
         private bool dragging;
         private readonly Motion.Value hover;
+        private Motion.Value visibility;
         internal event Action<int> ScrollTo;
         internal int Value { get { return value; } }
         internal void SetRange(int max, int visible, int position)
@@ -171,6 +172,16 @@ namespace SteamDirect
             else if (!previous.IsEmpty || !next.IsEmpty) Invalidate(Rectangle.Inflate(previous.IsEmpty ? next : previous, 1, 1));
         }
         internal DarkScrollBar() { hover = new Motion.Value(this, 0F); DoubleBuffered = true; TabStop = false; AccessibleRole = AccessibleRole.ScrollBar; AccessibleName = "垂直滚动"; }
+        internal void EnableContentHover()
+        {
+            visibility = new Motion.Value(this, 0F);
+        }
+
+        internal void SetContentHover(bool visible)
+        {
+            if (visibility != null) visibility.To(visible ? 1F : 0F, UiStyle.ButtonMotion);
+        }
+
         private Rectangle Thumb
         {
             get {
@@ -183,10 +194,16 @@ namespace SteamDirect
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.Clear(UiStyle.ParentSurface(this));
-            if (maximum == 0) return;
+            if (maximum == 0 || (visibility != null && visibility.Current <= 0F && !dragging)) return;
             e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             using (var path = UiStyle.RoundRect(Thumb, Width / 2F))
-            using (var brush = new SolidBrush(dragging ? AppTheme.Text(AppTheme.Accent) : Motion.Blend(AppTheme.Edge, AppTheme.Text(AppTheme.Muted), hover.Current))) e.Graphics.FillPath(brush, path);
+            {
+                Color color = dragging ? AppTheme.Text(AppTheme.Accent) :
+                    Motion.Blend(AppTheme.Edge, AppTheme.Text(AppTheme.Muted), hover.Current);
+                if (visibility != null && !dragging)
+                    color = Motion.Blend(UiStyle.ParentSurface(this), color, visibility.Current);
+                using (var brush = new SolidBrush(color)) e.Graphics.FillPath(brush, path);
+            }
         }
         private void MoveTo(int position) { if (ScrollTo != null) ScrollTo(Math.Max(0, Math.Min(maximum, position))); }
         protected override void OnMouseDown(MouseEventArgs e)
@@ -211,9 +228,11 @@ namespace SteamDirect
         private readonly Control content;
         private readonly Observer observer;
         private bool synchronizing;
+        private readonly bool compact;
         [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
-        internal NativeScrollFrame(Control content)
+        internal NativeScrollFrame(Control content, bool compact = false)
         {
+            this.compact = compact;
             DoubleBuffered = true;
             var text = content as TextBox; if (text != null) text.ScrollBars = ScrollBars.None;
             var rich = content as RichTextBox; if (rich != null) rich.ScrollBars = RichTextBoxScrollBars.None;
@@ -222,6 +241,18 @@ namespace SteamDirect
             if (content is ListView) bar.Visible = false;
             Controls.Add(viewport); Controls.Add(bar); viewport.Controls.Add(content); content.Dock = DockStyle.None;
             bar.Width = UiStyle.Scale(this, 14); bar.ScrollTo += ScrollContent;
+            if (compact)
+            {
+                bar.EnableContentHover();
+                foreach (Control control in new[] { this, viewport, content, (Control)bar })
+                {
+                    control.MouseEnter += (sender, args) => bar.SetContentHover(true);
+                    control.MouseLeave += (sender, args) =>
+                    {
+                        if (!ClientRectangle.Contains(PointToClient(Cursor.Position))) bar.SetContentHover(false);
+                    };
+                }
+            }
             observer = new Observer(this); content.HandleCreated += HandleCreatedContent; content.HandleDestroyed += HandleDestroyedContent;
             if (content.IsHandleCreated) HandleCreatedContent(content, EventArgs.Empty);
         }
@@ -234,7 +265,8 @@ namespace SteamDirect
         protected override void OnLayout(LayoutEventArgs e)
         {
             base.OnLayout(e); if (content == null) return;
-            bar.Bounds = new Rectangle(Math.Max(0, Width - UiStyle.Scale(this, 14)), 0, UiStyle.Scale(this, 14), Height);
+            int width = UiStyle.Scale(this, compact ? 10 : 14);
+            bar.Bounds = new Rectangle(Math.Max(0, Width - width), 0, width, Height);
             viewport.Bounds = new Rectangle(0, 0, Math.Max(1, content is ListView ? Width : bar.Left), Height);
             // ListView uses the full viewport; text reserves space for its custom scrollbar.
             content.Bounds = new Rectangle(0, 0, Math.Max(1, viewport.ClientSize.Width), Math.Max(1, viewport.ClientSize.Height));

@@ -154,7 +154,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.41";
+            Text = "Steam 直连助手 v3.0.42";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -425,7 +425,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.41", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.42", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -457,7 +457,18 @@ namespace SteamDirect
             sidebar.Disposed += (sender, args) => hints.Dispose();
             foreach (var item in navigation) hints.SetToolTip(item.Value, item.Key);
             bool manualCollapse = false, appliedCollapse = false, railLayoutPending = false;
-            var transition = new SidebarTransition();
+            Motion.Value railMotion = null;
+            railMotion = new Motion.Value(toggle, 0F, () =>
+            {
+                toggle.SidebarProgress = railMotion.Current;
+                toggle.Invalidate();
+                foreach (RoundedButton button in navigation.Values)
+                {
+                    if (button.IconOnly) continue;
+                    button.CaptionOpacity = 1F - .35F * toggle.SidebarProgress;
+                    button.Invalidate(button.CaptionBounds);
+                }
+            });
             Action updateRail = () =>
             {
                 bool constrained = shell.Width > 0 && shell.Width < UiStyle.Scale(shell, UiStyle.ExpandedSidebarBreakpoint);
@@ -496,22 +507,17 @@ namespace SteamDirect
                     }
                 }
             };
-            synchronizeSidebar = () => { transition.Finish(); updateRail(); };
+            synchronizeSidebar = () =>
+            {
+                updateRail();
+                railMotion.Set(appliedCollapse ? 1F : 0F);
+            };
             hints.SetToolTip(toggle, toggle.AccessibleName);
             toggle.Click += (sender, args) =>
             {
-                bool collapse = !appliedCollapse;
-                bool animate = Motion.Allowed && !IsLiveResizing && sidebar.Width > 0 && sidebar.Height > 0;
-                var strip = new Rectangle(PointToClient(sidebar.PointToScreen(Point.Empty)), sidebar.Size);
-                if (animate && collapse) transition.CaptureExpanded(sidebar);
                 manualCollapse = !manualCollapse;
                 updateRail();
-                if (animate)
-                {
-                    if (!collapse) strip = new Rectangle(PointToClient(sidebar.PointToScreen(Point.Empty)), sidebar.Size);
-                    transition.Animate(strip, UiStyle.Scale(sidebar, UiStyle.CollapsedSidebarWidth), collapse);
-                }
-                else transition.Finish();
+                railMotion.SpringTo(appliedCollapse ? 1F : 0F, UiStyle.StatusMotion);
             };
             shell.SizeChanged += (sender, args) =>
             {
@@ -523,9 +529,8 @@ namespace SteamDirect
                     if (!IsDisposed) synchronizeSidebar();
                 }));
             };
-            Shown += (sender, args) => updateRail();
+            Shown += (sender, args) => synchronizeSidebar();
             Controls.Add(shell);
-            Controls.Add(transition);
             SelectNavigation("概览");
         }
 
@@ -689,11 +694,12 @@ namespace SteamDirect
         protected override void OnWindowPresentationSizeChanged()
         {
             if (pageHost == null || !pageHost.IsHandleCreated) return;
-            PerformLayout();
+            var shell = pageHost.Parent;
+            if (shell != null && shell.Bounds != ClientRectangle) PerformLayout();
             if (synchronizeSidebar != null) synchronizeSidebar();
+            if (shell != null && pageHost.Right != shell.DisplayRectangle.Right - pageHost.Margin.Right)
+                shell.PerformLayout();
             pageHost.FitPage(pageHost.ActivePage);
-            pageHost.Invalidate(true);
-            RedrawBatch.FlushPendingPaint(pageHost);
         }
 
         protected override void OnResize(EventArgs e) { base.OnResize(e); if (Visible && WindowState != FormWindowState.Minimized) lastVisibleState = WindowState; UpdateOperationAnimation(); }
