@@ -103,7 +103,12 @@ namespace SteamDirect
                         {
                             nav.Invoke(main, new object[] { "游戏记录" });
                             Pump(100);
-                            WindowStateAcceptance(main);
+                            using (var trace = new NavigationTrace(true))
+                            {
+                                trace.Observe(main);
+                                WindowStateAcceptance(main);
+                                Console.WriteLine("STATE " + trace.Summary);
+                            }
                             return 0;
                         }
                         string[] pages={"网络诊断","游戏记录","设置","概览"};
@@ -217,6 +222,8 @@ namespace SteamDirect
             var page = host.ActivePage;
             var initialBounds = main.Bounds;
             var initialClient = main.ClientSize;
+            var links = (Dictionary<string, Button>)Field(main, "navigation");
+            bool startedCompact = links.Values.Cast<RoundedButton>().All(button => button.IconOnly);
             var history = page as HistoryWindow;
             var records = history == null ? null : (ListView)Field(history, "records");
             var selected = records == null || records.SelectedItems.Count == 0 ? null : records.SelectedItems[0];
@@ -233,6 +240,9 @@ namespace SteamDirect
                         page.Bounds == host.PageBounds && host.ClientRectangle.Contains(page.Bounds) &&
                         main.ClientRectangle.Contains(main.RectangleToClient(host.RectangleToScreen(host.ClientRectangle))),
                         "Maximize did not immediately fit the cached page.");
+                    if (startedCompact && Environment.GetEnvironmentVariable("STEAMDIRECT_ALLOW_OLD_RAIL") != "1")
+                        Need(links.Values.Cast<RoundedButton>().All(button => button.IconOnly),
+                            "Maximize should not automatically re-expand a compact sidebar.");
                     elapsed.Restart();
                     main.WindowState = FormWindowState.Normal;
                     Console.WriteLine("WINDOW cycle=" + (iteration + 1) + " maximize_ms=" + maximize.ToString("F2") +
@@ -274,13 +284,14 @@ namespace SteamDirect
             var progress = typeof(RoundedButton).GetField("SidebarProgress", Private);
             if (Motion.Allowed)
             {
+                float initial = (float)progress.GetValue(toggle);
                 toggle.PerformClick();
                 Pump(50);
                 float fraction = (float)progress.GetValue(toggle);
                 Need(fraction > 0F && fraction < 1F, "Sidebar toggle skipped its intermediate drawing state.");
                 toggle.PerformClick();
                 Pump(390);
-                Need((float)progress.GetValue(toggle) == 0F, "Reversed sidebar toggle did not settle.");
+                Need(Math.Abs((float)progress.GetValue(toggle) - initial) < .01F, "Reversed sidebar toggle did not settle.");
                 Console.WriteLine("SIDEBAR local animation passed intermediate state and reversal.");
             }
             Point anchor = toggle.PointToScreen(Point.Empty);

@@ -154,7 +154,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.42";
+            Text = "Steam 直连助手 v3.0.43";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -425,7 +425,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.42", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.43", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -456,7 +456,7 @@ namespace SteamDirect
             var hints = new FluentTooltip();
             sidebar.Disposed += (sender, args) => hints.Dispose();
             foreach (var item in navigation) hints.SetToolTip(item.Value, item.Key);
-            bool manualCollapse = false, appliedCollapse = false, railLayoutPending = false;
+            bool sidebarCollapsed = false, appliedCollapse = false, railLayoutPending = false;
             Motion.Value railMotion = null;
             railMotion = new Motion.Value(toggle, 0F, () =>
             {
@@ -472,7 +472,9 @@ namespace SteamDirect
             Action updateRail = () =>
             {
                 bool constrained = shell.Width > 0 && shell.Width < UiStyle.Scale(shell, UiStyle.ExpandedSidebarBreakpoint);
-                bool collapsed = manualCollapse || constrained;
+                // Preserve the compact rail after a window-state change to avoid reflowing the active page twice.
+                if (constrained) sidebarCollapsed = true;
+                bool collapsed = sidebarCollapsed;
                 int width = UiStyle.Scale(shell, collapsed ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
                 toggle.Enabled = !constrained;
                 if (Math.Abs(shell.ColumnStyles[0].Width - width) < 1 && appliedCollapse == collapsed) return;
@@ -515,7 +517,7 @@ namespace SteamDirect
             hints.SetToolTip(toggle, toggle.AccessibleName);
             toggle.Click += (sender, args) =>
             {
-                manualCollapse = !manualCollapse;
+                sidebarCollapsed = !sidebarCollapsed;
                 updateRail();
                 railMotion.SpringTo(appliedCollapse ? 1F : 0F, UiStyle.StatusMotion);
             };

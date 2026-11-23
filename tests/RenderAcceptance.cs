@@ -308,6 +308,7 @@ namespace SteamDirect
                                 {
                                     var toggle = Descendants(main).OfType<RoundedButton>().Single(button => button.Icon == UiIcon.Sidebar);
                                     var side = (Dictionary<string, Button>)Field(main, "navigation");
+                                    if (side.Values.Cast<RoundedButton>().All(button => button.IconOnly)) toggle.PerformClick();
                                     toggle.PerformClick();
                                     Pump(UiStyle.StatusMotion * 2 + 30);
                                     Need(side.All(item => ((RoundedButton)item.Value).IconOnly && item.Value.Text == item.Key),
