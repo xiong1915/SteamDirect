@@ -153,7 +153,11 @@ namespace SteamDirect
                             nav.Invoke(main, new object[]{"游戏记录"});
                         }
                         GC.Collect();GC.WaitForPendingFinalizers();int finalGdi=GetGuiResources(Process.GetCurrentProcess().Handle,0);Console.WriteLine("RESOURCE gdi_before="+gdiBefore+" warmed="+gdiWarm+" after="+finalGdi+" working_set_MB="+(Process.GetCurrentProcess().WorkingSet64/1048576.0).ToString("F1")+" private_warmed_MB="+(memoryWarm/1048576.0).ToString("F1")+" private_final_MB="+(Process.GetCurrentProcess().PrivateMemorySize64/1048576.0).ToString("F1"));
-                        if(!baseline)Need(finalGdi<=gdiWarm+5,"GDI growth after warmed 100 switches");
+                        if (!baseline)
+                        {
+                            Need(finalGdi <= gdiWarm + 5, "GDI growth after warmed 100 switches");
+                            WindowStateAcceptance(main);
+                        }
                         if (!baseline && Environment.GetEnvironmentVariable("STEAMDIRECT_TEST_CROSS_MONITOR") == "1")
                             MonitorDragAcceptance(main);
                         Need(monitor.PingCount==0&&monitor.DnsCount==0,"Network probes unexpectedly started");
@@ -191,6 +195,48 @@ namespace SteamDirect
             }
         }
 
+        private static void WindowStateAcceptance(MainWindow main)
+        {
+            var host = (PageHost)Field(main, "pageHost");
+            var page = host.ActivePage;
+            var initialBounds = main.Bounds;
+            var initialClient = main.ClientSize;
+            var history = page as HistoryWindow;
+            var records = history == null ? null : (ListView)Field(history, "records");
+            var selected = records == null || records.SelectedItems.Count == 0 ? null : records.SelectedItems[0];
+            int cloak = 1;
+            Need(DwmSetWindowAttribute(main.Handle, 13, ref cloak, sizeof(int)) == 0, "Could not conceal the maximize/restore fixture.");
+            try
+            {
+                for (int iteration = 0; iteration < 2; iteration++)
+                {
+                    main.WindowState = FormWindowState.Maximized;
+                    Need(main.WindowState == FormWindowState.Maximized && ReferenceEquals(host.ActivePage, page) &&
+                        page.Bounds == host.PageBounds && host.ClientRectangle.Contains(page.Bounds) &&
+                        main.ClientRectangle.Contains(main.RectangleToClient(host.RectangleToScreen(host.ClientRectangle))),
+                        "Maximize did not immediately fit the cached page.");
+                    main.WindowState = FormWindowState.Normal;
+                    Need(main.WindowState == FormWindowState.Normal && ReferenceEquals(host.ActivePage, page) &&
+                        page.Bounds == host.PageBounds && host.ClientRectangle.Contains(page.Bounds) &&
+                        main.ClientRectangle.Contains(main.RectangleToClient(host.RectangleToScreen(host.ClientRectangle))),
+                        "Restore left the cached page positioned in the maximized viewport.");
+                    if (selected != null)
+                        Need(records.SelectedItems.Count == 1 && ReferenceEquals(records.SelectedItems[0], selected),
+                            "Maximize/restore changed the selected history record.");
+                }
+            }
+            finally
+            {
+                main.WindowState = FormWindowState.Normal;
+                main.Location = initialBounds.Location;
+                OffscreenGeometry.Resize(main, initialClient);
+                Pump(50);
+                cloak = 0;
+                DwmSetWindowAttribute(main.Handle, 13, ref cloak, sizeof(int));
+            }
+            Console.WriteLine("WINDOW maximized/restored twice with the same cached page.");
+        }
+
         private static void SidebarAcceptance(MainWindow main, Control page, string name)
         {
             var host = (PageHost)Field(main, "pageHost");
@@ -203,6 +249,21 @@ namespace SteamDirect
                     Need(link.IconOnly && link.AccessibleName.Length > 0, "Compact sidebar retained an expanded or inaccessible link");
                 Console.WriteLine("SIDEBAR compact page=" + name + " labels=icons");
                 return;
+            }
+            var transition = main.Controls.Cast<Control>().Single(control => control.GetType().Name == "SidebarTransition");
+            var animatedWidth = transition.GetType().GetProperty("CurrentWidth", Private);
+            if (Motion.Allowed)
+            {
+                toggle.PerformClick();
+                Need(transition.Visible && transition.Region != null, "Collapse omitted the clipped animation layer.");
+                Pump(40);
+                var width = (float)animatedWidth.GetValue(transition, null);
+                toggle.PerformClick();
+                Need(transition.Visible && Math.Abs(width - (float)animatedWidth.GetValue(transition, null)) <= UiStyle.Scale(toggle, 32),
+                    "Reversing the sidebar jumped to a different edge: " + width + " → " + (float)animatedWidth.GetValue(transition, null));
+                Pump(390);
+                Need(!transition.Visible && transition.Region == null, "Sidebar animation left a visible drawing layer.");
+                Console.WriteLine("SIDEBAR transition passed collapse, reversal and layer release.");
             }
             Point anchor = toggle.PointToScreen(Point.Empty);
             int resizes = 0;
@@ -221,7 +282,8 @@ namespace SteamDirect
                         elapsed += clock.Elapsed.TotalMilliseconds;
                         if (i == 0) Console.WriteLine("SIDEBAR detail " + name + " " + trace.Summary);
                     }
-                    Pump(200);
+                    Pump(390);
+                    Need(!transition.Visible && transition.Region == null, "Sidebar drawing layer remained after settling.");
                     Need(toggle.PointToScreen(Point.Empty) == anchor, "Sidebar toggle moved with the page");
                     Need(page.Bounds == host.PageBounds, "Sidebar toggle did not fit the active page");
                 }

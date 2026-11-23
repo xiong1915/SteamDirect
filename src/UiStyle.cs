@@ -105,7 +105,7 @@ namespace SteamDirect
         internal const int LargeButtonHeight = 44, AppHeaderHeight = Space48, StatusBarHeight = Space32,
             SidebarWidth = 232, CollapsedSidebarWidth = 64, MinimumWindowWidth = 1100, MinimumWindowHeight = 700,
             CompactWindowWidth = 880, CompactWindowHeight = 540, ExpandedSidebarBreakpoint = 1120;
-        internal const int ButtonMotion = 100, StatusMotion = 180;
+        internal const int ButtonMotion = 100, StatusMotion = 180, PageMotion = 220;
         internal const float SmallRadius = 6, ControlRadius = 8, CardRadius = 12, DialogRadius = 16, NavigationRadius = ControlRadius;
         internal const int SpinnerPeriodMs = 1600; // Continuous motion is reserved for active operations; controls animate only on interaction.
         private static readonly string Family = PickFont("Segoe UI Variable Text", "Segoe UI");
@@ -184,7 +184,7 @@ namespace SteamDirect
                 var main = TopLevelControl as MainWindow;
                 if (form is HistoryWindow || (main != null && main.IsPreparingPresentation)) return;
                 reveal.Set(0F);
-                reveal.To(1F, 160);
+                reveal.To(1F, PageMotion);
             }
 
             protected override void OnPaint(PaintEventArgs e)

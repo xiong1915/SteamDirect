@@ -28,8 +28,6 @@ namespace SteamDirect
         internal int CaptionInset = UiStyle.Space12;
         internal bool TextOnly;
         internal bool IconOnly;
-        internal float IconOpacity = 1F;
-        internal float CaptionOpacity = 1F;
         internal const TextFormatFlags CaptionFlags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
 
         internal Rectangle CaptionBounds
@@ -141,11 +139,11 @@ namespace SteamDirect
             {
                 float size = UiStyle.Space20 * scale;
                 float left = IconOnly ? (Width - size) / 2 : UiStyle.Space12 * scale;
-                UiStyle.DrawIcon(e.Graphics, Icon, new RectangleF(left, (Height - size) / 2, size, size), Motion.Blend(fill, textColor, IconOpacity));
+                UiStyle.DrawIcon(e.Graphics, Icon, new RectangleF(left, (Height - size) / 2, size, size), textColor);
                 alignment = TextFormatFlags.Left;
             }
             if (!IconOnly)
-                TextRenderer.DrawText(e.Graphics, Text, Font, bounds, Motion.Blend(fill, textColor, CaptionOpacity),
+                TextRenderer.DrawText(e.Graphics, Text, Font, bounds, textColor,
                     alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | CaptionFlags);
             if (HorizontalIndicator && selection.Current > 0 && Width > 8 && Height > 8)
             {

@@ -142,6 +142,7 @@ namespace SteamDirect
         private readonly OverviewStatus overviewStatus;
 
         private bool startHidden;
+        private Action synchronizeSidebar;
         internal bool IsPreparingPresentation { get; private set; }
 
         internal MainWindow(bool background = false, HistoryMonitor historyOverride = null, UserPreferences preferencesOverride = null)
@@ -153,7 +154,7 @@ namespace SteamDirect
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.40";
+            Text = "Steam 直连助手 v3.0.41";
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -424,7 +425,7 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.40", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = "v3.0.41", ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
             var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
@@ -456,20 +457,8 @@ namespace SteamDirect
             sidebar.Disposed += (sender, args) => hints.Dispose();
             foreach (var item in navigation) hints.SetToolTip(item.Value, item.Key);
             bool manualCollapse = false, appliedCollapse = false, railLayoutPending = false;
-            Action updateRail = null;
-            Motion.Value railTransition = null;
-            railTransition = new Motion.Value(toggle, 1F, () =>
-            {
-                toggle.IconOpacity = .55F + .45F * railTransition.Current;
-                toggle.Invalidate();
-                foreach (RoundedButton button in navigation.Values)
-                {
-                    if (button.IconOnly) continue;
-                    button.CaptionOpacity = railTransition.Current;
-                    button.Invalidate(button.CaptionBounds);
-                }
-            });
-            updateRail = () =>
+            var transition = new SidebarTransition();
+            Action updateRail = () =>
             {
                 bool constrained = shell.Width > 0 && shell.Width < UiStyle.Scale(shell, UiStyle.ExpandedSidebarBreakpoint);
                 bool collapsed = manualCollapse || constrained;
@@ -507,13 +496,22 @@ namespace SteamDirect
                     }
                 }
             };
+            synchronizeSidebar = () => { transition.Finish(); updateRail(); };
             hints.SetToolTip(toggle, toggle.AccessibleName);
             toggle.Click += (sender, args) =>
             {
+                bool collapse = !appliedCollapse;
+                bool animate = Motion.Allowed && !IsLiveResizing && sidebar.Width > 0 && sidebar.Height > 0;
+                var strip = new Rectangle(PointToClient(sidebar.PointToScreen(Point.Empty)), sidebar.Size);
+                if (animate && collapse) transition.CaptureExpanded(sidebar);
                 manualCollapse = !manualCollapse;
                 updateRail();
-                railTransition.Set(0F);
-                railTransition.To(1F, UiStyle.ButtonMotion);
+                if (animate)
+                {
+                    if (!collapse) strip = new Rectangle(PointToClient(sidebar.PointToScreen(Point.Empty)), sidebar.Size);
+                    transition.Animate(strip, UiStyle.Scale(sidebar, UiStyle.CollapsedSidebarWidth), collapse);
+                }
+                else transition.Finish();
             };
             shell.SizeChanged += (sender, args) =>
             {
@@ -522,11 +520,12 @@ namespace SteamDirect
                 BeginInvoke((Action)(() =>
                 {
                     railLayoutPending = false;
-                    if (!IsDisposed) updateRail();
+                    if (!IsDisposed) synchronizeSidebar();
                 }));
             };
             Shown += (sender, args) => updateRail();
             Controls.Add(shell);
+            Controls.Add(transition);
             SelectNavigation("概览");
         }
 
@@ -687,6 +686,16 @@ namespace SteamDirect
         }
 
         protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); UpdateOperationAnimation(); }
+        protected override void OnWindowPresentationSizeChanged()
+        {
+            if (pageHost == null || !pageHost.IsHandleCreated) return;
+            PerformLayout();
+            if (synchronizeSidebar != null) synchronizeSidebar();
+            pageHost.FitPage(pageHost.ActivePage);
+            pageHost.Invalidate(true);
+            RedrawBatch.FlushPendingPaint(pageHost);
+        }
+
         protected override void OnResize(EventArgs e) { base.OnResize(e); if (Visible && WindowState != FormWindowState.Minimized) lastVisibleState = WindowState; UpdateOperationAnimation(); }
         private void UpdateOperationAnimation()
         {

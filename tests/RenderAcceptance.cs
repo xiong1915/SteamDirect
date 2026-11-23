@@ -309,11 +309,11 @@ namespace SteamDirect
                                     var toggle = Descendants(main).OfType<RoundedButton>().Single(button => button.Icon == UiIcon.Sidebar);
                                     var side = (Dictionary<string, Button>)Field(main, "navigation");
                                     toggle.PerformClick();
-                                    Pump(UiStyle.ButtonMotion + 80);
+                                    Pump(UiStyle.StatusMotion * 2 + 30);
                                     Need(side.All(item => ((RoundedButton)item.Value).IconOnly && item.Value.Text == item.Key),
                                         "Collapsed navigation must use accessible icon buttons");
                                     toggle.PerformClick();
-                                    Pump(UiStyle.ButtonMotion + 80);
+                                    Pump(UiStyle.StatusMotion * 2 + 30);
                                     Need(side.All(item => !((RoundedButton)item.Value).IconOnly && item.Value.Text == item.Key),
                                         "Expanding navigation did not restore the captions");
                                     var open = typeof(MainWindow).GetMethod("OpenOverviewHistoryAsync", Private);

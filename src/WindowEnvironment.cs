@@ -113,11 +113,22 @@ namespace SteamDirect
             if (Bounds != fitted) Bounds = fitted;
             } finally { fitting = false; }
         }
+        private int previousNativeSize;
+        protected virtual void OnWindowPresentationSizeChanged() { }
+
         protected override void WndProc(ref Message message)
         {
             // WinForms owns WM_DPICHANGED and its suggested rectangle. Never scale it a second time.
             int kind = message.Msg;
+            int sizeKind = kind == 0x0005 && TopLevel ? message.WParam.ToInt32() : -1; // WM_SIZE
+            bool presentationChanged = sizeKind >= 0 && sizeKind <= 2 && previousNativeSize != sizeKind;
+            if (presentationChanged) previousNativeSize = sizeKind;
             base.WndProc(ref message);
+            if (presentationChanged && sizeKind != 1 && Visible && !IsDisposed)
+            {
+                if (liveResize) FinishDrag(false);
+                OnWindowPresentationSizeChanged();
+            }
             if (kind == 0x007E || kind == 0x02E0 || kind == 0x001A)
             {
                 if (liveResize) displayChangedDuringDrag = true;
