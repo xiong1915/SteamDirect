@@ -13,11 +13,15 @@ namespace SteamDirect
         private readonly FlowLayoutPanel navigation = new FlowLayoutPanel { Dock = DockStyle.Top, Height = UiStyle.ButtonHeight + UiStyle.SmallGap, WrapContents = true, Margin = Padding.Empty };
         private readonly Panel content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, UiStyle.SmallGap, 0, 0) };
         private readonly List<Control> pages = new List<Control>();
-        private readonly List<Button> buttons = new List<Button>();
+        private readonly List<RoundedButton> buttons = new List<RoundedButton>();
+        private int fittedWidth = -1, fittedDpi;
+        internal event Action SectionChanged;
         internal int SelectedIndex { get; private set; }
         internal int PageCount { get { return pages.Count; } }
         internal HistorySections()
         {
+            SelectedIndex = -1;
+            DoubleBuffered = true;
             Dock = DockStyle.Fill;
             BackColor = AppTheme.Surface;
             Controls.Add(content);
@@ -26,18 +30,19 @@ namespace SteamDirect
         internal void Add(string title, Control page)
         {
             int index = pages.Count;
-            var button = new RoundedButton { Text = title, AutoSize = false, Width = 116, Height = UiStyle.ButtonHeight, MinimumSize = new Size(116, UiStyle.ButtonHeight), Margin = new Padding(0, 0, 8, 0) };
+            var button = new RoundedButton { HorizontalIndicator = true, Text = title, AutoSize = false, Width = 100, Height = UiStyle.ButtonHeight, Margin = new Padding(0, 0, 8, 0), CaptionInset = UiStyle.Space8 };
             AppTheme.ActionButton(button, false);
             button.Font = UiStyle.Button;
-            button.Click += (sender, args) => SelectPage(index);
+            button.Click += (sender, args) => RevealPage(index);
             navigation.Controls.Add(button);
             buttons.Add(button);
             page.Dock = DockStyle.Fill;
+            page.Visible = false;
             content.Controls.Add(page);
             pages.Add(page);
-            button.FontChanged += (sender, args) => FitNavigation();
-            FitNavigation();
-            SelectPage(0);
+            button.FontChanged += (sender, args) => RefitNavigation();
+            RefitNavigation();
+            if (SelectedIndex < 0) SelectPage(0);
         }
         protected override void OnSizeChanged(EventArgs e)
         {
@@ -47,33 +52,84 @@ namespace SteamDirect
         private void FitNavigation()
         {
             if (buttons == null || buttons.Count == 0 || Width <= 0) return;
-            int required = UiStyle.Scale(this, 116), height = UiStyle.Scale(this, UiStyle.ButtonHeight);
+            int dpi = UiStyle.Dpi(this);
+            if (fittedWidth == Width && fittedDpi == dpi) return;
+            fittedWidth = Width;
+            fittedDpi = dpi;
+            int required = UiStyle.Scale(this, 72), height = UiStyle.Scale(this, UiStyle.ButtonHeight);
             int margin = 0;
-            foreach (var button in buttons) {
-                required = Math.Max(required, TextRenderer.MeasureText(button.Text, button.Font).Width + UiStyle.Scale(this, 32));
+            foreach (var button in buttons)
+            {
+                int caption = TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, RoundedButton.CaptionFlags).Width;
+                required = Math.Max(required, caption + 2 * UiStyle.Scale(this, button.CaptionInset));
                 height = Math.Max(height, UiStyle.TextHeight(button) + UiStyle.Scale(this, 16));
                 margin = Math.Max(margin, button.Margin.Horizontal);
             }
             int columns = Math.Max(1, Math.Min(buttons.Count, Width / (required + margin)));
+            if (buttons.Count == 4 && columns == 3) columns = 2;
             int width = Math.Max(1, Width / columns - margin);
-            foreach (var button in buttons) { button.MinimumSize = Size.Empty; button.Size = new Size(width, height); }
-            int total = ((buttons.Count + columns - 1) / columns) * (height + UiStyle.Scale(this, 8));
-            if (navigation.Height != total) navigation.Height = total;
+            int rows = (buttons.Count + columns - 1) / columns;
+            navigation.SuspendLayout();
+            try
+            {
+                foreach (var button in buttons)
+                {
+                    button.MinimumSize = Size.Empty;
+                    button.Size = new Size(width, height);
+                }
+                navigation.Height = rows * height + UiStyle.Scale(this, UiStyle.SmallGap);
+            }
+            finally { navigation.ResumeLayout(true); }
+        }
+
+        private void RefitNavigation()
+        {
+            fittedWidth = -1;
+            FitNavigation();
         }
 
         internal void SelectPage(int index)
         {
+            if (index < 0 || index >= pages.Count) throw new ArgumentOutOfRangeException("index");
+            if (SelectedIndex == index) return;
+            int previous = SelectedIndex;
             SelectedIndex = index;
-            for (int i = 0; i < pages.Count; i++)
+            using (new RedrawBatch(content))
             {
-                pages[i].Visible = i == index;
-                AppTheme.SetBackground(buttons[i], i == index ? AppTheme.Pill : AppTheme.Surface);
-                AppTheme.SetForeground(buttons[i], i == index ? AppTheme.Accent : AppTheme.Muted);
+                content.SuspendLayout();
+                try
+                {
+                    pages[index].BringToFront();
+                    SetPageSelected(index, true);
+                    if (previous >= 0) SetPageSelected(previous, false);
+                }
+                finally { content.ResumeLayout(true); }
+                if (SectionChanged != null) SectionChanged();
             }
+        }
+
+        internal void RevealPage(int index)
+        {
+            SelectPage(index);
+            for (Control parent = Parent; parent != null; parent = parent.Parent)
+            {
+                var viewport = parent as ContentViewport;
+                if (viewport == null) continue;
+                viewport.RevealTop(this, navigation.Height + UiStyle.Scale(this, 160));
+                break;
+            }
+        }
+
+        private void SetPageSelected(int index, bool selected)
+        {
+            pages[index].Visible = selected;
+            buttons[index].SelectedNavigation = selected;
+            AppTheme.SetBackground(buttons[index], selected ? AppTheme.Pill : AppTheme.Surface);
+            AppTheme.SetForeground(buttons[index], selected ? AppTheme.Accent : AppTheme.Muted);
         }
     }
 
-    internal sealed class HistoryDataWindow : Form
+    internal sealed class HistoryDataWindow : DesktopForm
     {
         private const int PageSize = 200;
         private readonly HistoryStore store;
@@ -86,13 +142,15 @@ namespace SteamDirect
         private readonly Button previous = new RoundedButton(), next = new RoundedButton();
         private readonly List<HistoryEvent> eventRows = new List<HistoryEvent>();
         private int page;
-        private bool busy, closed;
+        private bool busy, closed, hasNext;
         internal HistoryDataWindow(HistoryStore store, HistorySession session, Func<bool> isGaming)
         {
             SuspendLayout();
             this.store = store; this.session = session; this.isGaming = isGaming;
             Text = session.Game + " · 详细数据";
-            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            var ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            Icon = ownedIcon;
+            Disposed += (sender, args) => { if (ownedIcon != null) ownedIcon.Dispose(); };
             Font = UiStyle.Body;
             AutoScaleDimensions = new SizeF(96, 96); AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(940, 660); MinimumSize = new Size(760, 540);
@@ -114,7 +172,7 @@ namespace SteamDirect
             Configure(samples, new[] { "采样时间", "模式", "网关延迟", "外部延迟", "网卡", "DNS", "网关地址" });
             Configure(events, new[] { "异常类型", "发生时间", "恢复时间", "持续时间" });
             sections.Add("原始采样", samples); sections.Add("异常记录", events); sectionCard.Controls.Add(sections); root.Controls.Add(sectionCard, 0, 2);
-            var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1 };
+            var footer = UiStyle.Grid(3, 1);
             footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90)); footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
             state.Dock = DockStyle.Fill; state.TextAlign = ContentAlignment.MiddleLeft; state.ForeColor = AppTheme.Muted; state.AutoEllipsis = true;
@@ -128,10 +186,11 @@ namespace SteamDirect
             AppTheme.Apply(this);
             ResumeLayout(true);
         }
-        private void Guard(CancellationToken token)
+        private void Guard(CancellationToken token, bool checkProcesses = false)
         {
             token.ThrowIfCancellationRequested();
-            if (isGaming != null && isGaming()) throw new OperationCanceledException("游戏运行中，已暂停数据读取。");
+            if ((isGaming != null && isGaming()) || (checkProcesses && SteamGameDiscovery.IsSteamGameActive()))
+                throw new OperationCanceledException("游戏运行中，已暂停数据读取。");
         }
         private static void Configure(DataGridView view, string[] columns)
         {
@@ -143,6 +202,10 @@ namespace SteamDirect
             view.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             view.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCellsExceptHeaders;
             view.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            view.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+            view.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
+            view.ColumnHeadersDefaultCellStyle.Padding = new Padding(UiStyle.Space8, UiStyle.Space12, UiStyle.Space8, UiStyle.Space12);
+            view.DefaultCellStyle.Padding = new Padding(UiStyle.Space8);
             view.BorderStyle = BorderStyle.None; view.BackgroundColor = AppTheme.Surface;
             view.EnableHeadersVisualStyles = false;
             view.ColumnHeadersDefaultCellStyle.BackColor = AppTheme.Background(AppTheme.Page);
@@ -167,7 +230,7 @@ namespace SteamDirect
                 var token = lifetime.Token;
                 var result = await Task.Run(() =>
                 {
-                    Guard(token);
+                    Guard(token, true);
                     var all = store.ReadSamples(session.Id);
                     Guard(token);
                     var metrics = HistoryStatistics.Calculate(Checked(all, token));
@@ -201,7 +264,7 @@ namespace SteamDirect
             try
             {
                 var token = lifetime.Token;
-                var rows = await Task.Run(() => { Guard(token); var loaded = store.ReadSamplePage(session.Id, requested * PageSize, PageSize + 1); Guard(token); return loaded; }, token);
+                var rows = await Task.Run(() => { Guard(token, true); var loaded = store.ReadSamplePage(session.Id, requested * PageSize, PageSize + 1); Guard(token); return loaded; }, token);
                 if (closed) return; Guard(token);
                 samples.SuspendLayout(); events.SuspendLayout();
                 try
@@ -220,15 +283,15 @@ namespace SteamDirect
                     }
                 }
                 finally { samples.ResumeLayout(); events.ResumeLayout(); }
-                page = requested; previous.Enabled = page > 0; next.Enabled = rows.Count > PageSize || eventRows.Count > (page + 1) * PageSize;
+                page = requested; hasNext = rows.Count > PageSize || eventRows.Count > (page + 1) * PageSize;
                 state.Text = "第 " + (page + 1) + " 页 · 每页最多 200 条 · 本地只读数据";
             }
             catch (OperationCanceledException) { if (!closed) state.Text = "游戏运行中，已暂停读取，请退出游戏后重新打开。"; }
             catch (Exception ex) { if (!closed) state.Text = "读取失败：" + ex.Message; }
-            finally { busy = false; }
+            finally { busy = false; if (!closed) { previous.Enabled = page > 0; next.Enabled = hasNext; } }
         }
         private static string Delay(int value) { return value == -1 ? "超时" : value < 0 ? "未检测" : value + " ms"; }
-        private static string Time(long value) { return value <= 0 ? "—" : new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero).AddMilliseconds(value).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture); }
+        private static string Time(long value) { return value <= 0 ? "—" : value > 253402300799999L ? "时间无效" : new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero).AddMilliseconds(value).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture); }
         protected override void Dispose(bool disposing)
         {
             if (disposing && !closed) { closed = true; lifetime.Cancel(); lifetime.Dispose(); }

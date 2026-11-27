@@ -9,6 +9,11 @@ namespace SteamDirect
     internal sealed class HistoryStore
     {
         private readonly string path;
+        private readonly object initialization = new object();
+        private bool initialized;
+        private long revision;
+        internal long Revision { get { return System.Threading.Interlocked.Read(ref revision); } }
+        internal bool Exists { get { return File.Exists(path); } }
 
         internal HistoryStore(string path)
         {
@@ -17,6 +22,9 @@ namespace SteamDirect
 
         internal void Initialize()
         {
+            lock (initialization)
+            {
+            if (initialized && File.Exists(path)) return;
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             using (var db = new Connection(path, true))
             {
@@ -53,6 +61,8 @@ CREATE TABLE IF NOT EXISTS history_events (
 );
 CREATE INDEX IF NOT EXISTS history_events_session_start ON history_events(session_id, start_ms);");
             }
+            initialized = true;
+            }
         }
 
         internal void RecoverInterrupted()
@@ -62,6 +72,7 @@ CREATE INDEX IF NOT EXISTS history_events_session_start ON history_events(sessio
 SET end_ms = MAX(start_ms, COALESCE((SELECT MAX(at_ms) FROM history_samples WHERE session_id = history_sessions.id), start_ms)),
     interrupted = 1
 WHERE end_ms = 0");
+            System.Threading.Interlocked.Increment(ref revision);
         }
 
         internal void WriteBatch(IList<HistorySession> sessions, IList<HistorySample> samples, IList<HistoryEvent> events)
@@ -76,6 +87,7 @@ WHERE end_ms = 0");
                     WriteSamples(db, samples);
                     WriteEvents(db, events);
                     db.Execute("COMMIT");
+                    System.Threading.Interlocked.Increment(ref revision);
                 }
                 catch
                 {
