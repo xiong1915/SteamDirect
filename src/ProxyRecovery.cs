@@ -55,7 +55,7 @@ namespace SteamDirect
             byte[] bytes;
             using (var memory = new MemoryStream()) { document.Save(memory); bytes = memory.ToArray(); }
             bytes = ProtectedData.Protect(bytes, protectedHeader, DataProtectionScope.CurrentUser);
-            string stage = path + ".new-" + Guid.NewGuid().ToString("N");
+            string stage = Path.Combine(directory, "backup.new-" + Path.GetRandomFileName());
             bool created = false;
             try
             {
@@ -100,18 +100,21 @@ namespace SteamDirect
             byte[] original = ReadBounded(path);
             if (IsProtected(original)) throw new InvalidOperationException("此代理备份已受保护，无需迁移。");
             var snapshot = ReadSnapshot(ReadDocument(original));
-            string stage = path + ".protected-" + Guid.NewGuid().ToString("N");
+            string stage = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path)), "migration.new-" + Path.GetRandomFileName());
+            bool created = false;
             try
             {
                 snapshot.SaveNew(stage);
+                created = true;
                 string legacy = path + ".legacy";
                 File.Copy(path, legacy, false); // Never replace an existing legacy recovery point.
                 if (!SameBytes(original, ReadBounded(legacy)) || !SameBytes(original, ReadBounded(path)))
                     throw new IOException("迁移期间原备份发生变化，已停止；所有恢复文件均已保留。");
                 File.Replace(stage, path, null);
+                created = false;
                 if (!snapshot.SameAs(Load(path))) throw new InvalidDataException("迁移后核验失败，旧版备份保留在 .legacy 文件中。");
             }
-            finally { if (File.Exists(stage)) File.Delete(stage); }
+            finally { if (created) File.Delete(stage); }
         }
         private static bool SameBytes(byte[] left, byte[] right)
         {
