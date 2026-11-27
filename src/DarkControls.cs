@@ -171,15 +171,20 @@ namespace SteamDirect
             if (!previous.IsEmpty && !next.IsEmpty) Invalidate(Rectangle.Inflate(Rectangle.Union(previous, next), 1, 1));
             else if (!previous.IsEmpty || !next.IsEmpty) Invalidate(Rectangle.Inflate(previous.IsEmpty ? next : previous, 1, 1));
         }
-        internal DarkScrollBar() { hover = new Motion.Value(this, 0F); DoubleBuffered = true; TabStop = false; AccessibleRole = AccessibleRole.ScrollBar; AccessibleName = "垂直滚动"; }
+        internal DarkScrollBar() { hover = new Motion.Value(this, 0F, InvalidateThumb); DoubleBuffered = true; TabStop = false; AccessibleRole = AccessibleRole.ScrollBar; AccessibleName = "垂直滚动"; }
         internal void EnableContentHover()
         {
-            visibility = new Motion.Value(this, 0F);
+            if (visibility == null) visibility = new Motion.Value(this, 0F, InvalidateThumb);
+        }
+
+        private void InvalidateThumb()
+        {
+            if (maximum > 0) Invalidate(Rectangle.Inflate(Thumb, 1, 1));
         }
 
         internal void SetContentHover(bool visible)
         {
-            if (visibility != null) visibility.To(visible ? 1F : 0F, UiStyle.ButtonMotion);
+            if (visibility != null) visibility.SpringTo(visible ? 1F : 0F, UiStyle.ButtonMotion);
         }
 
         private Rectangle Thumb
@@ -209,14 +214,14 @@ namespace SteamDirect
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e); if (e.Button != MouseButtons.Left) return;
-            if (Thumb.Contains(e.Location)) { dragging = true; dragY = e.Y; dragValue = value; Capture = true; Invalidate(); }
+            if (Thumb.Contains(e.Location)) { dragging = true; dragY = e.Y; dragValue = value; Capture = true; InvalidateThumb(); }
             else MoveTo(value + (e.Y < Thumb.Top ? -page : page));
         }
         protected override void OnMouseMove(MouseEventArgs e) { base.OnMouseMove(e); if (dragging) MoveTo(dragValue + (int)((long)(e.Y - dragY) * maximum / Math.Max(1, Height - UiStyle.Scale(this, 6) - Thumb.Height))); }
-        protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); dragging = false; Capture = false; Invalidate(); }
-        protected override void OnMouseCaptureChanged(EventArgs e) { base.OnMouseCaptureChanged(e); if (!Capture) { dragging = false; Invalidate(); } }
-        protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hover.To(1F, UiStyle.ButtonMotion); }
-        protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hover.To(0F, UiStyle.ButtonMotion); }
+        protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); if (e.Button == MouseButtons.Left && dragging) Capture = false; }
+        protected override void OnMouseCaptureChanged(EventArgs e) { base.OnMouseCaptureChanged(e); if (!Capture && dragging) { dragging = false; InvalidateThumb(); } }
+        protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hover.SpringTo(1F, UiStyle.ButtonMotion); }
+        protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hover.SpringTo(0F, UiStyle.ButtonMotion); }
         protected override void OnMouseWheel(MouseEventArgs e) { base.OnMouseWheel(e); MoveTo(value - Math.Sign(e.Delta) * Math.Max(1, SystemInformation.MouseWheelScrollLines)); }
     }
 

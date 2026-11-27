@@ -131,14 +131,19 @@ namespace SteamDirect
             try
             {
                 page.Scale(new SizeF(ratio, ratio));
-                ScaleExplicitFonts(page, ratio, fonts);
+                ScaleExplicitFonts(page, ratio, fonts, new Dictionary<Type, PropertyDescriptor>());
             }
             finally { page.ResumeLayout(false); }
         }
 
-        private static void ScaleExplicitFonts(Control control, float ratio, Dictionary<Font, Font> fonts)
+        private static void ScaleExplicitFonts(Control control, float ratio, Dictionary<Font, Font> fonts,
+            Dictionary<Type, PropertyDescriptor> descriptors)
         {
-            if (TypeDescriptor.GetProperties(control)["Font"].ShouldSerializeValue(control))
+            PropertyDescriptor property;
+            Type type = control.GetType();
+            if (!descriptors.TryGetValue(type, out property))
+                descriptors[type] = property = TypeDescriptor.GetProperties(type)["Font"];
+            if (property.ShouldSerializeValue(control))
             {
                 Font original = control.Font;
                 Font scaled;
@@ -150,7 +155,7 @@ namespace SteamDirect
                 }
                 control.Font = scaled;
             }
-            foreach (Control child in control.Controls) ScaleExplicitFonts(child, ratio, fonts);
+            foreach (Control child in control.Controls) ScaleExplicitFonts(child, ratio, fonts, descriptors);
         }
 
         internal bool Navigate(string name, Func<Form> create)

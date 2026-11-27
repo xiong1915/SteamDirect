@@ -1,6 +1,17 @@
 param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release')
 $ErrorActionPreference = 'Stop'
 $source = Join-Path $PSScriptRoot 'src'
+[xml]$manifest = Get-Content -Raw -LiteralPath (Join-Path $source 'app.manifest')
+$version = [version]$manifest.assembly.assemblyIdentity.version
+$display = if ($version.Revision -eq 0) { $version.ToString(3) } else { $version.ToString() }
+function Sync-VersionText($path, $pattern, $replacement) {
+    $content = [IO.File]::ReadAllText($path)
+    if ([regex]::Matches($content, $pattern).Count -ne 1) { throw "无法同步版本号 $path" }
+    $updated = [regex]::Replace($content, $pattern, $replacement)
+    if ($updated -cne $content) { [IO.File]::WriteAllText($path, $updated) }
+}
+Sync-VersionText (Join-Path $source 'AssemblyInfo.cs') 'const string Number = "[\d.]+"' ('const string Number = "' + $version + '"')
+Sync-VersionText (Join-Path $PSScriptRoot 'README.md') '\A# SteamDirect [\d.]+' ("# SteamDirect " + $display)
 $output = Join-Path $PSScriptRoot 'dist'
 $options = @('/optimize+')
 if ($Configuration -eq 'Debug') {

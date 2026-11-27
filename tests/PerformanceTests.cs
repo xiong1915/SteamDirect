@@ -22,6 +22,32 @@ namespace SteamDirect
         {
             count=0;string folder=Path.Combine(Path.GetTempPath(),"SteamDirect-perf-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(folder);
             try{
+                using (var entered = new ManualResetEventSlim())
+                using (var release = new ManualResetEventSlim())
+                {
+                    var output = new System.Text.StringBuilder();
+                    int writes = 0;
+                    var writer = new OperationLog(error => { throw new IOException(error); }, (logFile, batch) =>
+                    {
+                        entered.Set();
+                        if (!release.Wait(5000)) throw new TimeoutException();
+                        writes++;
+                        output.Append(batch);
+                    });
+                    writer.Enqueue(folder, 7, DateTime.Today, "first");
+                    Need(entered.Wait(5000), "Background writer did not start");
+                    try
+                    {
+                        for (int i = 0; i < OperationLog.Capacity + 1; i++)
+                            writer.Enqueue(folder, 7, DateTime.Today, i.ToString());
+                    }
+                    finally { release.Set(); }
+                    Need(writer.Complete().Wait(5000), "Background writer did not drain");
+                    Need(output.ToString().StartsWith("first" + Environment.NewLine + "0" + Environment.NewLine) &&
+                        output.ToString().Contains("略过 1 条") && writes <= 10, "Queue order, overflow accounting or batching failed");
+                }
+                Need(Motion.NextDeadline(100, 10, 99) == 110 && Motion.NextDeadline(100, 10, 135) == 140,
+                    "Scheduler duplicated an early frame or replayed missed frames");
                 string settings=Path.Combine(folder,"settings.ini");
                 UserPreferences.Save(settings,true,30,true,"#649BFF",folder,true,false,false);
                 Need(!UserPreferences.Load(settings).NetworkRecording,"Disabled recorder setting not persisted");

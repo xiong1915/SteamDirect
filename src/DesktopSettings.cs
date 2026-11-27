@@ -89,16 +89,33 @@ namespace SteamDirect
 
     internal static class LogStore
     {
-        internal static string DirectoryPath = UserPreferences.Load(UserPreferences.DefaultPath).LogDirectory;
-        internal static string CurrentPath { get { return Path.Combine(DirectoryPath, "SteamDirect-" + DateTime.Today.ToString("yyyy-MM-dd") + ".log"); } }
+        private static string directoryPath;
+        internal static void Initialize(string directory) { System.Threading.Interlocked.CompareExchange(ref directoryPath, directory, null); }
+        internal static string DirectoryPath
+        {
+            get
+            {
+                string current = System.Threading.Volatile.Read(ref directoryPath);
+                if (current != null) return current;
+                Initialize(UserPreferences.Load(UserPreferences.DefaultPath).LogDirectory);
+                return System.Threading.Volatile.Read(ref directoryPath);
+            }
+            set { System.Threading.Volatile.Write(ref directoryPath, value); }
+        }
+        internal static string PathForDay(string directory, DateTime day)
+        {
+            return Path.Combine(directory, "SteamDirect-" + day.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) + ".log");
+        }
         internal static int Cleanup(string directory, int retentionDays, DateTime today)
         {
             if (retentionDays < 1 || retentionDays > 365) throw new ArgumentOutOfRangeException("retentionDays");
             if (!Directory.Exists(directory)) return 0;
             if (!FilePathSafety.NoReparseAncestors(Path.GetFullPath(directory))) throw new IOException("日志目录包含重解析路径，拒绝清理。");
             int removed = 0;
-            foreach (string path in Directory.GetFiles(directory, "*.log", SearchOption.TopDirectoryOnly))
+            foreach (string path in Directory.EnumerateFiles(directory, "SteamDirect-*.log", SearchOption.TopDirectoryOnly))
             {
+                // Framework wildcard matching can also return longer extensions or 8.3 aliases.
+                if (!Path.GetExtension(path).Equals(".log", StringComparison.OrdinalIgnoreCase)) continue;
                 if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) continue;
                 string name = Path.GetFileNameWithoutExtension(path);
                 if (!name.StartsWith("SteamDirect-", StringComparison.Ordinal)) continue;
@@ -231,14 +248,20 @@ namespace SteamDirect
             var cleanup = new RoundedButton { Text = "清理过期日志", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(220, UiStyle.ButtonHeight), Height = UiStyle.ButtonHeight,
                 Margin = new Padding(0, UiStyle.SmallGap, 0, 0), Anchor = AnchorStyles.Left | AnchorStyles.Top };
             AppTheme.ActionButton(cleanup, false);
-            cleanup.Click += (sender, args) =>
+            cleanup.Click += async (sender, args) =>
             {
+                if (!cleanup.Enabled) return;
+                cleanup.Enabled = false;
+                string directory = LogStore.DirectoryPath;
+                int keepDays = RetentionDays;
+                DateTime today = DateTime.Today;
                 try
                 {
-                    int count = LogStore.Cleanup(LogStore.DirectoryPath, RetentionDays, DateTime.Today);
-                    NoticeDialog.Show(this, "已清理 " + count + " 个过期日志文件，保留最近 " + RetentionDays + " 天。", "日志清理");
+                    int count = await System.Threading.Tasks.Task.Run(() => LogStore.Cleanup(directory, keepDays, today));
+                    if (Visible && !Disposing) NoticeDialog.Show(this, "已清理 " + count + " 个过期日志文件，保留最近 " + keepDays + " 天。", "日志清理");
                 }
-                catch (Exception ex) { NoticeDialog.Show(this, "清理未完成：" + ex.Message, "日志清理", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+                catch (Exception ex) { if (Visible && !Disposing) NoticeDialog.Show(this, "清理未完成：" + ex.Message, "日志清理", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+                finally { if (!cleanup.IsDisposed) cleanup.Enabled = true; }
             };
             logs.Controls.Add(cleanup, 0, 2);
 
@@ -272,7 +295,7 @@ namespace SteamDirect
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             about.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168));
             about.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            about.Controls.Add(new Label { Text = "开发者 xiong1915 · v3.0.43", Dock = DockStyle.Fill,
+            about.Controls.Add(new Label { Text = "开发者 xiong1915 · " + AppVersion.Label, Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.Muted, AutoEllipsis = true, Font = UiStyle.Caption }, 0, 0);
             const string repositoryUrl = "https://github.com/xiong1915/SteamDirect";
             var github = new RoundedButton { Text = "GitHub 项目", Dock = DockStyle.Fill,

@@ -57,6 +57,7 @@ namespace SteamDirect
                     }
                     sessions.Add(new HistorySession { Id = "yesterday", Game = "昨日记录", Mode = "直连", Target = "192.0.2.1", Start = stamp - 86400000, End = stamp - 86000000 });
                     store.WriteBatch(sessions, samples, incidents);
+                    if (args.Length > 1 && args[1] == "visible-performance") { DesktopPerformance.Run(temporary); return 0; }
                     if (args.Length > 1 && args[1] == "tray") { ProbeFirstTrayOpen(monitor, output); return 0; }
                     if (args.Length > 1 && args[1] == "monitors") { ProbeMonitors(monitor, output); return 0; }
                     if (args.Length > 1 && args[1] == "desktop") { MainMatrix(monitor, output); return 0; }

@@ -92,7 +92,12 @@ namespace SteamDirect
                                 main = new MainWindow(Array.IndexOf(arguments, "--background") >= 0);
                                 Application.Run(main);
                             }
-                            finally { legacy.ReleaseMutex(); }
+                            finally
+                            {
+                                // The message loop has ended. Bound shutdown even when the configured log share is offline.
+                                try { if (main != null) main.CompleteLogging().Wait(TimeSpan.FromSeconds(3)); }
+                                finally { legacy.ReleaseMutex(); }
+                            }
                         }
                     }
                     finally { singleInstance.ReleaseMutex(); }
@@ -113,8 +118,7 @@ namespace SteamDirect
         private readonly Button flowToggle, logToggle;
         private readonly CleanupPanel cleanupPanel;
         private readonly TextBox logBox = new TextBox();
-        private string logPath { get { return LogStore.CurrentPath; } }
-        private DateTime lastCleanupDate = DateTime.MinValue;
+        private readonly OperationLog journal;
         private bool running;
         internal bool DirectConnectRunning { get { return running; } }
         private readonly StepTimeline timeline = new StepTimeline();
@@ -148,13 +152,15 @@ namespace SteamDirect
         internal MainWindow(bool background = false, HistoryMonitor historyOverride = null, UserPreferences preferencesOverride = null)
         {
             preferences = preferencesOverride ?? UserPreferences.Load(UserPreferences.DefaultPath);
+            LogStore.Initialize(preferences.LogDirectory);
+            journal = new OperationLog(PostLogError);
             windowDiagnostics = new WindowDiagnostics(this) { Enabled = preferences.WindowDiagnostics };
             history = historyOverride ?? new HistoryMonitor(HistoryMonitor.DefaultPath);
             Motion.Reduced = preferences.ReduceMotion; Motion.IsGaming = () => history.IsPlaying;
             SuspendLayout();
             AppTheme.IsDark = preferences.NightMode;
             AppTheme.TryColor(preferences.ThemeColor, out AppTheme.ThemeColor);
-            Text = "Steam 直连助手 v3.0.43";
+            Text = "Steam 直连助手 " + AppVersion.Label;
             ownedMainIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); Icon = ownedMainIcon;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -282,20 +288,28 @@ namespace SteamDirect
             flowToggle.Click += (sender, args) => toggleSection("直连流程", flowToggle, timeline, 6, 300);
             logToggle.Click += (sender, args) => toggleSection("操作日志", logToggle, logArea, 8, 192);
 
-            logButton.Click += (s, e) =>
+            logButton.Click += async (s, e) =>
             {
                 if (running) return;
+                string logPath = LogStore.PathForDay(LogStore.DirectoryPath, DateTime.Today);
+                logButton.Enabled = false;
                 try
                 {
-                    Directory.CreateDirectory(Path.GetDirectoryName(logPath));
-                    using (File.Open(logPath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite)) { }
+                    await journal.WhenIdle();
+                    await Task.Run(() =>
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(logPath));
+                        using (File.Open(logPath, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite)) { }
+                    });
+                    if (IsDisposed || Disposing || running) return;
                     Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "notepad.exe"), "\"" + logPath + "\"")
                     { UseShellExecute = false });
                 }
                 catch (Exception ex)
                 {
-                    NoticeDialog.Show(this, "无法打开日志：" + ex.Message + "\n日志路径：" + logPath, "日志", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    if (!IsDisposed && !Disposing) NoticeDialog.Show(this, "无法打开日志：" + ex.Message + "\n日志路径：" + logPath, "日志", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
+                finally { if (!IsDisposed && !Disposing) logButton.Enabled = !running; }
             };
 
             logBox.Dock = DockStyle.Fill;
@@ -425,14 +439,15 @@ namespace SteamDirect
                 navigation.Add(page, button);
                 rail.Controls.Add(button, 0, i + 1);
             }
-            var version = new Label { Text = "v3.0.43", ForeColor = AppTheme.Subtle,
+            var version = new Label { Text = AppVersion.Label, ForeColor = AppTheme.Subtle,
                 Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = UiStyle.Caption };
             rail.Controls.Add(version, 0, 6);
-            var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Rail, Margin = Padding.Empty };
+            var sidebar = new Panel { Width = UiStyle.SidebarWidth, BackColor = AppTheme.Rail, Margin = Padding.Empty };
             sidebar.Padding = new Padding(UiStyle.Space12, 0, UiStyle.Space12, 0);
             sidebar.Controls.Add(rail);
-            shell.Controls.Add(sidebar, 0, 0);
-            shell.SetRowSpan(sidebar, 2);
+            rail.Dock = DockStyle.None;
+            Action fitRail = () => rail.SetBounds(sidebar.Padding.Left, 0,
+                Math.Max(1, UiStyle.Scale(sidebar, UiStyle.SidebarWidth) - sidebar.Padding.Horizontal), sidebar.Height);
 
             var toggle = new RoundedButton { Icon = UiIcon.Sidebar, IconOnly = true, Dock = DockStyle.Fill,
                 Margin = new Padding(0, UiStyle.Space4, 0, UiStyle.Space4), AccessibleName = "折叠侧边栏" };
@@ -458,14 +473,35 @@ namespace SteamDirect
             foreach (var item in navigation) hints.SetToolTip(item.Value, item.Key);
             bool sidebarCollapsed = false, appliedCollapse = false, railLayoutPending = false;
             Motion.Value railMotion = null;
+            Action<bool> setCaptions = collapsed =>
+            {
+                mascot.Visible = brandText.Visible = version.Visible = !collapsed;
+                brand.ColumnStyles[1].Width = collapsed ? 0 : UiStyle.Scale(brand, UiStyle.Space40);
+                foreach (RoundedButton button in navigation.Values)
+                {
+                    button.IconOnly = collapsed;
+                    button.Dock = collapsed ? DockStyle.Left : DockStyle.Fill;
+                    if (collapsed) button.Width = Math.Max(1, UiStyle.Scale(sidebar, UiStyle.CollapsedSidebarWidth) - sidebar.Padding.Horizontal);
+                }
+            };
             railMotion = new Motion.Value(toggle, 0F, () =>
             {
                 toggle.SidebarProgress = railMotion.Current;
+                int expanded = UiStyle.Scale(shell, UiStyle.SidebarWidth);
+                int compact = UiStyle.Scale(shell, UiStyle.CollapsedSidebarWidth);
+                int visibleWidth = expanded + (int)Math.Round((compact - expanded) * Math.Max(0F, Math.Min(1F, railMotion.Current)));
+                if (sidebar.Width != visibleWidth)
+                {
+                    SuspendLayout();
+                    try { sidebar.Width = visibleWidth; }
+                    finally { ResumeLayout(false); }
+                }
+                if (appliedCollapse && railMotion.Current == 1F) setCaptions(true);
                 toggle.Invalidate();
                 foreach (RoundedButton button in navigation.Values)
                 {
                     if (button.IconOnly) continue;
-                    button.CaptionOpacity = 1F - .35F * toggle.SidebarProgress;
+                    button.CaptionOpacity = 1F - Math.Min(1F, toggle.SidebarProgress);
                     button.Invalidate(button.CaptionBounds);
                 }
             });
@@ -492,19 +528,13 @@ namespace SteamDirect
                         {
                             toggle.AccessibleName = collapsed ? "展开侧边栏" : "折叠侧边栏";
                             hints.SetToolTip(toggle, toggle.AccessibleName);
-                            mascot.Visible = brandText.Visible = version.Visible = !collapsed;
-                            brand.ColumnStyles[1].Width = collapsed ? 0 : UiStyle.Scale(brand, UiStyle.Space40);
-                            foreach (var button in navigation.Values)
-                            {
-                                ((RoundedButton)button).IconOnly = collapsed;
-                                button.Invalidate();
-                            }
+                            if (!collapsed || railMotion.Current == 1F) setCaptions(collapsed);
                         }
                     }
                     finally
                     {
-                        brand.ResumeLayout(false);
-                        rail.ResumeLayout(false);
+                        brand.ResumeLayout(true);
+                        rail.ResumeLayout(true);
                         shell.ResumeLayout(true);
                     }
                 }
@@ -513,6 +543,9 @@ namespace SteamDirect
             {
                 updateRail();
                 railMotion.Set(appliedCollapse ? 1F : 0F);
+                sidebar.Width = UiStyle.Scale(shell, appliedCollapse ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
+                sidebar.Height = shell.Height;
+                fitRail();
             };
             hints.SetToolTip(toggle, toggle.AccessibleName);
             toggle.Click += (sender, args) =>
@@ -533,6 +566,9 @@ namespace SteamDirect
             };
             Shown += (sender, args) => synchronizeSidebar();
             Controls.Add(shell);
+            Controls.Add(sidebar);
+            sidebar.BringToFront();
+            fitRail();
             SelectNavigation("概览");
         }
 
@@ -607,6 +643,7 @@ namespace SteamDirect
         {
             if (disposing)
             {
+                journal.Complete();
                 if (pages != null) pages.Dispose();
                 history.Dispose();
                 windowDiagnostics.Dispose();
@@ -656,7 +693,7 @@ namespace SteamDirect
                 if (Visible)
                 {
                     RedrawBatch.FlushPendingPaint(this);
-                    if (cloaked) WindowEnvironment.DwmFlush();
+                    if (cloaked) WindowEnvironment.GdiFlush();
                     if (windowDiagnostics != null) windowDiagnostics.PaintsFlushed();
                 }
             }
@@ -678,7 +715,7 @@ namespace SteamDirect
                 bool opening = !Visible;
                 if (WindowState == FormWindowState.Minimized) WindowState = lastVisibleState;
                 CheckWorkArea();
-                if (opening) { PerformLayout(); Show(); }
+                if (opening) Show();
                 windowDiagnostics.Displayed();
                 if (!WindowEnvironment.OffscreenTests) Activate();
             } finally { restoring = false; }
@@ -742,7 +779,6 @@ namespace SteamDirect
                     preferences.ThemeColor = dialog.ThemeColor;
                     AppTheme.SetTheme(preferences.NightMode, preferences.ThemeColor);
                     preferences.RetentionDays = dialog.RetentionDays;
-                    lastCleanupDate = DateTime.MinValue;
                     preferences.TrayEnabled = dialog.TrayEnabled;
                     trayIcon.Visible = preferences.TrayEnabled && !WindowEnvironment.OffscreenTests;
                     Log("设置已保存：托盘" + (preferences.TrayEnabled ? "开启" : "关闭") + "，开机自启" + (dialog.AutoStart ? "开启" : "关闭") + "。");
@@ -754,23 +790,26 @@ namespace SteamDirect
 
         private void Log(string message)
         {
-            if (IsDisposed) return;
-            if (InvokeRequired) { BeginInvoke(new Action<string>(Log), message); return; }
-            string line = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] " + message;
-            logBox.AppendText(line + Environment.NewLine);
-            try
+            if (IsDisposed || Disposing) return;
+            if (InvokeRequired)
             {
-                Directory.CreateDirectory(LogStore.DirectoryPath);
-                if (lastCleanupDate != DateTime.Today)
-                {
-                    lastCleanupDate = DateTime.Today;
-                    try { LogStore.Cleanup(LogStore.DirectoryPath, preferences.RetentionDays, DateTime.Today); }
-                    catch (Exception ex) { logBox.AppendText("过期日志暂未清理：" + ex.Message + Environment.NewLine); }
-                }
-                File.AppendAllText(logPath, line + Environment.NewLine, Encoding.UTF8);
+                try { BeginInvoke(new Action<string>(Log), message); } catch (InvalidOperationException) { }
+                return;
             }
-            catch (Exception ex) { logBox.AppendText("日志写入失败：" + ex.Message + Environment.NewLine); }
+            DateTime now = DateTime.Now;
+            string line = "[" + now.ToString("yyyy-MM-dd HH:mm:ss") + "] " + message;
+            logBox.AppendText(line + Environment.NewLine);
+            journal.Enqueue(LogStore.DirectoryPath, preferences.RetentionDays, now, line);
         }
+
+        private void PostLogError(string message)
+        {
+            if (Disposing || IsDisposed || !logBox.IsHandleCreated) return;
+            try { logBox.BeginInvoke((Action)(() => { if (!logBox.IsDisposed) logBox.AppendText(message + Environment.NewLine); })); }
+            catch (InvalidOperationException) { }
+        }
+
+        internal Task CompleteLogging() { return journal.Complete(); }
 
         private void Status(string message)
         {

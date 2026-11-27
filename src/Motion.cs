@@ -13,15 +13,25 @@ namespace SteamDirect
         private static readonly List<Value> active = new List<Value>();
         private static readonly System.Threading.Timer timer = new System.Threading.Timer(QueueFrame);
         private static readonly List<Value> frame = new List<Value>();
-        private static WindowsFormsSynchronizationContext context;
+        private static FrameWindow frameWindow;
         private static int posted;
         private static System.Threading.EventWaitHandle frameSignal;
         private static System.Threading.RegisteredWaitHandle frameWait;
         private static double framePeriod, nextFrame;
+        private static IntPtr displayMonitor, animationWindow;
+        private static bool? systemMotionEnabled;
+        internal static int RefreshRate { get; private set; }
 
         internal static double FramePeriodTicks(int refreshHz)
         {
-            return Math.Max(4.0, 1000.0 / refreshHz) * Stopwatch.Frequency / 1000.0;
+            return Stopwatch.Frequency / (double)(refreshHz >= 30 && refreshHz <= 500 ? refreshHz : 60);
+        }
+
+        internal static double NextDeadline(double previous, double period, long now)
+        {
+            // Count the frame just delivered even if the kernel woke slightly early.
+            // After a busy UI frame skip missed deadlines without resetting the phase.
+            return previous + Math.Max(1, Math.Floor((now - previous) / period) + 1) * period;
         }
 
         [DllImport("kernel32.dll", EntryPoint = "CreateWaitableTimerExW", CharSet = CharSet.Unicode)]
@@ -33,23 +43,60 @@ namespace SteamDirect
         private static extern bool CancelWaitableTimer(Microsoft.Win32.SafeHandles.SafeWaitHandle timer);
         private static bool ticking, shuttingDown;
 
-        [DllImport("gdi32.dll", CharSet = CharSet.Unicode)]
-        private static extern IntPtr CreateDC(string driver, string device, string output, IntPtr initialization);
-        [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr dc, int index);
-        [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr dc);
+        // A posted message carries no delegate, argument array or ExecutionContext per frame.
+        // All sampling, invalidation and destruction still run on the owning UI thread.
+        private sealed class FrameWindow : NativeWindow
+        {
+            private const int FrameMessage = 0x8001;
+            internal FrameWindow()
+            {
+                CreateHandle(new CreateParams { Parent = new IntPtr(-3) }); // HWND_MESSAGE
+            }
+            [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
+            internal bool Post() { return PostMessage(Handle, FrameMessage, IntPtr.Zero, IntPtr.Zero); }
+            protected override void WndProc(ref Message message)
+            {
+                if (message.Msg == FrameMessage) DrawFrame();
+                else base.WndProc(ref message);
+            }
+        }
+
+        [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+        // DEVMODEW is a 220-byte native union. Only dmSize and dmDisplayFrequency are needed.
+        [StructLayout(LayoutKind.Explicit, Size = 220)]
+        private struct DisplayMode
+        {
+            [FieldOffset(68)] internal ushort Size;
+            [FieldOffset(184)] internal uint Frequency;
+        }
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool EnumDisplaySettings(string device, int mode, ref DisplayMode settings);
+
+        private static void UpdateDisplay(IntPtr window)
+        {
+            IntPtr monitor = MonitorFromWindow(window, 2); // MONITOR_DEFAULTTONEAREST
+            if (monitor == displayMonitor && framePeriod > 0) return;
+            displayMonitor = monitor;
+            var mode = new DisplayMode { Size = (ushort)Marshal.SizeOf(typeof(DisplayMode)) };
+            RefreshRate = EnumDisplaySettings(Screen.FromHandle(window).DeviceName, -1, ref mode) &&
+                mode.Frequency >= 30 && mode.Frequency <= 500 ? (int)mode.Frequency : 60;
+            framePeriod = FramePeriodTicks(RefreshRate);
+        }
+
+        internal static void DisplayMessage(IntPtr window, int message)
+        {
+            if (message == 0x001A) { systemMotionEnabled = null; return; } // WM_SETTINGCHANGE
+            if (message == 0x007E) displayMonitor = IntPtr.Zero; // WM_DISPLAYCHANGE
+            if (ticking && animationWindow == window) UpdateDisplay(window);
+        }
 
         private static void Start(Control owner)
         {
-            if (ticking || shuttingDown) return;
-            if (context == null) context = new WindowsFormsSynchronizationContext();
-            int hz = 60;
-            IntPtr dc = CreateDC("DISPLAY", Screen.FromControl(owner).DeviceName, null, IntPtr.Zero);
-            if (dc != IntPtr.Zero)
-            {
-                try { int reported = GetDeviceCaps(dc, 116); if (reported >= 30) hz = reported; }
-                finally { DeleteDC(dc); }
-            }
-            framePeriod = FramePeriodTicks(hz);
+            if (shuttingDown) return;
+            animationWindow = (owner.TopLevelControl ?? owner).Handle;
+            UpdateDisplay(animationWindow);
+            if (ticking) return;
+            if (frameWindow == null) frameWindow = new FrameWindow();
             nextFrame = Stopwatch.GetTimestamp();
             ticking = true;
             if (frameSignal == null)
@@ -60,19 +107,17 @@ namespace SteamDirect
                 {
                     frameSignal = new System.Threading.EventWaitHandle(false, System.Threading.EventResetMode.AutoReset);
                     frameSignal.SafeWaitHandle = handle;
+                    frameWait = System.Threading.ThreadPool.RegisterWaitForSingleObject(frameSignal,
+                        (state, timeout) => QueueFrame(state), null, System.Threading.Timeout.Infinite, false);
                 }
             }
-            if (frameSignal != null)
-                frameWait = System.Threading.ThreadPool.RegisterWaitForSingleObject(frameSignal,
-                    (state, timeout) => QueueFrame(state), null, System.Threading.Timeout.Infinite, false);
             ScheduleFrame();
         }
 
         private static void ScheduleFrame()
         {
             long now = Stopwatch.GetTimestamp();
-            if (nextFrame <= now)
-                nextFrame += (Math.Floor((now - nextFrame) / framePeriod) + 1) * framePeriod;
+            nextFrame = NextDeadline(nextFrame, framePeriod, now);
 
             double delayMs = (nextFrame - now) * 1000.0 / Stopwatch.Frequency;
             long due = -Math.Max(1L, (long)Math.Round(delayMs * 10000));
@@ -83,8 +128,7 @@ namespace SteamDirect
         private static void QueueFrame(object state)
         {
             if (System.Threading.Interlocked.Exchange(ref posted, 1) != 0) return;
-            try { context.Post(_ => DrawFrame(), null); }
-            catch (InvalidOperationException) { System.Threading.Interlocked.Exchange(ref posted, 0); }
+            if (!frameWindow.Post()) System.Threading.Interlocked.Exchange(ref posted, 0);
         }
 
         private static void DrawFrame()
@@ -110,12 +154,8 @@ namespace SteamDirect
         {
             if (!ticking || active.Count != 0) return;
             ticking = false;
-            if (frameWait != null)
-            {
-                CancelWaitableTimer(frameSignal.SafeWaitHandle);
-                frameWait.Unregister(null);
-                frameWait = null;
-            }
+            animationWindow = IntPtr.Zero;
+            if (frameWait != null) CancelWaitableTimer(frameSignal.SafeWaitHandle);
             timer.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
         }
 
@@ -146,12 +186,14 @@ namespace SteamDirect
             get
             {
                 int enabled;
-                return !SystemParametersInfo(0x1042, 0, out enabled, 0) || enabled != 0;
+                if (!systemMotionEnabled.HasValue)
+                    systemMotionEnabled = !SystemParametersInfo(0x1042, 0, out enabled, 0) || enabled != 0;
+                return systemMotionEnabled.Value;
             }
         }
         internal static bool Allowed
         {
-            get { return !reduced && SystemMotion && (IsGaming == null || !IsGaming()); }
+            get { return !shuttingDown && !reduced && SystemMotion && (IsGaming == null || !IsGaming()); }
         }
 
         static Motion()
@@ -161,8 +203,9 @@ namespace SteamDirect
                 shuttingDown = true;
                 FinishAll();
                 timer.Dispose();
+                if (frameWait != null) frameWait.Unregister(null);
                 if (frameSignal != null) frameSignal.Dispose();
-                if (context != null) context.Dispose();
+                if (frameWindow != null) frameWindow.DestroyHandle();
             };
         }
 
@@ -198,7 +241,7 @@ namespace SteamDirect
             private long started;
             private int duration;
             private double springFrequency, initialVelocity;
-            private bool disposed;
+            private bool disposed, scheduled;
             internal float Current { get { return current; } }
 
             internal Value(Control owner, float initial, Action changed = null)
@@ -225,10 +268,10 @@ namespace SteamDirect
             private void Retarget(float value, int milliseconds, bool spring)
             {
                 if (disposed) return;
-                if (target == value && (current == value || active.Contains(this))) return;
+                if (target == value && (current == value || scheduled)) return;
                 long now = Stopwatch.GetTimestamp();
                 double velocity = 0;
-                if (duration > 0 && active.Contains(this))
+                if (duration > 0 && scheduled)
                     current = Interpolate(now, out velocity);
                 target = value;
                 if (milliseconds <= 0 || !Allowed || !CanAnimate(owner))
@@ -246,8 +289,7 @@ namespace SteamDirect
                 springFrequency = spring ? 7200.0 / milliseconds : 0;
                 initialVelocity = spring ? velocity : 0;
                 started = now;
-                if (!active.Contains(this)) active.Add(this);
-                Start(owner);
+                Schedule();
             }
 
             internal void SetPulse(bool enabled)
@@ -255,13 +297,25 @@ namespace SteamDirect
                 if (disposed) return;
                 if (!enabled || !Allowed || !CanAnimate(owner))
                 {
-                    active.Remove(this);
-                    StopIfIdle();
+                    Unschedule();
                     return;
                 }
                 duration = 0;
-                if (!active.Contains(this)) active.Add(this);
+                Schedule();
+            }
+
+            private void Schedule()
+            {
+                if (!scheduled) { active.Add(this); scheduled = true; }
                 Start(owner);
+            }
+
+            private void Unschedule()
+            {
+                if (!scheduled) return;
+                scheduled = false;
+                active.Remove(this);
+                StopIfIdle();
             }
 
             internal void Set(float value)
@@ -274,15 +328,15 @@ namespace SteamDirect
             internal void Snap()
             {
                 if (disposed) return;
+                bool notify = scheduled || current != target;
                 current = target;
-                active.Remove(this);
-                StopIfIdle();
-                Changed();
+                Unschedule();
+                if (notify) Changed();
             }
 
             internal void Step(long now, bool allowed)
             {
-                if (disposed || !active.Contains(this)) return;
+                if (!scheduled) return;
                 if (!allowed || !CanAnimate(owner)) { Snap(); return; }
                 if (duration == 0) { Changed(); return; }
                 double elapsedMs = (now - started) * 1000.0 / Stopwatch.Frequency;
@@ -328,8 +382,7 @@ namespace SteamDirect
             {
                 if (disposed) return;
                 disposed = true;
-                active.Remove(this);
-                StopIfIdle();
+                Unschedule();
                 owner.Disposed -= OwnerDisposed;
                 owner.VisibleChanged -= Visibility;
                 owner.HandleDestroyed -= Visibility;

@@ -13,8 +13,8 @@ namespace SteamDirect
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
 
-        [DllImport("dwmapi.dll")]
-        internal static extern int DwmFlush();
+        [DllImport("gdi32.dll")]
+        internal static extern bool GdiFlush();
 
         internal static bool TryCloak(IntPtr window, bool cloak)
         {
@@ -124,6 +124,8 @@ namespace SteamDirect
             bool presentationChanged = sizeKind >= 0 && sizeKind <= 2 && previousNativeSize != sizeKind;
             if (presentationChanged) previousNativeSize = sizeKind;
             base.WndProc(ref message);
+            if ((kind == 0x0003 || kind == 0x007E || kind == 0x001A) && TopLevel)
+                Motion.DisplayMessage(message.HWnd, kind);
             if (presentationChanged && sizeKind != 1 && Visible && !IsDisposed)
             {
                 if (liveResize) FinishDrag(false);

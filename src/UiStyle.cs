@@ -166,7 +166,7 @@ namespace SteamDirect
             }
         }
 
-        private sealed class PageTitleLabel : Label
+        internal sealed class PageTitleLabel : Label
         {
             private readonly Motion.Value reveal;
 
@@ -394,8 +394,8 @@ namespace SteamDirect
             if (text != null) text.BorderStyle = BorderStyle.None;
             var number = input as NumericUpDown;
             if (number != null) number.BorderStyle = BorderStyle.None;
-            input.Enter += (sender, args) => focus.To(1F, UiStyle.StatusMotion);
-            input.Leave += (sender, args) => focus.To(0F, UiStyle.StatusMotion);
+            input.Enter += (sender, args) => focus.SpringTo(1F, UiStyle.StatusMotion);
+            input.Leave += (sender, args) => focus.SpringTo(0F, UiStyle.StatusMotion);
             Controls.Add(input);
         }
         protected override void Dispose(bool disposing) { if (disposing && focus != null) focus.Dispose(); base.Dispose(disposing); }

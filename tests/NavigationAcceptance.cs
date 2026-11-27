@@ -285,13 +285,19 @@ namespace SteamDirect
             if (Motion.Allowed)
             {
                 float initial = (float)progress.GetValue(toggle);
+                var sidebar = toggle.Parent.Parent.Parent;
+                int initialWidth = sidebar.Width;
                 toggle.PerformClick();
                 Pump(50);
                 float fraction = (float)progress.GetValue(toggle);
                 Need(fraction > 0F && fraction < 1F, "Sidebar toggle skipped its intermediate drawing state.");
+                int compact = UiStyle.Scale(main, UiStyle.CollapsedSidebarWidth);
+                int expanded = UiStyle.Scale(main, UiStyle.SidebarWidth);
+                Need(sidebar.Width > compact && sidebar.Width < expanded, "Sidebar edge jumped to its endpoint.");
                 toggle.PerformClick();
                 Pump(390);
                 Need(Math.Abs((float)progress.GetValue(toggle) - initial) < .01F, "Reversed sidebar toggle did not settle.");
+                Need(sidebar.Width == initialWidth, "Reversal did not restore the actual sidebar width.");
                 Console.WriteLine("SIDEBAR local animation passed intermediate state and reversal.");
             }
             Point anchor = toggle.PointToScreen(Point.Empty);

@@ -256,8 +256,11 @@ namespace SteamDirect
             bool transparent = control is Label || control is PictureBox || control is TableLayoutPanel || control is FlowLayoutPanel;
             control.BackColor = transparent ? Color.Transparent : Background(original.Back);
             control.ForeColor = Text(original.Fore);
+            // Plain layout panels inherit ScrollableControl too. They have no native
+            // scroll chrome, and applying Explorer to each HWND sends WM_THEMECHANGED.
+            var scroller = control as ScrollableControl;
             if (control is ListView || control is TextBoxBase || control is ComboBox ||
-                control is DataGridView || control is ScrollableControl || control is ScrollBar)
+                control is DataGridView || (scroller != null && scroller.AutoScroll) || control is ScrollBar)
             {
                 control.HandleCreated -= NativeThemeCreated;
                 control.HandleCreated += NativeThemeCreated;

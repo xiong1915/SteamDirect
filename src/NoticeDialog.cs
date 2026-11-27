@@ -30,7 +30,7 @@ namespace SteamDirect
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.Space32 + UiStyle.Space24));
                 layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-                layout.Controls.Add(new Label { Text = title, Dock = DockStyle.Fill,
+                layout.Controls.Add(new UiStyle.PageTitleLabel { Text = title, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
                     Font = UiStyle.HeroTitle, AutoEllipsis = true,
                     ForeColor = icon == MessageBoxIcon.Error ? AppTheme.Error :
                         icon == MessageBoxIcon.Warning ? AppTheme.Warning : AppTheme.Ink }, 0, 0);
