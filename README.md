@@ -1,4 +1,4 @@
-# SteamDirect 3.0.44
+# SteamDirect 3.0.45
 
 Windows 游戏网络助手，提供直连切换、Steam / CS2 网络诊断和自动游戏网络历史报告。
 

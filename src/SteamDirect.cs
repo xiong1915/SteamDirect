@@ -490,65 +490,50 @@ namespace SteamDirect
                     if (collapsed) button.Width = Math.Max(1, UiStyle.Scale(sidebar, UiStyle.CollapsedSidebarWidth) - sidebar.Padding.Horizontal);
                 }
             };
+            Action commitRail = () =>
+            {
+                int width = UiStyle.Scale(shell, appliedCollapse ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
+                if (Math.Abs(shell.ColumnStyles[0].Width - width) >= 1)
+                    shell.ColumnStyles[0].Width = width;
+            };
             railMotion = new Motion.Value(toggle, 0F, () =>
             {
-                toggle.SidebarProgress = railMotion.Current;
+                float progress = Math.Max(0F, Math.Min(1F, railMotion.Current));
                 int expanded = UiStyle.Scale(shell, UiStyle.SidebarWidth);
                 int compact = UiStyle.Scale(shell, UiStyle.CollapsedSidebarWidth);
-                int visibleWidth = expanded + (int)Math.Round((compact - expanded) * Math.Max(0F, Math.Min(1F, railMotion.Current)));
-                if (sidebar.Width != visibleWidth)
+                int width = expanded + (int)Math.Round((compact - expanded) * progress);
+                if (sidebar.Width != width)
                 {
                     SuspendLayout();
-                    try { sidebar.Width = visibleWidth; }
+                    try { sidebar.Width = width; }
                     finally { ResumeLayout(false); }
                 }
-                if (appliedCollapse && railMotion.Current == 1F) setCaptions(true);
+                toggle.SidebarProgress = progress;
                 toggle.Invalidate();
-                foreach (RoundedButton button in navigation.Values)
+                // The viewport clips real captions as it moves. Only commit content
+                // geometry at the exact endpoint, including an interrupted reversal.
+                if (railMotion.Current == (appliedCollapse ? 1F : 0F))
                 {
-                    if (button.IconOnly) continue;
-                    button.CaptionOpacity = 1F - Math.Min(1F, toggle.SidebarProgress);
-                    button.Invalidate(button.CaptionBounds);
+                    if (appliedCollapse) setCaptions(true);
+                    commitRail();
                 }
             });
             Action updateRail = () =>
             {
                 bool constrained = shell.Width > 0 && shell.Width < UiStyle.Scale(shell, UiStyle.ExpandedSidebarBreakpoint);
-                // Preserve the compact rail after a window-state change to avoid reflowing the active page twice.
                 if (constrained) sidebarCollapsed = true;
-                bool collapsed = sidebarCollapsed;
-                int width = UiStyle.Scale(shell, collapsed ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
                 toggle.Enabled = !constrained;
-                if (Math.Abs(shell.ColumnStyles[0].Width - width) < 1 && appliedCollapse == collapsed) return;
-                bool appearanceChanged = appliedCollapse != collapsed;
-                appliedCollapse = collapsed;
-                using (new RedrawBatch(sidebar))
-                {
-                    shell.SuspendLayout();
-                    rail.SuspendLayout();
-                    brand.SuspendLayout();
-                    try
-                    {
-                        shell.ColumnStyles[0].Width = width;
-                        if (appearanceChanged)
-                        {
-                            toggle.AccessibleName = collapsed ? "展开侧边栏" : "折叠侧边栏";
-                            hints.SetToolTip(toggle, toggle.AccessibleName);
-                            if (!collapsed || railMotion.Current == 1F) setCaptions(collapsed);
-                        }
-                    }
-                    finally
-                    {
-                        brand.ResumeLayout(true);
-                        rail.ResumeLayout(true);
-                        shell.ResumeLayout(true);
-                    }
-                }
+                if (appliedCollapse == sidebarCollapsed) return;
+                appliedCollapse = sidebarCollapsed;
+                toggle.AccessibleName = appliedCollapse ? "展开侧边栏" : "折叠侧边栏";
+                hints.SetToolTip(toggle, toggle.AccessibleName);
+                if (!appliedCollapse) setCaptions(false);
             };
             synchronizeSidebar = () =>
             {
                 updateRail();
                 railMotion.Set(appliedCollapse ? 1F : 0F);
+                commitRail();
                 sidebar.Width = UiStyle.Scale(shell, appliedCollapse ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
                 sidebar.Height = shell.Height;
                 fitRail();
