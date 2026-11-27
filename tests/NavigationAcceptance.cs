@@ -320,12 +320,15 @@ namespace SteamDirect
                     Pump(390);
                     Need(toggle.PointToScreen(Point.Empty) == anchor, "Sidebar toggle moved with the page");
                     Need(page.Bounds == host.PageBounds, "Sidebar toggle did not fit the active page");
+                    bool compact = (float)progress.GetValue(toggle) == 1F;
+                    Need(compact == (host.RailOffset == 0) && host.RailOffset == host.TargetRailOffset, "Sidebar reserved the wrong width");
+                    Need(toggle.Parent.Controls.OfType<PictureBox>().Single().Visible == !compact, "Compact sidebar exposed part of the mascot");
                 }
             }
             finally { page.SizeChanged -= resized; }
             Console.WriteLine("SIDEBAR page=" + name + " n=12 mean_ms=" + (elapsed / 12).ToString("F3") +
                 " page_resizes=" + resizes);
-            Need(resizes == 0, "Sidebar toggle must leave the active page at its existing size");
+            Need(resizes <= 12, "Sidebar animation resized the active page more than once per toggle");
         }
 
         private static RoundedButton FindSidebarToggle(Control root)

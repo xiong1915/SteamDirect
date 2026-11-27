@@ -17,15 +17,15 @@ namespace SteamDirect
     internal sealed class PageHost : Panel
     {
         internal Control ActivePage;
-        internal Func<int> ContentWidthLimit;
+        internal int RailOffset, TargetRailOffset;
         internal System.Drawing.Rectangle PageBounds
         {
             get
             {
                 var area = DisplayRectangle;
-                int width = Math.Min(area.Width, UiStyle.Scale(this, 1160));
-                if (ContentWidthLimit != null) width = Math.Min(width, ContentWidthLimit());
-                return new System.Drawing.Rectangle(area.X + (area.Width - width) / 2, area.Y, width, area.Height);
+                int width = Math.Min(Math.Max(0, area.Width - TargetRailOffset), UiStyle.Scale(this, 1160));
+                int left = RailOffset + Math.Max(0, area.Width - RailOffset - width) / 2;
+                return new System.Drawing.Rectangle(area.X + left, area.Y, width, area.Height);
             }
         }
         private const uint KeepWindowOrderAndFocus = 0x0004 | 0x0010 | 0x0200; // SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER

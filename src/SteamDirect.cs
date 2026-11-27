@@ -394,14 +394,7 @@ namespace SteamDirect
         private void BuildNavigation()
         {
             var shell = UiStyle.Grid(2, 2);
-            pageHost.ContentWidthLimit = () =>
-            {
-                // A rail toggle can reposition the page without reflowing its native controls.
-                int reservedRail = shell.ClientSize.Width < UiStyle.Scale(shell, UiStyle.ExpandedSidebarBreakpoint)
-                    ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth;
-                return Math.Max(0, shell.DisplayRectangle.Width - UiStyle.Scale(shell, reservedRail) - pageHost.Margin.Horizontal);
-            };
-            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiStyle.SidebarWidth));
+            shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiStyle.CollapsedSidebarWidth));
             shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             shell.RowStyles.Add(new RowStyle(SizeType.Absolute, UiStyle.StatusBarHeight));
@@ -474,6 +467,8 @@ namespace SteamDirect
             footer.Controls.Add(operationResult);
             shell.Controls.Add(footer, 1, 1);
 
+            Action alignFooter = () => footer.Padding = new Padding(pageHost.TargetRailOffset + UiStyle.Scale(shell, UiStyle.Space24),
+                footer.Padding.Top, footer.Padding.Right, 0);
             var hints = new FluentTooltip();
             sidebar.Disposed += (sender, args) => hints.Dispose();
             foreach (var item in navigation) hints.SetToolTip(item.Value, item.Key);
@@ -491,8 +486,12 @@ namespace SteamDirect
                     try { sidebar.Width = width; }
                     finally { ResumeLayout(false); }
                 }
+                pageHost.RailOffset = width - compact;
+                pageHost.TargetRailOffset = appliedCollapse ? 0 : expanded - compact;
+                pageHost.FitPage(pageHost.ActivePage);
                 toggle.SidebarProgress = progress;
                 toggle.Invalidate();
+                if (progress == 0F || progress == 1F) alignFooter();
             });
             Action updateRail = () =>
             {
@@ -503,16 +502,20 @@ namespace SteamDirect
                 appliedCollapse = sidebarCollapsed;
                 toggle.AccessibleName = appliedCollapse ? "展开侧边栏" : "折叠侧边栏";
                 hints.SetToolTip(toggle, toggle.AccessibleName);
+                mascot.Visible = brandText.Visible = version.Visible = !appliedCollapse;
                 foreach (RoundedButton link in navigation.Values) link.IconOnly = appliedCollapse;
             };
             synchronizeSidebar = () =>
             {
                 updateRail();
                 railMotion.Set(appliedCollapse ? 1F : 0F);
-                // Keep the content anchored while the independent rail animates.
-                int reserve = UiStyle.Scale(shell, toggle.Enabled ? UiStyle.SidebarWidth : UiStyle.CollapsedSidebarWidth);
+                // The host includes the space revealed when the rail retracts.
+                int reserve = UiStyle.Scale(shell, UiStyle.CollapsedSidebarWidth);
                 if (shell.ColumnStyles[0].Width != reserve) shell.ColumnStyles[0].Width = reserve;
                 sidebar.Width = UiStyle.Scale(shell, appliedCollapse ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
+                pageHost.RailOffset = pageHost.TargetRailOffset = sidebar.Width - reserve;
+                alignFooter();
+                pageHost.FitPage(pageHost.ActivePage);
                 sidebar.Height = shell.Height;
                 fitRail();
             };
