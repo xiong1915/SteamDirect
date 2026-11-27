@@ -150,6 +150,12 @@ namespace SteamDirect
                         SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, 0x13);
                         await Task.Delay(75);
                         var point = button.PointToScreen(new Point(button.Width / 2, button.Height - 8));
+                        if (GetAncestor(WindowFromPoint(point), 2) != hwnd)
+                        {
+                            main.Location = new Point(area.Right - main.Width - 8, area.Bottom - main.Height - 8);
+                            await Task.Delay(100);
+                            point = button.PointToScreen(new Point(button.Width / 2, button.Height - 8));
+                        }
                         using (var paint = new PaintClock(button))
                         {
                             for (int i = 0; i < 8; i++)

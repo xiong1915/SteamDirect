@@ -124,6 +124,7 @@ namespace SteamDirect
         private readonly StepTimeline timeline = new StepTimeline();
         private readonly Label elapsedLabel = new Label();
         private readonly Motion.Value operationAnimation;
+        private readonly System.Windows.Forms.Timer elapsedTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         private long displayedSecond = -1;
         private int displayedStep = -1;
         private readonly Stopwatch operationWatch = new Stopwatch();
@@ -327,12 +328,17 @@ namespace SteamDirect
                 if (!running || !Visible || WindowState == FormWindowState.Minimized || !Motion.Allowed) return;
                 long elapsed = operationWatch.ElapsedMilliseconds;
                 if (timeline.Visible) timeline.AdvanceSpinner(elapsed);
+            });
+            timeline.VisibleChanged += (sender, args) => UpdateOperationAnimation();
+            elapsedTimer.Tick += (sender, args) =>
+            {
+                long elapsed = operationWatch.ElapsedMilliseconds;
                 if (displayedSecond == elapsed / 1000 && displayedStep == timeline.ActiveStep) return;
                 displayedSecond = elapsed / 1000;
                 displayedStep = timeline.ActiveStep;
                 if (timeline.ActiveStep >= 0 && timeline.ActiveStep < timeline.StepCount)
                     elapsedLabel.Text = "第 " + (timeline.ActiveStep + 1) + " / " + timeline.StepCount + " 步  ·  " + operationWatch.Elapsed.ToString(@"mm\:ss");
-            });
+            };
             trayMenu.Items.Add("打开主窗口", null, (sender, args) => ShowMainWindow());
             trayMenu.Items.Add("设置", null, (sender, args) => OpenSettings());
             trayMenu.Opening += (sender, args) =>
@@ -648,6 +654,7 @@ namespace SteamDirect
                 history.Dispose();
                 windowDiagnostics.Dispose();
                 operationAnimation.Dispose();
+                elapsedTimer.Dispose();
                 trayIcon.Dispose();
                 trayMenu.Dispose();
                 if (ownedMainIcon != null) ownedMainIcon.Dispose();
@@ -744,7 +751,10 @@ namespace SteamDirect
         protected override void OnResize(EventArgs e) { base.OnResize(e); if (Visible && WindowState != FormWindowState.Minimized) lastVisibleState = WindowState; UpdateOperationAnimation(); }
         private void UpdateOperationAnimation()
         {
-            if (operationAnimation != null) operationAnimation.SetPulse(running);
+            if (operationAnimation == null || Disposing || IsDisposed) return;
+            bool active = running && operationWatch.IsRunning && Visible && WindowState != FormWindowState.Minimized;
+            elapsedTimer.Enabled = active;
+            operationAnimation.SetPulse(active && timeline.Visible);
         }
 
         private void OpenSettings()
@@ -834,6 +844,7 @@ namespace SteamDirect
         internal void FinishProgress(bool success)
         {
             operationAnimation.SetPulse(false);
+            elapsedTimer.Stop();
             operationWatch.Stop();
             timeline.Failed = !success;
             if (success) timeline.ActiveStep = timeline.StepCount;
