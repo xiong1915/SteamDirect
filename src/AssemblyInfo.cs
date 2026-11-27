@@ -8,7 +8,7 @@ namespace SteamDirect
     internal static class AppVersion
     {
         // Synchronized from app.manifest by Build.ps1.
-        internal const string Number = "3.0.45.0";
+        internal const string Number = "3.0.46.0";
         internal static readonly string Label = "v" + new System.Version(Number).ToString(new System.Version(Number).Revision == 0 ? 3 : 4);
     }
 }

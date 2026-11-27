@@ -32,12 +32,14 @@ namespace SteamDirect
         internal float SidebarProgress;
         internal const TextFormatFlags CaptionFlags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
 
+        private bool IsNavigation { get { return Icon == UiIcon.Home || Icon == UiIcon.Network || Icon == UiIcon.History || Icon == UiIcon.Settings; } }
+
         internal Rectangle CaptionBounds
         {
             get
             {
                 int right = UiStyle.Scale(this, CaptionInset);
-                int left = UiStyle.Scale(this, Icon == UiIcon.None ? CaptionInset : UiStyle.Space40);
+                int left = UiStyle.Scale(this, Icon == UiIcon.None ? CaptionInset : (IsNavigation ? UiStyle.CollapsedSidebarWidth - UiStyle.Space12 : UiStyle.Space40));
                 return new Rectangle(left, 2, Math.Max(0, Width - left - right), Math.Max(0, Height - 4));
             }
         }
@@ -121,7 +123,7 @@ namespace SteamDirect
             float amount = interaction.Current;
             Color fill = !Enabled ? AppTheme.Background(AppTheme.Page) :
                 amount <= .55F ? Motion.Blend(BackColor, hover, amount / .55F) : Motion.Blend(hover, down, (amount - .55F) / .45F);
-            bool navigation=Icon==UiIcon.Home||Icon==UiIcon.Network||Icon==UiIcon.History||Icon==UiIcon.Settings;
+            bool navigation = IsNavigation;
             if ((navigation || HorizontalIndicator || OutlineOnly) && Enabled)
                 fill = Motion.Blend(navigation
                     ? Motion.Blend(background, AppTheme.Background(AppTheme.Pill), selection.Current)
@@ -146,11 +148,11 @@ namespace SteamDirect
             if (Icon != UiIcon.None)
             {
                 float size = UiStyle.Space20 * scale;
-                float left = IconOnly ? (Width - size) / 2 : UiStyle.Space12 * scale;
+                float left = IconOnly && !navigation ? (Width - size) / 2 : UiStyle.Space12 * scale;
                 UiStyle.DrawIcon(e.Graphics, Icon, new RectangleF(left, (Height - size) / 2, size, size), textColor, SidebarProgress);
                 alignment = TextFormatFlags.Left;
             }
-            if (!IconOnly)
+            if (!IconOnly || navigation)
                 TextRenderer.DrawText(e.Graphics, Text, Font, bounds, textColor,
                     alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | CaptionFlags);
             if (HorizontalIndicator && selection.Current > 0 && Width > 8 && Height > 8)

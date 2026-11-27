@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -241,7 +241,7 @@ namespace SteamDirect
             private long started;
             private int duration;
             private double springFrequency, initialVelocity;
-            private bool disposed, scheduled;
+            private bool disposed, scheduled, glide;
             internal float Current { get { return current; } }
 
             internal Value(Control owner, float initial, Action changed = null)
@@ -265,7 +265,12 @@ namespace SteamDirect
                 Retarget(value, settleMilliseconds, true);
             }
 
-            private void Retarget(float value, int milliseconds, bool spring)
+            internal void GlideTo(float value, int milliseconds)
+            {
+                Retarget(value, milliseconds, false, true);
+            }
+
+            private void Retarget(float value, int milliseconds, bool spring, bool finiteGlide = false)
             {
                 if (disposed) return;
                 if (target == value && (current == value || scheduled)) return;
@@ -285,7 +290,8 @@ namespace SteamDirect
                     return;
                 }
                 from = current;
-                duration = milliseconds;
+                glide = finiteGlide;
+                duration = glide ? Math.Max(1, (int)Math.Round(milliseconds * Math.Abs(target - from))) : milliseconds;
                 springFrequency = spring ? 7200.0 / milliseconds : 0;
                 initialVelocity = spring ? velocity : 0;
                 started = now;
@@ -363,6 +369,13 @@ namespace SteamDirect
                     return (float)SampleSpring(from, target, initialVelocity, springFrequency, seconds, out velocity);
 
                 double remaining = Math.Max(0, 1 - seconds * 1000 / duration);
+                if (glide)
+                {
+                    double t = 1 - remaining;
+                    double eased = t * (.25 + .75 * t * (3 - 2 * t));
+                    velocity = (target - from) * 1000.0 / duration * (.25 + 4.5 * t * remaining);
+                    return from + (target - from) * (float)eased;
+                }
                 velocity = (target - from) * 3000.0 / duration * remaining * remaining;
                 return from + (target - from) * (float)(1 - remaining * remaining * remaining);
             }

@@ -479,23 +479,6 @@ namespace SteamDirect
             foreach (var item in navigation) hints.SetToolTip(item.Value, item.Key);
             bool sidebarCollapsed = false, appliedCollapse = false, railLayoutPending = false;
             Motion.Value railMotion = null;
-            Action<bool> setCaptions = collapsed =>
-            {
-                mascot.Visible = brandText.Visible = version.Visible = !collapsed;
-                brand.ColumnStyles[1].Width = collapsed ? 0 : UiStyle.Scale(brand, UiStyle.Space40);
-                foreach (RoundedButton button in navigation.Values)
-                {
-                    button.IconOnly = collapsed;
-                    button.Dock = collapsed ? DockStyle.Left : DockStyle.Fill;
-                    if (collapsed) button.Width = Math.Max(1, UiStyle.Scale(sidebar, UiStyle.CollapsedSidebarWidth) - sidebar.Padding.Horizontal);
-                }
-            };
-            Action commitRail = () =>
-            {
-                int width = UiStyle.Scale(shell, appliedCollapse ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
-                if (Math.Abs(shell.ColumnStyles[0].Width - width) >= 1)
-                    shell.ColumnStyles[0].Width = width;
-            };
             railMotion = new Motion.Value(toggle, 0F, () =>
             {
                 float progress = Math.Max(0F, Math.Min(1F, railMotion.Current));
@@ -510,13 +493,6 @@ namespace SteamDirect
                 }
                 toggle.SidebarProgress = progress;
                 toggle.Invalidate();
-                // The viewport clips real captions as it moves. Only commit content
-                // geometry at the exact endpoint, including an interrupted reversal.
-                if (railMotion.Current == (appliedCollapse ? 1F : 0F))
-                {
-                    if (appliedCollapse) setCaptions(true);
-                    commitRail();
-                }
             });
             Action updateRail = () =>
             {
@@ -527,13 +503,15 @@ namespace SteamDirect
                 appliedCollapse = sidebarCollapsed;
                 toggle.AccessibleName = appliedCollapse ? "展开侧边栏" : "折叠侧边栏";
                 hints.SetToolTip(toggle, toggle.AccessibleName);
-                if (!appliedCollapse) setCaptions(false);
+                foreach (RoundedButton link in navigation.Values) link.IconOnly = appliedCollapse;
             };
             synchronizeSidebar = () =>
             {
                 updateRail();
                 railMotion.Set(appliedCollapse ? 1F : 0F);
-                commitRail();
+                // Keep the content anchored while the independent rail animates.
+                int reserve = UiStyle.Scale(shell, toggle.Enabled ? UiStyle.SidebarWidth : UiStyle.CollapsedSidebarWidth);
+                if (shell.ColumnStyles[0].Width != reserve) shell.ColumnStyles[0].Width = reserve;
                 sidebar.Width = UiStyle.Scale(shell, appliedCollapse ? UiStyle.CollapsedSidebarWidth : UiStyle.SidebarWidth);
                 sidebar.Height = shell.Height;
                 fitRail();
@@ -543,7 +521,7 @@ namespace SteamDirect
             {
                 sidebarCollapsed = !sidebarCollapsed;
                 updateRail();
-                railMotion.SpringTo(appliedCollapse ? 1F : 0F, UiStyle.StatusMotion);
+                railMotion.GlideTo(appliedCollapse ? 1F : 0F, UiStyle.StatusMotion);
             };
             shell.SizeChanged += (sender, args) =>
             {

@@ -145,6 +145,33 @@ namespace SteamDirect
                         Console.WriteLine("UI first_show_ms=" + first.ToString("F2") + " warm_show_ms " + Distribution(warm) +
                             " history_first_ms=" + history.ToString("F2") + " history_cached_ms " + Distribution(revisit));
                         var gaps = new List<double>();
+                        var railButton = (RoundedButton)button;
+                        var rail = railButton.Parent.Parent;
+                        var toggle = railButton.Parent.Controls.OfType<TableLayoutPanel>().First()
+                            .Controls.OfType<RoundedButton>().Single(b => b.Icon == UiIcon.Sidebar);
+                        if (toggle.Enabled)
+                        {
+                            var edgeGaps = new List<double>();
+                            long last = 0;
+                            int jumps = 0;
+                            var host = (PageHost)typeof(MainWindow).GetField("pageHost", Private).GetValue(main);
+                            EventHandler edge = (s, e) => {
+                                long now = Stopwatch.GetTimestamp();
+                                if (last != 0) edgeGaps.Add(Ms(now - last));
+                                last = now;
+                            };
+                            rail.SizeChanged += edge;
+                            for (int i = 0; i < 8; i++)
+                            {
+                                var origin = host.ActivePage.PointToScreen(Point.Empty);
+                                last = 0;
+                                toggle.PerformClick();
+                                await Task.Delay(450);
+                                if (host.ActivePage.PointToScreen(Point.Empty) != origin) jumps++;
+                            }
+                            rail.SizeChanged -= edge;
+                            Console.WriteLine("SIDEBAR actual_width_update_gap_ms " + Distribution(edgeGaps) + " page_jumps=" + jumps);
+                        }
                         int changes = 0;
                         // Raise only our non-activating window in normal z-order. Never move the user's pointer.
                         SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, 0x13);
